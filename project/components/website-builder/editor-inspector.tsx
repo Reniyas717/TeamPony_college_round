@@ -7,7 +7,7 @@ import {
   SectionItem,
   SectionButton,
 } from "@/lib/validations/website";
-import { Magicpen, Add, Trash } from "iconsax-react";
+import { Magicpen, Add, Trash, Eye, EyeSlash } from "iconsax-react";
 
 interface EditorInspectorProps {
   document: WebsiteDocument;
@@ -42,7 +42,7 @@ export function EditorInspector({
 
   if (!selectedSection) {
     return (
-      <aside className="w-80 bg-sidebar border-l border-border/40 flex flex-col shrink-0 h-[calc(100vh-64px)] overflow-y-auto p-4 space-y-6 text-xs">
+      <aside className="w-80 bg-sidebar border-l border-border/40 flex flex-col shrink-0 h-full overflow-y-auto p-4 space-y-6 text-xs">
         <div className="space-y-1 pb-3 border-b border-border/40">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Document Properties
@@ -87,7 +87,7 @@ export function EditorInspector({
   const hasItems = selectedSection.items && selectedSection.items.length > 0;
 
   return (
-    <aside className="w-80 bg-sidebar border-l border-border/40 flex flex-col shrink-0 h-[calc(100vh-64px)] overflow-hidden text-xs">
+    <aside className="w-80 bg-sidebar border-l border-border/40 flex flex-col shrink-0 h-full overflow-hidden text-xs">
       {/* Header Bar */}
       <div className="p-3 border-b border-border/40 bg-sidebar/80 flex items-center justify-between shrink-0">
         <div>
@@ -318,6 +318,28 @@ export function EditorInspector({
       {/* Tab: Layout & Style */}
       {inspectorTab === "style" && (
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Visitor Visibility Setting */}
+          <div className="p-3 bg-card/60 border border-border/40 rounded-sm flex items-center justify-between">
+            <div className="space-y-0.5">
+              <span className="font-semibold text-foreground text-xs block">Visitor Visibility</span>
+              <span className="text-[10px] text-muted-foreground block">
+                {selectedSection.hidden ? "Currently hidden from live visitors" : "Currently visible on public site"}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => onUpdateSectionField("hidden", !selectedSection.hidden)}
+              className={`px-2.5 py-1 rounded-xs text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                selectedSection.hidden
+                  ? "bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400"
+                  : "bg-muted hover:bg-muted/80 text-foreground border border-border"
+              }`}
+            >
+              {selectedSection.hidden ? <EyeSlash size="12" /> : <Eye size="12" />}
+              <span>{selectedSection.hidden ? "Hidden" : "Visible"}</span>
+            </button>
+          </div>
+
           <div className="space-y-1.5">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
               Section Background Tone

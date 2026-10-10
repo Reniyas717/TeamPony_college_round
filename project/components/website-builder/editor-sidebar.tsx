@@ -43,7 +43,7 @@ export function EditorSidebar({
   const sections = document.sections || [];
 
   return (
-    <aside className="w-72 bg-sidebar border-r border-border/40 flex flex-col shrink-0 h-[calc(100vh-64px)] overflow-hidden">
+    <aside className="w-72 bg-sidebar border-r border-border/40 flex flex-col shrink-0 h-full overflow-hidden">
       {/* Sidebar Tabs */}
       <div className="flex items-center border-b border-border/40 bg-sidebar/80 shrink-0 px-2 pt-2 gap-1 text-xs font-medium">
         <button
@@ -107,7 +107,18 @@ export function EditorSidebar({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <span className="font-mono text-[10px] text-muted-foreground">0{index + 1}</span>
-                        <span className="font-medium truncate text-foreground">{section.name}</span>
+                        <span
+                          className={`font-medium truncate ${
+                            section.hidden ? "line-through text-muted-foreground italic" : "text-foreground"
+                          }`}
+                        >
+                          {section.name}
+                        </span>
+                        {section.hidden && (
+                          <span className="text-[8px] font-mono px-1 py-0.2 rounded-xs bg-amber-500/20 text-amber-700 dark:text-amber-400 font-bold shrink-0">
+                            HIDDEN
+                          </span>
+                        )}
                       </div>
                       <span className="text-[10px] font-mono text-muted-foreground block truncate">
                         type: {section.type}
@@ -159,8 +170,12 @@ export function EditorSidebar({
                           e.stopPropagation();
                           onToggleHide(index);
                         }}
-                        className="p-1 hover:bg-muted rounded-xs text-muted-foreground hover:text-foreground cursor-pointer"
-                        title={section.hidden ? "Unhide" : "Hide"}
+                        className={`p-1 rounded-xs transition-colors cursor-pointer ${
+                          section.hidden
+                            ? "text-amber-600 dark:text-amber-400 bg-amber-500/20 hover:bg-amber-500/30"
+                            : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                        }`}
+                        title={section.hidden ? "Unhide Section" : "Hide from visitors"}
                       >
                         {section.hidden ? <EyeSlash size="12" /> : <Eye size="12" />}
                       </button>

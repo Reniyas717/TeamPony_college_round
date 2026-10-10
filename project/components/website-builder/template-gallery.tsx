@@ -16,10 +16,13 @@ import {
   TickCircle,
   CloseCircle,
   ArrowRight,
+  Refresh,
 } from "iconsax-react";
 
 interface TemplateGalleryProps {
   websites: WebsiteRecord[];
+  creatingTemplate?: string | null;
+  openingWebsiteId?: string | null;
   onSelectTemplate: (templateId: "editorial-luxury" | "modern-saas" | "creative-studio" | "blank") => void;
   onOpenWebsite: (website: WebsiteRecord) => void;
   onDeleteWebsite: (id: string) => void;
@@ -29,6 +32,8 @@ interface TemplateGalleryProps {
 
 export function TemplateGallery({
   websites,
+  creatingTemplate,
+  openingWebsiteId,
   onSelectTemplate,
   onOpenWebsite,
   onDeleteWebsite,
@@ -63,6 +68,18 @@ export function TemplateGallery({
         <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
           Design, customize, and publish high-performance websites. Choose from three art-directed templates, start with a clean document, or edit your existing workspaces.
         </p>
+
+        {creatingTemplate && (
+          <div className="p-3 bg-brand/10 border border-brand/30 rounded-sm flex items-center justify-between animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="flex items-center gap-2.5">
+              <Refresh size="15" className="animate-spin text-brand-text" />
+              <span className="text-xs font-semibold text-brand-text">
+                Creating workspace for &ldquo;{creatingTemplate}&rdquo;... Preparing section layout &amp; design tokens.
+              </span>
+            </div>
+            <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Please wait</span>
+          </div>
+        )}
       </div>
 
       {/* 2. Three Distinct Creation Pathways */}
@@ -103,11 +120,21 @@ export function TemplateGallery({
           </div>
           <button
             type="button"
+            disabled={Boolean(creatingTemplate)}
             onClick={onStartBlank}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground hover:text-brand-text pt-2 cursor-pointer transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground hover:text-brand-text disabled:opacity-50 pt-2 cursor-pointer disabled:cursor-not-allowed transition-colors"
           >
-            <span>Create Blank Website</span>
-            <ArrowRight size="13" />
+            {creatingTemplate === "blank" ? (
+              <>
+                <Refresh size="13" className="animate-spin text-brand-text" />
+                <span className="text-brand-text font-bold">Creating Blank Canvas...</span>
+              </>
+            ) : (
+              <>
+                <span>Create Blank Website</span>
+                <ArrowRight size="13" />
+              </>
+            )}
           </button>
         </div>
 
@@ -172,11 +199,21 @@ export function TemplateGallery({
                 <div className="pt-3 border-t border-border/20 flex items-center justify-between text-xs">
                   <button
                     type="button"
+                    disabled={openingWebsiteId === w.id}
                     onClick={() => onOpenWebsite(w)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-card border border-border hover:bg-muted font-semibold cursor-pointer shadow-xs"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-card border border-border hover:bg-muted font-semibold cursor-pointer shadow-xs disabled:opacity-60 transition-opacity"
                   >
-                    <Edit2 size="13" />
-                    <span>Open Editor</span>
+                    {openingWebsiteId === w.id ? (
+                      <>
+                        <Refresh size="13" className="animate-spin text-brand-text" />
+                        <span>Opening...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Edit2 size="13" />
+                        <span>Open Editor</span>
+                      </>
+                    )}
                   </button>
 
                   <div className="flex items-center gap-2">
@@ -276,11 +313,21 @@ export function TemplateGallery({
 
                   <button
                     type="button"
+                    disabled={Boolean(creatingTemplate)}
                     onClick={() => onSelectTemplate(tpl.id)}
-                    className="py-2 px-3 rounded-sm bg-brand text-brand-foreground hover:opacity-90 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-opacity"
+                    className="py-2 px-3 rounded-sm bg-brand text-brand-foreground hover:opacity-90 disabled:opacity-50 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed shadow-xs transition-opacity"
                   >
-                    <TickCircle size="14" />
-                    <span>Use Template</span>
+                    {creatingTemplate === tpl.id ? (
+                      <>
+                        <Refresh size="14" className="animate-spin" />
+                        <span>Creating...</span>
+                      </>
+                    ) : (
+                      <>
+                        <TickCircle size="14" />
+                        <span>Use Template</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </div>

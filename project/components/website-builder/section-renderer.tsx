@@ -3,7 +3,7 @@
 
 import * as React from "react";
 import { WebsiteSection, WebsiteTheme, SectionItem } from "@/lib/validations/website";
-import { ArrowUp, ArrowDown, Copy, Trash, TickCircle } from "iconsax-react";
+import { ArrowUp, ArrowDown, Copy, Trash, TickCircle, Eye, EyeSlash } from "iconsax-react";
 
 interface SectionRendererProps {
   section: WebsiteSection;
@@ -15,6 +15,7 @@ interface SectionRendererProps {
   onMoveDown?: () => void;
   onDuplicate?: () => void;
   onDelete?: () => void;
+  onToggleHide?: () => void;
   onUpdateField?: (field: keyof WebsiteSection, value: unknown) => void;
   onUpdateItem?: (itemId: string, itemPatch: Partial<SectionItem>) => void;
 }
@@ -29,9 +30,45 @@ export function SectionRenderer({
   onMoveDown,
   onDuplicate,
   onDelete,
+  onToggleHide,
 }: SectionRendererProps) {
-  if (section.hidden && !isEditorMode) {
-    return null;
+  if (section.hidden) {
+    if (!isEditorMode) {
+      return null;
+    }
+
+    // In editor mode: render a clean, distinct collapsed placeholder bar
+    return (
+      <div
+        id={section.id}
+        onClick={onSelect}
+        className={`my-3 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 transition-all ${
+          isSelected ? "ring-2 ring-brand-text ring-offset-2" : ""
+        }`}
+      >
+        <div className="py-3 px-5 rounded-sm border border-dashed border-amber-600/40 bg-amber-500/10 flex items-center justify-between text-xs cursor-pointer hover:bg-amber-500/15 transition-colors">
+          <div className="flex items-center gap-2.5">
+            <EyeSlash size="16" className="text-amber-600 dark:text-amber-400 shrink-0" />
+            <span className="font-semibold text-foreground">{section.name}</span>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-600/20 text-amber-700 dark:text-amber-300 uppercase tracking-wider font-bold">
+              Hidden from live visitors
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleHide?.();
+            }}
+            className="px-3 py-1.5 rounded-xs bg-background border border-border hover:bg-muted text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs text-brand-text"
+            title="Unhide Section"
+          >
+            <Eye size="13" />
+            <span>Unhide Section</span>
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // Derive styles based on section style and theme
@@ -130,6 +167,19 @@ export function SectionRenderer({
               title="Duplicate"
             >
               <Copy size="12" />
+            </button>
+          )}
+          {onToggleHide && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleHide();
+              }}
+              className="p-1 hover:bg-accent rounded-xs text-muted-foreground hover:text-foreground cursor-pointer"
+              title={section.hidden ? "Unhide Section" : "Hide from visitors"}
+            >
+              {section.hidden ? <EyeSlash size="12" /> : <Eye size="12" />}
             </button>
           )}
           {onDelete && (
