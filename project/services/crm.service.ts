@@ -1,4 +1,3 @@
-import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { AuditService } from "./audit.service";
 import {
   Contact,
@@ -8,7 +7,14 @@ import {
   UpdateContactInput,
   ContactFilters,
   ContactStage,
-} from "@/lib/validations/crm";
+} from "../lib/validations/crm";
+
+async function getSupabaseServerClient(useAdmin = false) {
+  const { createClient, createAdminClient } = await import("../lib/supabase/server");
+  const client = useAdmin ? createAdminClient() : await createClient();
+  if (!client) throw new Error("Supabase client unavailable");
+  return client;
+}
 
 /**
  * CRM Service Layer
@@ -83,7 +89,7 @@ export class CrmService {
    * Retrieves filtered contacts for the verified business.
    */
   static async listContacts(filters?: ContactFilters): Promise<Contact[]> {
-    const supabase = getSupabaseServerClient();
+    const supabase = await getSupabaseServerClient();
     if (supabase) {
       try {
         let query = supabase
@@ -152,7 +158,7 @@ export class CrmService {
    * Finds a specific contact by ID.
    */
   static async getContactById(id: string): Promise<Contact | null> {
-    const supabase = getSupabaseServerClient();
+    const supabase = await getSupabaseServerClient();
     if (supabase) {
       try {
         const { data, error } = await supabase
@@ -198,7 +204,7 @@ export class CrmService {
     };
 
     let created: Contact = newContact;
-    const supabase = getSupabaseServerClient();
+    const supabase = await getSupabaseServerClient();
     if (supabase) {
       try {
         const { data, error } = await supabase
@@ -272,7 +278,7 @@ export class CrmService {
     const stageChanged = Boolean(input.stage && input.stage !== existing.stage);
 
     let updated: Contact | null = null;
-    const supabase = getSupabaseServerClient();
+    const supabase = await getSupabaseServerClient();
     if (supabase) {
       try {
         const { data, error } = await supabase
@@ -353,7 +359,7 @@ export class CrmService {
    */
   static async deleteContact(id: string): Promise<boolean> {
     let deleted = false;
-    const supabase = getSupabaseServerClient();
+    const supabase = await getSupabaseServerClient();
     if (supabase) {
       try {
         const { error } = await supabase
@@ -404,7 +410,7 @@ export class CrmService {
    * Retrieves timeline activities for a given contact.
    */
   static async getContactActivities(contactId: string): Promise<Activity[]> {
-    const supabase = getSupabaseServerClient();
+    const supabase = await getSupabaseServerClient();
     if (supabase) {
       try {
         const { data, error } = await supabase
@@ -452,7 +458,7 @@ export class CrmService {
       created_at: new Date().toISOString(),
     };
 
-    const supabase = getSupabaseServerClient();
+    const supabase = await getSupabaseServerClient();
     if (supabase) {
       try {
         await supabase.from("crm_activities").insert({

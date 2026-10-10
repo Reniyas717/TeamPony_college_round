@@ -2,7 +2,6 @@ if (typeof window !== "undefined") {
   throw new Error("Security Violation: WebsiteService must never be imported into browser bundles.");
 }
 
-import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { AuditService } from "./audit.service";
 import {
   CreateWebsiteInput,
@@ -10,8 +9,15 @@ import {
   CreateWebsiteInputSchema,
   UpdateWebsiteInputSchema,
   WebsiteRecord,
-} from "@/lib/validations/website";
-import { TEMPLATES } from "@/lib/templates/website-templates";
+} from "../lib/validations/website";
+import { TEMPLATES } from "../lib/templates/website-templates";
+
+async function getSupabaseServerClient(useAdmin = false) {
+  const { createClient, createAdminClient } = await import("../lib/supabase/server");
+  const client = useAdmin ? createAdminClient() : await createClient();
+  if (!client) throw new Error("Supabase client unavailable");
+  return client;
+}
 
 // In-Memory Dev Store for offline/fallback execution and pre-seeded live websites
 const memoryWebsites: WebsiteRecord[] = [
@@ -46,7 +52,7 @@ export class WebsiteService {
     const normalizedSlug = slug.toLowerCase().trim();
 
     try {
-      const adminSupabase = createAdminClient();
+      const adminSupabase = await getSupabaseServerClient(true);
       const { data, error } = await adminSupabase
         .from("websites")
         .select("*")
@@ -72,7 +78,7 @@ export class WebsiteService {
    */
   static async listWebsites(businessId: string): Promise<WebsiteRecord[]> {
     try {
-      const supabase = await createClient();
+      const supabase = await getSupabaseServerClient(false);
       const { data, error } = await supabase
         .from("websites")
         .select("*")
@@ -95,7 +101,7 @@ export class WebsiteService {
    */
   static async getWebsite(businessId: string, websiteId: string): Promise<WebsiteRecord | null> {
     try {
-      const supabase = await createClient();
+      const supabase = await getSupabaseServerClient(false);
       const { data, error } = await supabase
         .from("websites")
         .select("*")
@@ -122,7 +128,7 @@ export class WebsiteService {
     rawInput: CreateWebsiteInput
   ): Promise<WebsiteRecord> {
     const parsed = CreateWebsiteInputSchema.parse(rawInput);
-    const adminSupabase = createAdminClient();
+    const adminSupabase = await getSupabaseServerClient(true);
 
     // Check slug uniqueness within this business
     const { data: existingSlug } = await adminSupabase
@@ -210,7 +216,7 @@ export class WebsiteService {
     rawInput: UpdateWebsiteInput
   ): Promise<WebsiteRecord> {
     const parsed = UpdateWebsiteInputSchema.parse(rawInput);
-    const adminSupabase = createAdminClient();
+    const adminSupabase = await getSupabaseServerClient(true);
 
     let updatedRecord: WebsiteRecord | null = null;
     let existingTitle = "";
@@ -314,7 +320,7 @@ export class WebsiteService {
     websiteId: string,
     isPublished: boolean
   ): Promise<WebsiteRecord> {
-    const adminSupabase = createAdminClient();
+    const adminSupabase = await getSupabaseServerClient(true);
     let updatedRecord: WebsiteRecord | null = null;
 
     try {
@@ -391,7 +397,7 @@ export class WebsiteService {
     actorId: string,
     websiteId: string
   ): Promise<{ success: boolean }> {
-    const adminSupabase = createAdminClient();
+    const adminSupabase = await getSupabaseServerClient(true);
     let deletedTitle = "";
     let deletedSlug = "";
 

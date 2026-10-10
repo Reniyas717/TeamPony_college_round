@@ -17,6 +17,7 @@ import {
   ShieldSecurity,
   Routing,
   TrendUp,
+  Chart21,
 } from "iconsax-react";
 
 interface DashboardLayoutClientProps {
@@ -69,6 +70,7 @@ export default function DashboardLayoutClient({
 
   const navItems = [
     { href: "/dashboard", label: "Overview", icon: Activity },
+    { href: "/dashboard/analytics", label: "Analytics & ML", icon: Chart21 },
     { href: "/dashboard/intelligence", label: "Customer Journey", icon: TrendUp },
     { href: "/dashboard/workflows", label: "AI Workflows", icon: Routing },
     { href: "/dashboard/crm", label: "Intelligent CRM", icon: SecurityUser },
