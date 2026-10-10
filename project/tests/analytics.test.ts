@@ -1,11 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { computeLinearRegression } from "../lib/analytics/linear-regression";
-import {
+import path from "node:path";
+
+const moduleApi = await import("node:module");
+const moduleLoader = (moduleApi as unknown as {
+  default: { _resolveFilename: (...args: unknown[]) => string };
+}).default;
+const originalResolveFilename = moduleLoader._resolveFilename;
+moduleLoader._resolveFilename = function resolveNexusAlias(request: unknown, ...rest: unknown[]) {
+  const resolvedRequest =
+    typeof request === "string" && request.startsWith("@/")
+      ? path.join(process.cwd(), request.slice(2))
+      : request;
+  return originalResolveFilename(resolvedRequest, ...rest);
+};
+
+const { computeLinearRegression } = await import("../lib/analytics/linear-regression");
+const {
   DataEvidenceTypeSchema,
   AnalyticsDashboardPayload,
-} from "../lib/validations/analytics";
-import { AnalyticsService } from "../services/analytics.service";
+} = await import("../lib/validations/analytics");
+const { AnalyticsService } = await import("../services/analytics.service");
+
 
 test("Nexus Machine Learning & Integrated Analytics Intelligence Suite", async (t) => {
   const testBusinessId = "00000000-0000-0000-0000-000000000001";

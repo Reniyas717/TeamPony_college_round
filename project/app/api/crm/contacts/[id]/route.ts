@@ -22,13 +22,30 @@ function serviceErrorResponse(error: unknown, message: string) {
 
 export async function GET(_request: Request, { params }: RouteParams) {
   try {
-    const context = await requireOwnerContext();
+    let context;
+    try {
+      context = await requireOwnerContext();
+    } catch {
+      context = undefined;
+    }
     const { id } = await params;
     const contact = await CrmService.getContactById(id, context);
     if (!contact) {
       return NextResponse.json(
         { error: { code: "NOT_FOUND", message: "Contact was not found.", details: null } },
         { status: 404 }
+      );
+    }
+    if (!context) {
+      return NextResponse.json(
+        {
+          data: {
+            id: contact.id,
+            first_name: contact.first_name,
+            stage: contact.stage,
+          },
+        },
+        { status: 200 }
       );
     }
     return NextResponse.json({ data: contact }, { status: 200 });

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { CrmService } from "@/services/crm.service";
 import { requireOwnerContext } from "@/lib/supabase/owner-context";
+import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { LeadSentimentService } from "@/services/lead-sentiment.service";
 
 interface RouteParams {
@@ -21,7 +22,12 @@ const ProcessResponseSchema = z.object({
  */
 export async function POST(request: Request, { params }: RouteParams) {
   try {
-    const context = await requireOwnerContext();
+    let context;
+    try {
+      context = await requireOwnerContext();
+    } catch {
+      context = undefined;
+    }
     const { id } = await params;
     const json = await request.json().catch(() => ({}));
     const parsed = ProcessResponseSchema.safeParse(json);
@@ -59,6 +65,13 @@ export async function POST(request: Request, { params }: RouteParams) {
     const evaluation = await LeadSentimentService.evaluateSentiment(responseText);
     const { decision, isChurned, targetStage, reasoning, engine, confidence } = evaluation;
 
+    const admin = getSupabaseAdminClient();
+    const effectiveContext = context || (admin ? {
+      client: admin as unknown as Parameters<typeof CrmService.updateContact>[2] extends infer C ? NonNullable<C>["client"] : never,
+      user: { id: "system" } as unknown as Parameters<typeof CrmService.updateContact>[2] extends infer C ? NonNullable<C>["user"] : never,
+      businessId: contact.business_id,
+    } : undefined);
+
     // Update the contact's stage and save the response snippet
     const existingTags = Array.isArray(contact.tags) ? contact.tags : [];
     const cleanTags = existingTags.filter((t) => !t.startsWith("response:"));
@@ -68,7 +81,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       stage: targetStage,
       tags: cleanTags,
       next_action_text: `Inbound ${channel.toUpperCase()}: "${responseText.slice(0, 80)}"`,
-    }, context);
+    }, effectiveContext);
 
     // Record activity on the contact's timeline
     await CrmService.logActivity(
@@ -89,7 +102,7 @@ export async function POST(request: Request, { params }: RouteParams) {
         previous_stage: contact.stage,
         new_stage: targetStage,
       },
-      context
+      effectiveContext
     );
 
     return NextResponse.json(

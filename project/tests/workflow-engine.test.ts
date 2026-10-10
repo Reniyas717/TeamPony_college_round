@@ -126,7 +126,7 @@ class FakeDatabase {
   client = {
     from: (table: string) => new FakeQuery(this, table),
     rpc: async (functionName: string, args: Record<string, unknown>) => {
-      if (functionName === "record_audit_log_tx") {
+      if (functionName === "record_audit_log_tx" || functionName === "record_owner_audit_log_tx") {
         return { data: "99999999-9999-4999-8999-999999999999", error: null };
       }
 
