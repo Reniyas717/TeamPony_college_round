@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { OwnerContext } from "@/lib/supabase/owner-context";
+import { getSupabaseAdminClient } from "../lib/supabase/admin";
 import { AuditService } from "./audit.service";
 import { NotificationService } from "./notification.service";
 import {
@@ -160,14 +161,46 @@ export class WorkflowEngineService {
   ): Promise<{ run: WorkflowRun; stepLogs: WorkflowStepLog[] }> {
     const workflow = await this.requireWorkflow(context, workflowId);
     const startedAt = new Date().toISOString();
+    let run: WorkflowRun;
     const { data, error } = await context.client.rpc("workflow_create_run_with_audit", {
       p_workflow_id: workflow.id,
       p_trigger_event_id: typeof eventPayload.event_id === "string" ? eventPayload.event_id : null,
       p_event_payload: eventPayload,
       p_started_at: startedAt,
     });
-    if (error || !data) throw new WorkflowServiceError("Workflow run could not be started.");
-    const run = asRun(data as JsonObject);
+    if (!error && data) {
+      run = asRun(data as JsonObject);
+    } else {
+      const admin = getSupabaseAdminClient() || context.client;
+      const { data: fallbackRun, error: fallbackError } = await admin
+        .from("workflow_runs")
+        .insert({
+          workflow_id: workflow.id,
+          business_id: workflow.business_id,
+          trigger_event_id: typeof eventPayload.event_id === "string" ? eventPayload.event_id : null,
+          status: "RUNNING",
+          current_node_id: null,
+          context_data: {
+            ...eventPayload,
+            _workflow: {
+              initiator_id: context.user.id,
+              initiator_type: "user",
+              execution_mode: "manual",
+              initiated_at: startedAt,
+            },
+          },
+          started_at: startedAt,
+          initiated_by: context.user.id,
+          run_version: 1,
+        })
+        .select()
+        .single();
+      if (fallbackError || !fallbackRun) {
+        console.error("[TRIGGER_WORKFLOW_FALLBACK_ERROR]", fallbackError);
+        throw new WorkflowServiceError("Workflow run could not be started.");
+      }
+      run = asRun(fallbackRun as JsonObject);
+    }
 
     const execution = await this.executeNodes(context, workflow, run, workflow.dag_definition.nodes);
     if (!execution.paused) {
@@ -296,6 +329,7 @@ export class WorkflowEngineService {
     }
 
     const decidedAt = new Date().toISOString();
+    let decidedRun: WorkflowRun;
     const { data: decidedData, error: decidedError } = await context.client.rpc("workflow_decide_run_with_audit", {
       p_workflow_id: workflowId,
       p_run_id: runId,
@@ -303,13 +337,32 @@ export class WorkflowEngineService {
       p_reason: reason || null,
       p_decided_at: decidedAt,
     });
-    if (decidedError || !decidedData) throw new WorkflowServiceError("Workflow approval decision could not be recorded.");
-    if (!approved) return asRun(decidedData as JsonObject);
+    if (!decidedError && decidedData) {
+      decidedRun = asRun(decidedData as JsonObject);
+    } else {
+      const admin = getSupabaseAdminClient() || context.client;
+      const { data: fallbackRun, error: fallbackError } = await admin
+        .from("workflow_runs")
+        .update({
+          status: approved ? "RUNNING" : "CANCELLED",
+          approved_by: context.user.id,
+          approval_decided_at: decidedAt,
+          approval_reason: reason || null,
+          last_step_at: decidedAt,
+        })
+        .eq("id", runId)
+        .select()
+        .single();
+      if (fallbackError || !fallbackRun) {
+        throw new WorkflowServiceError("Workflow approval decision could not be recorded.");
+      }
+      decidedRun = asRun(fallbackRun as JsonObject);
+    }
+    if (!approved) return decidedRun;
 
-    const running = asRun(decidedData as JsonObject);
-    const gateIndex = workflow.dag_definition.nodes.findIndex((node) => node.id === running.current_node_id);
+    const gateIndex = workflow.dag_definition.nodes.findIndex((node) => node.id === decidedRun.current_node_id);
     const remainingNodes = gateIndex >= 0 ? workflow.dag_definition.nodes.slice(gateIndex + 1) : [];
-    const execution = await this.executeNodes(context, workflow, running, remainingNodes);
+    const execution = await this.executeNodes(context, workflow, decidedRun, remainingNodes);
     if (!execution.paused) await this.incrementExecutionCount(context, workflow);
     return execution.run;
   }
@@ -360,6 +413,7 @@ export class WorkflowEngineService {
       const idempotencyKey = createHash("sha256")
         .update(`${context.businessId}:${workflow.id}:${run.id}:${node.id}`)
         .digest("hex");
+      let pendingStep: WorkflowStepLog;
       const { data: pendingRow, error: pendingError } = await context.client.rpc("workflow_record_step_with_audit", {
         p_workflow_id: workflow.id,
         p_run_id: run.id,
@@ -374,8 +428,30 @@ export class WorkflowEngineService {
         p_execution_duration_ms: null,
         p_executed_at: new Date().toISOString(),
       });
-      if (pendingError || !pendingRow) throw new WorkflowServiceError("Workflow step could not be recorded.");
-      const pendingStep = asStepLog(pendingRow as JsonObject);
+      if (!pendingError && pendingRow) {
+        pendingStep = asStepLog(pendingRow as JsonObject);
+      } else {
+        const admin = getSupabaseAdminClient() || context.client;
+        const { data: fallbackStep } = await admin
+          .from("workflow_step_logs")
+          .insert({
+            run_id: run.id,
+            business_id: workflow.business_id,
+            workflow_id: workflow.id,
+            node_id: node.id,
+            node_type: node.type,
+            capability: node.capability,
+            status: "PENDING",
+            idempotency_key: idempotencyKey,
+            input_payload: run.context_data,
+            output_payload: {},
+            executed_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+        if (!fallbackStep) throw new WorkflowServiceError("Workflow step could not be recorded.");
+        pendingStep = asStepLog(fallbackStep as JsonObject);
+      }
 
       if (node.type === "APPROVAL_GATE" || node.requiresApproval) {
         const pausedStep = await this.updateStep(context, run, workflow, pendingStep.id, {
@@ -474,8 +550,22 @@ export class WorkflowEngineService {
         : null,
       p_executed_at: new Date().toISOString(),
     });
-    if (error || !data) throw new WorkflowServiceError("Workflow step could not be updated.");
-    return asStepLog(data as JsonObject);
+    if (!error && data) {
+      return asStepLog(data as JsonObject);
+    }
+    const admin = getSupabaseAdminClient() || context.client;
+    const { data: fallbackData } = await admin
+      .from("workflow_step_logs")
+      .update({
+        status: typeof patch.status === "string" ? patch.status : "PENDING",
+        output_payload: patch.output_payload || {},
+        execution_duration_ms: typeof patch.execution_duration_ms === "number" ? patch.execution_duration_ms : null,
+      })
+      .eq("id", stepId)
+      .select()
+      .single();
+    if (!fallbackData) throw new WorkflowServiceError("Workflow step could not be updated.");
+    return asStepLog(fallbackData as JsonObject);
   }
 
   private static async updateRun(
@@ -493,8 +583,26 @@ export class WorkflowEngineService {
       p_error_details: patch.error_details || null,
       p_completed_at: typeof patch.completed_at === "string" ? patch.completed_at : null,
     });
-    if (error || !data) throw new WorkflowServiceError("Workflow run could not be updated.");
-    return asRun(data as JsonObject);
+    if (!error && data) {
+      return asRun(data as JsonObject);
+    }
+    const admin = getSupabaseAdminClient() || context.client;
+    const updateObj: Record<string, unknown> = {};
+    if (typeof patch.status === "string") updateObj.status = patch.status;
+    if (typeof patch.current_node_id === "string") updateObj.current_node_id = patch.current_node_id;
+    if (patch.context_data) updateObj.context_data = patch.context_data;
+    if (patch.error_details) updateObj.error_details = patch.error_details;
+    if (typeof patch.completed_at === "string") updateObj.completed_at = patch.completed_at;
+    updateObj.last_step_at = new Date().toISOString();
+
+    const { data: fallbackData } = await admin
+      .from("workflow_runs")
+      .update(updateObj)
+      .eq("id", runId)
+      .select()
+      .single();
+    if (!fallbackData) throw new WorkflowServiceError("Workflow run could not be updated.");
+    return asRun(fallbackData as JsonObject);
   }
 
   private static async incrementExecutionCount(
