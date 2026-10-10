@@ -296,7 +296,7 @@ export function TemplateGallery({
 
                   <div className="flex items-center justify-between text-[11px] font-mono text-muted-foreground">
                     <span>Included Sections</span>
-                    <span>{tpl.initialDocument.sections.length} Sections</span>
+                    <span>{(tpl.initialDocument.sections || []).length} Sections</span>
                   </div>
                 </div>
 
@@ -376,11 +376,22 @@ export function TemplateGallery({
 
             {/* Modal Scrollable Canvas Preview */}
             <div className="flex-1 overflow-y-auto">
-              {previewTemplate.initialDocument.sections.map((sec) => (
+              {(previewTemplate.initialDocument.sections || []).map((sec) => (
                 <SectionRenderer
                   key={sec.id}
                   section={sec}
-                  theme={previewTemplate.initialDocument.theme}
+                  theme={
+                    previewTemplate.initialDocument.theme || {
+                      canvasBg: "#FDFBF7",
+                      surfaceBg: "#F4EFE6",
+                      textPrimary: "#1F1C18",
+                      textMuted: "#797268",
+                      borderColor: "rgba(31, 28, 24, 0.12)",
+                      accentColor: "#C85A32",
+                      fontHeading: "display" as const,
+                      fontBody: "sans" as const,
+                    }
+                  }
                   isEditorMode={false}
                 />
               ))}

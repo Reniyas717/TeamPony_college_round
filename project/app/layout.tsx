@@ -15,6 +15,8 @@ const bricolage = Bricolage_Grotesque({
   axes: ["opsz"],
 });
 
+import { QueryProvider } from "@/components/providers/query-provider";
+
 export const metadata: Metadata = {
   title: "Nexus — AI-Powered Business Operating Platform",
   description: "An all-in-one business operating platform with an intelligent AI Business Agent, CRM, SaaS billing, and more.",
@@ -43,7 +45,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+      <body className="min-h-full flex flex-col font-sans">
+        <QueryProvider>{children}</QueryProvider>
+      </body>
     </html>
   );
 }

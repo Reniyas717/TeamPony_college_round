@@ -20,6 +20,296 @@ interface SectionRendererProps {
   onUpdateItem?: (itemId: string, itemPatch: Partial<SectionItem>) => void;
 }
 
+interface ContactFormSectionProps {
+  section: WebsiteSection;
+  theme: WebsiteTheme;
+  isEditorMode: boolean;
+  textColor: string;
+  mutedTextColor: string;
+  surfaceBg?: string;
+  borderColor: string;
+  getFontFamily: () => string;
+}
+
+function ContactFormSection({
+  section,
+  theme,
+  isEditorMode,
+  textColor,
+  mutedTextColor,
+  surfaceBg = theme.surfaceBg || "#F4EFE6",
+  borderColor,
+  getFontFamily,
+}: ContactFormSectionProps) {
+  const [firstName, setFirstName] = React.useState("");
+  const [lastName, setLastName] = React.useState("");
+  const [email, setEmail] = React.useState("");
+  const [company, setCompany] = React.useState("");
+  const [phone, setPhone] = React.useState("");
+  const [message, setMessage] = React.useState("");
+  const [submitting, setSubmitting] = React.useState(false);
+  const [submitted, setSubmitted] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
+      setError("Please fill in first name, last name, and a valid email.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/crm/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          email: email.trim(),
+          company: company.trim() || undefined,
+          phone: phone.trim() || undefined,
+          source: "website_form",
+          stage: "lead",
+          next_action_text: message.trim() || "Website contact form submission",
+        }),
+      });
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json?.error?.message || "Failed to submit inquiry");
+      }
+
+      setSubmitted(true);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Submission failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleReset = () => {
+    setSubmitted(false);
+    setFirstName("");
+    setLastName("");
+    setEmail("");
+    setCompany("");
+    setPhone("");
+    setMessage("");
+    setError(null);
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start py-4">
+      {/* Left Col: Narrative & CRM Connectivity */}
+      <div className="lg:col-span-5 space-y-4">
+        {section.eyebrow && (
+          <span
+            className="text-[11px] font-mono uppercase tracking-widest block font-semibold"
+            style={{ color: theme.accentColor }}
+          >
+            {section.eyebrow}
+          </span>
+        )}
+        <h2
+          className={`${getFontFamily()} text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight leading-tight`}
+          style={{ color: textColor }}
+        >
+          {section.title || "Get In Touch With Us"}
+        </h2>
+        {section.subtitle && (
+          <p className="text-sm sm:text-base leading-relaxed" style={{ color: mutedTextColor }}>
+            {section.subtitle}
+          </p>
+        )}
+        {section.body && (
+          <p className="text-xs sm:text-sm leading-relaxed" style={{ color: mutedTextColor }}>
+            {section.body}
+          </p>
+        )}
+
+        {/* Live CRM connectivity pill */}
+        <div
+          className="p-3.5 rounded-sm border flex items-start gap-3 mt-6"
+          style={{ borderColor, backgroundColor: surfaceBg }}
+        >
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0 mt-1" />
+          <div className="space-y-0.5">
+            <p className="text-xs font-semibold" style={{ color: textColor }}>
+              Nexus Intelligent CRM Connected
+            </p>
+            <p className="text-[11px] leading-relaxed" style={{ color: mutedTextColor }}>
+              Inquiries submit directly into your Intelligent CRM pipeline as New Leads with source &apos;Website Form&apos;.
+            </p>
+          </div>
+        </div>
+
+        {isEditorMode && (
+          <div className="text-[11px] font-mono px-3 py-2 rounded-sm bg-brand-subtle text-brand-text border border-brand/20">
+            Interactive Form: Test submitting now to verify real-time ingestion into your Intelligent CRM.
+          </div>
+        )}
+      </div>
+
+      {/* Right Col: Interactive Lead Capture Form */}
+      <div className="lg:col-span-7">
+        <div
+          className="p-6 sm:p-8 rounded-sm border shadow-sm"
+          style={{
+            borderColor,
+            backgroundColor: surfaceBg,
+          }}
+        >
+          {submitted ? (
+            <div className="text-center py-8 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+              <div
+                className="w-12 h-12 rounded-full mx-auto flex items-center justify-center text-white shadow-sm"
+                style={{ backgroundColor: theme.accentColor }}
+              >
+                <TickCircle size="24" />
+              </div>
+              <div className="space-y-1">
+                <h3 className={`${getFontFamily()} text-xl font-bold`} style={{ color: textColor }}>
+                  Inquiry Received
+                </h3>
+                <p className="text-xs sm:text-sm max-w-md mx-auto" style={{ color: mutedTextColor }}>
+                  Thank you! Your contact lead has been captured and routed directly to the Nexus Intelligent CRM.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-4">
+                <a
+                  href="/dashboard/crm"
+                  className="px-4 py-2 rounded-sm text-xs font-semibold text-white transition-opacity hover:opacity-90 inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  style={{ backgroundColor: theme.accentColor }}
+                >
+                  <span>View in Intelligent CRM &rarr;</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  className="px-4 py-2 rounded-sm text-xs font-semibold border transition-colors hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
+                  style={{ borderColor, color: textColor }}
+                >
+                  Send Another Inquiry
+                </button>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {error && (
+                <div className="p-3 rounded-sm text-xs bg-destructive/10 text-destructive border border-destructive/20 font-medium">
+                  {error}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider block" style={{ color: mutedTextColor }}>
+                    First Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="e.g. Rohan"
+                    className="w-full px-3 py-2 text-xs rounded-sm border bg-background/80 focus:outline-hidden"
+                    style={{ borderColor, color: textColor }}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider block" style={{ color: mutedTextColor }}>
+                    Last Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="e.g. Sharma"
+                    className="w-full px-3 py-2 text-xs rounded-sm border bg-background/80 focus:outline-hidden"
+                    style={{ borderColor, color: textColor }}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold uppercase tracking-wider block" style={{ color: mutedTextColor }}>
+                  Work Email *
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="rohan@enterprise.in"
+                  className="w-full px-3 py-2 text-xs rounded-sm border bg-background/80 focus:outline-hidden"
+                  style={{ borderColor, color: textColor }}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider block" style={{ color: mutedTextColor }}>
+                    Company / Studio
+                  </label>
+                  <input
+                    type="text"
+                    value={company}
+                    onChange={(e) => setCompany(e.target.value)}
+                    placeholder="Apex Tech Solutions"
+                    className="w-full px-3 py-2 text-xs rounded-sm border bg-background/80 focus:outline-hidden"
+                    style={{ borderColor, color: textColor }}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider block" style={{ color: mutedTextColor }}>
+                    Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+91 98201 12345"
+                    className="w-full px-3 py-2 text-xs rounded-sm border bg-background/80 focus:outline-hidden"
+                    style={{ borderColor, color: textColor }}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold uppercase tracking-wider block" style={{ color: mutedTextColor }}>
+                  Project Brief or Inquiry
+                </label>
+                <textarea
+                  rows={3}
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder="Tell us about your project requirements, timeline, or consultation goals..."
+                  className="w-full px-3 py-2 text-xs rounded-sm border bg-background/80 focus:outline-hidden resize-none"
+                  style={{ borderColor, color: textColor }}
+                />
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-sm text-xs font-bold text-white transition-opacity hover:opacity-95 cursor-pointer shadow-xs disabled:opacity-50"
+                  style={{ backgroundColor: theme.accentColor }}
+                >
+                  {submitting ? "Submitting Inquiry..." : section.buttons?.[0]?.text || "Submit Inquiry"}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SectionRenderer({
   section,
   theme,
@@ -72,8 +362,9 @@ export function SectionRenderer({
   }
 
   // Derive styles based on section style and theme
+  const sectionStyle = section.style || { background: "default", paddingY: "normal", align: "left" };
   const getSectionBg = () => {
-    switch (section.style.background) {
+    switch (sectionStyle.background) {
       case "subtle":
         return theme.surfaceBg || "#F4EFE6";
       case "contrast":
@@ -81,19 +372,20 @@ export function SectionRenderer({
       case "dark":
         return "#0D0D0D";
       case "brand":
-        return theme.accentColor;
+        return theme.accentColor || "#C85A32";
       default:
         return theme.canvasBg || "#FDFBF7";
     }
   };
 
-  const isDarkSection = section.style.background === "dark" || section.style.background === "contrast";
+  const isDarkSection = sectionStyle.background === "dark" || sectionStyle.background === "contrast";
   const textColor = isDarkSection ? "#F9FAFB" : theme.textPrimary || "#1F1C18";
   const mutedTextColor = isDarkSection ? "#9CA3AF" : theme.textMuted || "#797268";
   const borderColor = isDarkSection ? "rgba(255, 255, 255, 0.12)" : theme.borderColor || "rgba(31, 28, 24, 0.12)";
+  const surfaceBg = isDarkSection ? "rgba(255, 255, 255, 0.05)" : theme.surfaceBg || "#F4EFE6";
 
   const getPaddingClasses = () => {
-    switch (section.style.paddingY) {
+    switch (sectionStyle.paddingY) {
       case "none":
         return "py-0";
       case "compact":
@@ -217,7 +509,7 @@ export function SectionRenderer({
             </div>
 
             <nav className="flex items-center gap-4 sm:gap-6 text-xs sm:text-sm font-medium">
-              {section.buttons.map((btn) => (
+              {(section.buttons || []).map((btn) => (
                 <a
                   key={btn.id}
                   href={btn.href}
@@ -248,7 +540,7 @@ export function SectionRenderer({
         {/* ============================================================== */}
         {section.type === "hero" && (
           <div className="space-y-8 md:space-y-12">
-            <div className={`space-y-4 max-w-4xl ${section.style.align === "center" ? "mx-auto text-center" : ""}`}>
+            <div className={`space-y-4 max-w-4xl ${sectionStyle.align === "center" ? "mx-auto text-center" : ""}`}>
               {section.eyebrow && (
                 <div
                   className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-mono font-medium tracking-wider uppercase border"
@@ -270,8 +562,8 @@ export function SectionRenderer({
 
               {/* Hero Buttons */}
               {section.buttons && section.buttons.length > 0 && (
-                <div className={`pt-2 flex flex-wrap items-center gap-3 ${section.style.align === "center" ? "justify-center" : ""}`}>
-                  {section.buttons.map((btn) => (
+                <div className={`pt-2 flex flex-wrap items-center gap-3 ${sectionStyle.align === "center" ? "justify-center" : ""}`}>
+                  {(section.buttons || []).map((btn) => (
                     <a
                       key={btn.id}
                       href={btn.href}
@@ -394,7 +686,7 @@ export function SectionRenderer({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {section.items.map((item) => (
+              {(section.items || []).map((item) => (
                 <div
                   key={item.id}
                   className="group relative rounded-sm overflow-hidden border transition-all duration-300 flex flex-col justify-between"
@@ -457,7 +749,7 @@ export function SectionRenderer({
             </div>
 
             <div className="space-y-8">
-              {section.items.map((item, idx) => (
+              {(section.items || []).map((item, idx) => (
                 <div
                   key={item.id}
                   className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center p-6 rounded-sm border group"
@@ -509,7 +801,7 @@ export function SectionRenderer({
         {/* ============================================================== */}
         {section.type === "features" && (
           <div className="space-y-8">
-            <div className={`max-w-2xl ${section.style.align === "center" ? "mx-auto text-center" : ""}`}>
+            <div className={`max-w-2xl ${sectionStyle.align === "center" ? "mx-auto text-center" : ""}`}>
               {section.eyebrow && (
                 <span className="text-xs font-mono font-bold tracking-wider uppercase block mb-1" style={{ color: theme.accentColor }}>
                   {section.eyebrow}
@@ -524,7 +816,7 @@ export function SectionRenderer({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              {section.items.map((feat) => (
+              {(section.items || []).map((feat) => (
                 <div
                   key={feat.id}
                   className="p-6 rounded-sm border space-y-3"
@@ -570,7 +862,7 @@ export function SectionRenderer({
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 pt-4">
-              {section.items.map((m) => (
+              {(section.items || []).map((m) => (
                 <div
                   key={m.id}
                   className="p-5 rounded-sm border text-center space-y-1.5"
@@ -611,7 +903,7 @@ export function SectionRenderer({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
-              {section.items.map((plan) => {
+              {(section.items || []).map((plan) => {
                 const isRec = !!plan.badge;
                 return (
                   <div
@@ -658,7 +950,7 @@ export function SectionRenderer({
 
                       {plan.features && (
                         <ul className="space-y-2.5 text-xs">
-                          {plan.features.map((feat, fi) => (
+                          {(plan.features || []).map((feat, fi) => (
                             <li key={fi} className="flex items-center gap-2">
                               <TickCircle size="14" style={{ color: theme.accentColor }} />
                               <span>{feat}</span>
@@ -714,7 +1006,7 @@ export function SectionRenderer({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-              {section.items.map((srv) => (
+              {(section.items || []).map((srv) => (
                 <div key={srv.id} className="p-6 rounded-sm border space-y-2" style={{ borderColor }}>
                   <div className="flex items-center justify-between font-mono text-xs" style={{ color: theme.accentColor }}>
                     <span>{srv.meta}</span>
@@ -752,7 +1044,7 @@ export function SectionRenderer({
 
             {section.buttons && section.buttons.length > 0 && (
               <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
-                {section.buttons.map((btn) => (
+                {(section.buttons || []).map((btn) => (
                   <a
                     key={btn.id}
                     href={btn.href}
@@ -774,7 +1066,23 @@ export function SectionRenderer({
         )}
 
         {/* ============================================================== */}
-        {/* 11. FOOTER SECTION */}
+        {/* 11. CONTACT FORM SECTION */}
+        {/* ============================================================== */}
+        {section.type === "contact" && (
+          <ContactFormSection
+            section={section}
+            theme={theme}
+            isEditorMode={isEditorMode}
+            textColor={textColor}
+            mutedTextColor={mutedTextColor}
+            surfaceBg={surfaceBg}
+            borderColor={borderColor}
+            getFontFamily={getFontFamily}
+          />
+        )}
+
+        {/* ============================================================== */}
+        {/* 12. FOOTER SECTION */}
         {/* ============================================================== */}
         {section.type === "footer" && (
           <footer className="space-y-6 text-center pt-4 border-t" style={{ borderColor }}>
@@ -796,7 +1104,7 @@ export function SectionRenderer({
 
             {section.buttons && section.buttons.length > 0 && (
               <div className="flex items-center justify-center gap-4 text-xs font-medium pt-2">
-                {section.buttons.map((btn) => (
+                {(section.buttons || []).map((btn) => (
                   <a
                     key={btn.id}
                     href={btn.href}

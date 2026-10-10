@@ -213,6 +213,7 @@ export default function IntelligenceClient({
     async function renderMermaid() {
       setMermaidRendering(true);
       try {
+        // @ts-expect-error - optional dynamic client package
         const mermaid = (await import("mermaid")).default;
         const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
 

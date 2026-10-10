@@ -60,6 +60,7 @@ test("Nexus Studio - Website Builder Test Suite", async (t) => {
     assert.ok(sectionTypes.includes("features"));
     assert.ok(sectionTypes.includes("metrics"));
     assert.ok(sectionTypes.includes("pricing"));
+    assert.ok(sectionTypes.includes("contact"));
     assert.ok(sectionTypes.includes("footer"));
   });
 

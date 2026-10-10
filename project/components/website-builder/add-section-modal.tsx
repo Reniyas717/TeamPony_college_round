@@ -246,6 +246,25 @@ const SECTION_OPTIONS: SectionTemplateOption[] = [
     },
   },
   {
+    type: "contact",
+    category: "Contact & Forms",
+    name: "Interactive Lead Capture Form",
+    description: "Lead capture form with name, email, company, phone, and project inquiry. Submissions sync in real-time to Nexus Intelligent CRM.",
+    sample: {
+      type: "contact",
+      name: "Contact & Lead Form",
+      eyebrow: "GET IN TOUCH",
+      title: "Start a Conversation With Our Team",
+      subtitle: "Submit your project inquiry or request a tailored consultation. Every submission routes directly into our Intelligent CRM pipeline.",
+      body: "Our team typically reviews and follows up within 24 business hours.",
+      buttons: [
+        { id: "btn-sub", text: "Submit Inquiry", href: "#", variant: "primary" },
+      ],
+      items: [],
+      style: { background: "subtle", paddingY: "spacious", align: "left", columns: 1, fullWidth: false },
+    },
+  },
+  {
     type: "footer",
     category: "Footers",
     name: "Editorial Colophon Footer",

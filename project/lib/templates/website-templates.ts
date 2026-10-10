@@ -378,6 +378,21 @@ export const TEMPLATES: Record<string, TemplateDefinition> = {
           hidden: false,
         },
         {
+          id: "saas-contact",
+          type: "contact",
+          name: "Sales & Technical Inquiries",
+          eyebrow: "GET IN TOUCH",
+          title: "Speak Directly With Our Engineering Team",
+          subtitle: "Have questions about hardware-level tenant isolation, audit log export streams, or custom volume agreements? Send us your brief.",
+          body: "Submissions instantly route into your Intelligent CRM as new qualified leads with source 'Website Form'.",
+          buttons: [
+            { id: "btn-saas-sub", text: "Submit Inquiry to CRM", href: "#", variant: "primary" },
+          ],
+          items: [],
+          style: { background: "default", paddingY: "spacious", align: "left", columns: 1, fullWidth: false },
+          hidden: false,
+        },
+        {
           id: "saas-footer",
           type: "footer",
           name: "Software Colophon",

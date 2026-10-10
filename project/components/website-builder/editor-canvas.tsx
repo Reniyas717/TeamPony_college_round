@@ -34,6 +34,16 @@ export function EditorCanvas({
   onUpdateSectionField,
 }: EditorCanvasProps) {
   const sections = document.sections || [];
+  const theme = document.theme || {
+    fontHeading: "display" as const,
+    fontBody: "sans" as const,
+    accentColor: "#C85A32",
+    canvasBg: "#FDFBF7",
+    surfaceBg: "#F4EFE6",
+    textPrimary: "#1F1C18",
+    textMuted: "#797268",
+    borderColor: "rgba(31, 28, 24, 0.12)",
+  };
 
   // Width styling based on selected device preview mode
   const getDeviceContainerStyle = () => {
@@ -116,7 +126,7 @@ export function EditorCanvas({
               <React.Fragment key={section.id}>
                 <SectionRenderer
                   section={section}
-                  theme={document.theme}
+                  theme={theme}
                   isEditorMode={true}
                   isSelected={selectedSectionId === section.id}
                   onSelect={() => onSelectSection(section.id)}

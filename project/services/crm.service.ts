@@ -18,8 +18,63 @@ import {
 
 export const DEFAULT_BUSINESS_ID = "00000000-0000-0000-0000-000000000001";
 
-// In-Memory Store (Clean initial state; populated via forms, API, or user actions)
-let memoryContacts: Contact[] = [];
+// In-Memory Store populated with baseline contacts matching CRM pipeline
+let memoryContacts: Contact[] = [
+  {
+    id: "00000000-0000-0000-0000-000000000101",
+    business_id: DEFAULT_BUSINESS_ID,
+    first_name: "Rohan",
+    last_name: "Sharma",
+    email: "rohan@enterprise.in",
+    phone: "+91 98201 12345",
+    company: "Apex Tech Solutions",
+    stage: "qualified",
+    value: 60000,
+    source: "website_form",
+    tags: ["enterprise", "website-lead"],
+    next_action_text: "Schedule solution architecture review",
+    next_action_due_at: null,
+    last_activity_at: new Date(Date.now() - 3600000 * 2).toISOString(),
+    created_at: new Date(Date.now() - 86400000).toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: "00000000-0000-0000-0000-000000000102",
+    business_id: DEFAULT_BUSINESS_ID,
+    first_name: "Priya",
+    last_name: "Nair",
+    email: "priya@nairlogistics.com",
+    phone: "+91 98450 67890",
+    company: "Nair Logistics",
+    stage: "lead",
+    value: 24000,
+    source: "webinar",
+    tags: ["logistics", "webinar-attendee"],
+    next_action_text: "Send follow-up deck",
+    next_action_due_at: null,
+    last_activity_at: new Date(Date.now() - 86400000).toISOString(),
+    created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: "00000000-0000-0000-0000-000000000103",
+    business_id: DEFAULT_BUSINESS_ID,
+    first_name: "Anand",
+    last_name: "Verma",
+    email: "anand@zenithretail.in",
+    phone: "+91 97110 54321",
+    company: "Zenith Retail Corp",
+    stage: "customer",
+    value: 110000,
+    source: "referral",
+    tags: ["retail", "closed-won"],
+    next_action_text: "Quarterly review",
+    next_action_due_at: null,
+    last_activity_at: new Date(Date.now() - 86400000 * 3).toISOString(),
+    created_at: new Date(Date.now() - 86400000 * 5).toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+];
 let memoryActivities: Activity[] = [];
 
 

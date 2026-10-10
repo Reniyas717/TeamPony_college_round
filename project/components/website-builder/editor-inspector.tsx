@@ -84,7 +84,8 @@ export function EditorInspector({
     );
   }
 
-  const hasItems = selectedSection.items && selectedSection.items.length > 0;
+  const hasItems = Boolean(selectedSection.items && selectedSection.items.length > 0);
+  const activeTab = inspectorTab === "items" && !hasItems ? "content" : inspectorTab;
 
   return (
     <aside className="w-80 bg-sidebar border-l border-border/40 flex flex-col shrink-0 h-full overflow-hidden text-xs">
@@ -117,7 +118,7 @@ export function EditorInspector({
           type="button"
           onClick={() => setInspectorTab("content")}
           className={`px-3 py-1.5 border-b-2 text-[11px] font-medium transition-colors cursor-pointer ${
-            inspectorTab === "content"
+            activeTab === "content"
               ? "border-brand-text text-foreground font-semibold"
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
@@ -128,7 +129,7 @@ export function EditorInspector({
           type="button"
           onClick={() => setInspectorTab("style")}
           className={`px-3 py-1.5 border-b-2 text-[11px] font-medium transition-colors cursor-pointer ${
-            inspectorTab === "style"
+            activeTab === "style"
               ? "border-brand-text text-foreground font-semibold"
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
@@ -140,18 +141,18 @@ export function EditorInspector({
             type="button"
             onClick={() => setInspectorTab("items")}
             className={`px-3 py-1.5 border-b-2 text-[11px] font-medium transition-colors cursor-pointer ${
-              inspectorTab === "items"
+              activeTab === "items"
                 ? "border-brand-text text-foreground font-semibold"
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            Items ({selectedSection.items.length})
+            Items ({selectedSection.items?.length || 0})
           </button>
         )}
       </div>
 
       {/* Tab: Content */}
-      {inspectorTab === "content" && (
+      {activeTab === "content" && (
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           <div className="space-y-1.5">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
@@ -316,7 +317,7 @@ export function EditorInspector({
       )}
 
       {/* Tab: Layout & Style */}
-      {inspectorTab === "style" && (
+      {activeTab === "style" && (
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {/* Visitor Visibility Setting */}
           <div className="p-3 bg-card/60 border border-border/40 rounded-sm flex items-center justify-between">
@@ -340,84 +341,91 @@ export function EditorInspector({
             </button>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
-              Section Background Tone
-            </label>
-            <select
-              value={selectedSection.style.background}
-              onChange={(e) =>
-                onUpdateSectionStyle({ background: e.target.value as WebsiteSection["style"]["background"] })
-              }
-              className="w-full px-3 py-2 rounded-sm border border-border/60 bg-card text-foreground text-xs"
-            >
-              <option value="default">Default Canvas Tone</option>
-              <option value="subtle">Subtle Elevated Surface</option>
-              <option value="contrast">High-Contrast Charcoal</option>
-              <option value="dark">Deep OLED Dark</option>
-              <option value="brand">Brand Accent Fill</option>
-            </select>
-          </div>
+          {(() => {
+            const sectionStyle = selectedSection.style || { background: "default", paddingY: "standard", align: "left" };
+            return (
+              <>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
+                    Section Background Tone
+                  </label>
+                  <select
+                    value={sectionStyle.background}
+                    onChange={(e) =>
+                      onUpdateSectionStyle({ background: e.target.value as WebsiteSection["style"]["background"] })
+                    }
+                    className="w-full px-3 py-2 rounded-sm border border-border/60 bg-card text-foreground text-xs"
+                  >
+                    <option value="default">Default Canvas Tone</option>
+                    <option value="subtle">Subtle Elevated Surface</option>
+                    <option value="contrast">High-Contrast Charcoal</option>
+                    <option value="dark">Deep OLED Dark</option>
+                    <option value="brand">Brand Accent Fill</option>
+                  </select>
+                </div>
 
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
-              Vertical Padding (Breathing Room)
-            </label>
-            <div className="grid grid-cols-2 gap-1.5">
-              {[
-                { id: "compact", label: "Compact (32px)" },
-                { id: "standard", label: "Standard (64px)" },
-                { id: "spacious", label: "Spacious (112px)" },
-                { id: "none", label: "Flush (0px)" },
-              ].map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() =>
-                    onUpdateSectionStyle({ paddingY: p.id as WebsiteSection["style"]["paddingY"] })
-                  }
-                  className={`p-2 rounded-sm border text-[11px] font-medium text-left cursor-pointer ${
-                    selectedSection.style.paddingY === p.id
-                      ? "border-brand-text bg-accent text-foreground font-semibold"
-                      : "border-border/40 bg-card text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
+                    Vertical Padding (Breathing Room)
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                      { id: "compact", label: "Compact (32px)" },
+                      { id: "standard", label: "Standard (64px)" },
+                      { id: "spacious", label: "Spacious (112px)" },
+                      { id: "none", label: "Flush (0px)" },
+                    ].map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() =>
+                          onUpdateSectionStyle({ paddingY: p.id as WebsiteSection["style"]["paddingY"] })
+                        }
+                        className={`p-2 rounded-sm border text-[11px] font-medium text-left cursor-pointer ${
+                          sectionStyle.paddingY === p.id
+                            ? "border-brand-text bg-accent text-foreground font-semibold"
+                            : "border-border/40 bg-card text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
-              Content Alignment
-            </label>
-            <div className="grid grid-cols-3 gap-1.5">
-              {[
-                { id: "left", label: "Left" },
-                { id: "center", label: "Center" },
-                { id: "right", label: "Right" },
-              ].map((al) => (
-                <button
-                  key={al.id}
-                  type="button"
-                  onClick={() => onUpdateSectionStyle({ align: al.id as WebsiteSection["style"]["align"] })}
-                  className={`p-2 rounded-sm border text-[11px] font-medium text-center cursor-pointer ${
-                    selectedSection.style.align === al.id
-                      ? "border-brand-text bg-accent text-foreground font-semibold"
-                      : "border-border/40 bg-card text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {al.label}
-                </button>
-              ))}
-            </div>
-          </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
+                    Content Alignment
+                  </label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[
+                      { id: "left", label: "Left" },
+                      { id: "center", label: "Center" },
+                      { id: "right", label: "Right" },
+                    ].map((al) => (
+                      <button
+                        key={al.id}
+                        type="button"
+                        onClick={() => onUpdateSectionStyle({ align: al.id as WebsiteSection["style"]["align"] })}
+                        className={`p-2 rounded-sm border text-[11px] font-medium text-center cursor-pointer ${
+                          sectionStyle.align === al.id
+                            ? "border-brand-text bg-accent text-foreground font-semibold"
+                            : "border-border/40 bg-card text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {al.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
 
       {/* Tab: Multi-Items Manager */}
-      {inspectorTab === "items" && (
+      {activeTab === "items" && (
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           <div className="flex items-center justify-between pb-2 border-b border-border/40">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -434,7 +442,7 @@ export function EditorInspector({
           </div>
 
           <div className="space-y-3">
-            {selectedSection.items.map((item, idx) => (
+            {(selectedSection.items || []).map((item, idx) => (
               <div key={item.id} className="p-3 rounded-sm border border-border/40 bg-card/60 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[10px] text-muted-foreground font-bold">Item 0{idx + 1}</span>

@@ -15,6 +15,7 @@ export const SectionTypeSchema = z.enum([
   "pricing",
   "services",
   "cta",
+  "contact",
   "footer",
 ]);
 export type SectionType = z.infer<typeof SectionTypeSchema>;

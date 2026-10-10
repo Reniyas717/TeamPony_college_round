@@ -41,6 +41,16 @@ export function EditorSidebar({
 }: EditorSidebarProps) {
   const [activeTab, setActiveTab] = React.useState<"sections" | "theme">("sections");
   const sections = document.sections || [];
+  const theme = document.theme || {
+    fontHeading: "display" as const,
+    fontBody: "sans" as const,
+    accentColor: "#C85A32",
+    canvasBg: "#FDFBF7",
+    surfaceBg: "#F4EFE6",
+    textPrimary: "#1F1C18",
+    textMuted: "#797268",
+    borderColor: "rgba(31, 28, 24, 0.12)",
+  };
 
   return (
     <aside className="w-72 bg-sidebar border-r border-border/40 flex flex-col shrink-0 h-full overflow-hidden">
@@ -230,7 +240,7 @@ export function EditorSidebar({
                   type="button"
                   onClick={() => onUpdateTheme({ fontHeading: font.id as WebsiteTheme["fontHeading"] })}
                   className={`p-2 text-left rounded-sm border text-[11px] font-medium transition-colors cursor-pointer ${
-                    document.theme.fontHeading === font.id
+                    theme.fontHeading === font.id
                       ? "border-brand-text bg-accent text-foreground font-semibold"
                       : "border-border/40 bg-card/40 text-muted-foreground hover:text-foreground"
                   }`}
@@ -257,7 +267,7 @@ export function EditorSidebar({
                   type="button"
                   onClick={() => onUpdateTheme({ accentColor: swatch.color })}
                   className={`h-8 rounded-sm border transition-transform cursor-pointer relative ${
-                    document.theme.accentColor === swatch.color ? "ring-2 ring-foreground scale-105" : ""
+                    theme.accentColor === swatch.color ? "ring-2 ring-foreground scale-105" : ""
                   }`}
                   style={{ backgroundColor: swatch.color }}
                   title={swatch.name}
@@ -289,7 +299,7 @@ export function EditorSidebar({
                     })
                   }
                   className={`w-full p-2.5 rounded-sm border text-left flex items-center justify-between text-xs cursor-pointer ${
-                    document.theme.canvasBg === atm.bg
+                    theme.canvasBg === atm.bg
                       ? "border-brand-text bg-accent text-foreground font-semibold"
                       : "border-border/40 bg-card/40 text-muted-foreground hover:text-foreground"
                   }`}

@@ -308,11 +308,11 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
 
   const handleUpdateItem = (itemId: string, patch: Partial<SectionItem>) => {
     if (!selectedSectionId) return;
-    const newSections = document.sections.map((s) =>
+    const newSections = (document.sections || []).map((s) =>
       s.id === selectedSectionId
         ? {
             ...s,
-            items: s.items.map((it) => (it.id === itemId ? { ...it, ...patch } : it)),
+            items: (s.items || []).map((it) => (it.id === itemId ? { ...it, ...patch } : it)),
           }
         : s
     );
@@ -321,9 +321,9 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
 
   const handleDeleteItem = (itemId: string) => {
     if (!selectedSectionId) return;
-    const newSections = document.sections.map((s) =>
+    const newSections = (document.sections || []).map((s) =>
       s.id === selectedSectionId
-        ? { ...s, items: s.items.filter((it) => it.id !== itemId) }
+        ? { ...s, items: (s.items || []).filter((it) => it.id !== itemId) }
         : s
     );
     updateDocWithHistory({ ...document, sections: newSections });
@@ -338,7 +338,7 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
       href: "#",
       variant: "primary",
     };
-    const newSections = document.sections.map((s) =>
+    const newSections = (document.sections || []).map((s) =>
       s.id === selectedSectionId ? { ...s, buttons: [...(s.buttons || []), newBtn] } : s
     );
     updateDocWithHistory({ ...document, sections: newSections });
@@ -346,11 +346,11 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
 
   const handleUpdateButton = (buttonId: string, patch: Partial<SectionButton>) => {
     if (!selectedSectionId) return;
-    const newSections = document.sections.map((s) =>
+    const newSections = (document.sections || []).map((s) =>
       s.id === selectedSectionId
         ? {
             ...s,
-            buttons: s.buttons.map((b) => (b.id === buttonId ? { ...b, ...patch } : b)),
+            buttons: (s.buttons || []).map((b) => (b.id === buttonId ? { ...b, ...patch } : b)),
           }
         : s
     );
@@ -359,16 +359,16 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
 
   const handleDeleteButton = (buttonId: string) => {
     if (!selectedSectionId) return;
-    const newSections = document.sections.map((s) =>
+    const newSections = (document.sections || []).map((s) =>
       s.id === selectedSectionId
-        ? { ...s, buttons: s.buttons.filter((b) => b.id !== buttonId) }
+        ? { ...s, buttons: (s.buttons || []).filter((b) => b.id !== buttonId) }
         : s
     );
     updateDocWithHistory({ ...document, sections: newSections });
   };
 
   // Find currently selected section
-  const selectedSection = document.sections.find((s) => s.id === selectedSectionId) || null;
+  const selectedSection = (document.sections || []).find((s) => s.id === selectedSectionId) || null;
 
   return (
     <div className="flex-1 flex flex-col h-full min-w-0">

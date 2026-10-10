@@ -35,8 +35,17 @@ export default async function WebsitePreviewPage({ params }: PreviewPageProps) {
     notFound();
   }
 
-  const document = website.content;
-  const theme = document.theme;
+  const document = website.content || {};
+  const theme = document.theme || {
+    canvasBg: "#FDFBF7",
+    surfaceBg: "#F4EFE6",
+    textPrimary: "#1F1C18",
+    textMuted: "#797268",
+    borderColor: "rgba(31, 28, 24, 0.12)",
+    accentColor: "#C85A32",
+    fontHeading: "display" as const,
+    fontBody: "sans" as const,
+  };
   const sections = document.sections || [];
 
   return (

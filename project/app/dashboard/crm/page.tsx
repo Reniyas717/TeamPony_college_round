@@ -1,48 +1,141 @@
+"use client";
+
 import * as React from "react";
 import { Button } from "@/components/ui/button";
-import { SecurityUser, UserAdd, Filter, SearchNormal1, DirectSend, Call, More } from "iconsax-react";
+import { SecurityUser, UserAdd, Filter, SearchNormal1, DirectSend, Call, More, CloseCircle, Refresh } from "iconsax-react";
+import { useContacts, useCreateContact } from "@/hooks/use-crm";
+import { ContactStage } from "@/lib/validations/crm";
+
+function formatRelativeTime(isoString: string): string {
+  try {
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffMins < 5) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24 && date.getDate() === now.getDate()) {
+      return `Today, ${date.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false })}`;
+    }
+    if (diffDays === 1 || (diffHours < 48 && date.getDate() === now.getDate() - 1)) {
+      return "Yesterday";
+    }
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return date.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
+  } catch {
+    return "Recently";
+  }
+}
+
+const STAGE_LABELS: Record<ContactStage, string> = {
+  lead: "New Leads",
+  contacted: "Contacted",
+  qualified: "Qualified",
+  proposal: "Proposal Sent",
+  customer: "Won Customers",
+  churned: "Churned",
+};
 
 export default function CrmPage() {
-  const stages = [
-    { id: "lead", name: "New Leads", count: 4, value: "₹84,000" },
-    { id: "contacted", name: "Contacted", count: 2, value: "₹45,000" },
-    { id: "qualified", name: "Qualified", count: 3, value: "₹1,20,000" },
-    { id: "proposal", name: "Proposal Sent", count: 1, value: "₹65,000" },
-    { id: "customer", name: "Won Customers", count: 5, value: "₹2,50,000" },
+  const { data: contactsData, isLoading, refetch } = useContacts();
+  const createContactMutation = useCreateContact();
+
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [selectedStageFilter, setSelectedStageFilter] = React.useState<string | null>(null);
+  const [isAddOpen, setIsAddOpen] = React.useState(false);
+
+  // Form states for manual Add Contact modal
+  const [newFirstName, setNewFirstName] = React.useState("");
+  const [newLastName, setNewLastName] = React.useState("");
+  const [newEmail, setNewEmail] = React.useState("");
+  const [newCompany, setNewCompany] = React.useState("");
+  const [newStage, setNewStage] = React.useState<ContactStage>("lead");
+  const [newValue, setNewValue] = React.useState("0");
+  const [formError, setFormError] = React.useState<string | null>(null);
+
+  const contacts = React.useMemo(() => contactsData || [], [contactsData]);
+
+  // Filter contacts by search query and stage
+  const filteredContacts = React.useMemo(() => {
+    return contacts.filter((c) => {
+      const matchesSearch =
+        searchQuery === "" ||
+        `${c.first_name} ${c.last_name}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (c.company && c.company.toLowerCase().includes(searchQuery.toLowerCase()));
+
+      const matchesStage = !selectedStageFilter || c.stage === selectedStageFilter;
+
+      return matchesSearch && matchesStage;
+    });
+  }, [contacts, searchQuery, selectedStageFilter]);
+
+  // Compute stage pipeline statistics
+  const stageStats = [
+    {
+      id: "lead",
+      name: "New Leads",
+      count: contacts.filter((c) => c.stage === "lead").length,
+      value: `₹${contacts.filter((c) => c.stage === "lead").reduce((acc, c) => acc + (c.value || 0), 0).toLocaleString("en-IN")}`,
+    },
+    {
+      id: "contacted",
+      name: "Contacted",
+      count: contacts.filter((c) => c.stage === "contacted").length,
+      value: `₹${contacts.filter((c) => c.stage === "contacted").reduce((acc, c) => acc + (c.value || 0), 0).toLocaleString("en-IN")}`,
+    },
+    {
+      id: "qualified",
+      name: "Qualified",
+      count: contacts.filter((c) => c.stage === "qualified").length,
+      value: `₹${contacts.filter((c) => c.stage === "qualified").reduce((acc, c) => acc + (c.value || 0), 0).toLocaleString("en-IN")}`,
+    },
+    {
+      id: "proposal",
+      name: "Proposal Sent",
+      count: contacts.filter((c) => c.stage === "proposal").length,
+      value: `₹${contacts.filter((c) => c.stage === "proposal").reduce((acc, c) => acc + (c.value || 0), 0).toLocaleString("en-IN")}`,
+    },
+    {
+      id: "customer",
+      name: "Won Customers",
+      count: contacts.filter((c) => c.stage === "customer").length,
+      value: `₹${contacts.filter((c) => c.stage === "customer").reduce((acc, c) => acc + (c.value || 0), 0).toLocaleString("en-IN")}`,
+    },
   ];
 
-  const sampleContacts = [
-    {
-      id: "c-1",
-      name: "Rohan Sharma",
-      email: "rohan@enterprise.in",
-      company: "Apex Tech Solutions",
-      stage: "Qualified",
-      value: "₹60,000",
-      source: "Website Form",
-      lastActive: "Today, 14:20",
-    },
-    {
-      id: "c-2",
-      name: "Priya Nair",
-      email: "priya@nairlogistics.com",
-      company: "Nair Logistics",
-      stage: "New Leads",
-      value: "₹24,000",
-      source: "Webinar",
-      lastActive: "Yesterday",
-    },
-    {
-      id: "c-3",
-      name: "Anand Verma",
-      email: "anand@zenithretail.in",
-      company: "Zenith Retail Corp",
-      stage: "Won Customers",
-      value: "₹1,10,000",
-      source: "Referral",
-      lastActive: "3 days ago",
-    },
-  ];
+  const handleCreateContact = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFirstName.trim() || !newLastName.trim() || !newEmail.trim()) {
+      setFormError("First name, last name, and email are required.");
+      return;
+    }
+    setFormError(null);
+    try {
+      await createContactMutation.mutateAsync({
+        first_name: newFirstName.trim(),
+        last_name: newLastName.trim(),
+        email: newEmail.trim(),
+        company: newCompany.trim() || undefined,
+        stage: newStage,
+        value: Number(newValue) || 0,
+        source: "manual",
+        tags: [],
+      });
+
+      setIsAddOpen(false);
+      setNewFirstName("");
+      setNewLastName("");
+      setNewEmail("");
+      setNewCompany("");
+      setNewValue("0");
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : "Failed to create contact");
+    }
+  };
 
   return (
     <main className="p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6">
@@ -56,6 +149,10 @@ export default function CrmPage() {
             <h1 className="font-display text-page-sm md:text-page font-bold tracking-tight text-foreground">
               Intelligent CRM
             </h1>
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-mono font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Live Ingestion Active
+            </span>
           </div>
           <p className="text-xs sm:text-sm text-muted-foreground">
             Customer lifecycle management, deal pipeline tracking, and multi-channel touchpoints
@@ -63,7 +160,22 @@ export default function CrmPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="primary" size="md" className="gap-2 cursor-pointer shadow-sm">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetch()}
+            className="gap-1.5 cursor-pointer text-xs h-9 bg-card"
+            title="Refresh contacts"
+          >
+            <Refresh size="14" className={isLoading ? "animate-spin" : ""} />
+            <span>Refresh</span>
+          </Button>
+          <Button
+            variant="primary"
+            size="md"
+            onClick={() => setIsAddOpen(true)}
+            className="gap-2 cursor-pointer shadow-sm"
+          >
             <UserAdd size="16" className="text-brand-foreground" />
             <span>Add Contact</span>
           </Button>
@@ -72,15 +184,30 @@ export default function CrmPage() {
 
       {/* Stage Summary Pipeline Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {stages.map((stage) => (
-          <div key={stage.id} className="p-4 bg-card/70 border border-border/40 rounded-sm flex flex-col justify-between">
-            <div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{stage.name}</p>
-              <p className="text-xl font-bold font-display mt-1 text-foreground">{stage.count}</p>
+        {stageStats.map((stage) => {
+          const isSelected = selectedStageFilter === stage.id;
+          return (
+            <div
+              key={stage.id}
+              onClick={() => setSelectedStageFilter(isSelected ? null : stage.id)}
+              className={`p-4 bg-card/70 border rounded-sm flex flex-col justify-between cursor-pointer transition-all ${
+                isSelected
+                  ? "border-brand-text bg-accent/30 shadow-xs ring-1 ring-brand-text"
+                  : "border-border/40 hover:border-border hover:bg-card"
+              }`}
+            >
+              <div>
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  {stage.name}
+                </p>
+                <p className="text-xl font-bold font-display mt-1 text-foreground">{stage.count}</p>
+              </div>
+              <p className="text-xs font-mono text-brand-text mt-3 pt-2 border-t border-border/20">
+                {stage.value}
+              </p>
             </div>
-            <p className="text-xs font-mono text-brand-text mt-3 pt-2 border-t border-border/20">{stage.value}</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Filter and Search Bar */}
@@ -89,15 +216,31 @@ export default function CrmPage() {
           <SearchNormal1 size="16" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search contacts, company, or email..."
             className="w-full pl-9 pr-3 py-1.5 text-xs rounded-sm bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:border-brand-text"
           />
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-          <Button variant="outline" size="sm" className="gap-1.5 cursor-pointer text-xs h-8 bg-card">
+          {selectedStageFilter && (
+            <button
+              type="button"
+              onClick={() => setSelectedStageFilter(null)}
+              className="text-[11px] font-medium text-muted-foreground hover:text-foreground underline cursor-pointer"
+            >
+              Clear stage filter
+            </button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSelectedStageFilter(null)}
+            className="gap-1.5 cursor-pointer text-xs h-8 bg-card"
+          >
             <Filter size="14" />
-            <span>Filter</span>
+            <span>{selectedStageFilter ? `Filtered: ${STAGE_LABELS[selectedStageFilter as ContactStage] || selectedStageFilter}` : "All Stages"}</span>
           </Button>
         </div>
       </div>
@@ -118,52 +261,220 @@ export default function CrmPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/20 text-foreground">
-              {sampleContacts.map((contact) => (
-                <tr key={contact.id} className="hover:bg-accent/40 transition-colors">
-                  <td className="py-3 px-4">
-                    <p className="font-semibold text-foreground">{contact.name}</p>
-                    <p className="text-[11px] text-muted-foreground font-mono">{contact.email}</p>
-                  </td>
-                  <td className="py-3 px-4 text-foreground font-medium">{contact.company}</td>
-                  <td className="py-3 px-4">
-                    <span className="inline-block px-2 py-0.5 rounded-sm bg-muted text-foreground text-[11px] font-medium">
-                      {contact.stage}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 font-mono font-semibold text-foreground">{contact.value}</td>
-                  <td className="py-3 px-4 text-muted-foreground">{contact.source}</td>
-                  <td className="py-3 px-4 text-muted-foreground font-mono text-[11px]">{contact.lastActive}</td>
-                  <td className="py-3 px-4 text-right">
-                    <div className="inline-flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        className="p-1 rounded-sm text-muted-foreground hover:text-foreground cursor-pointer"
-                        title="Send email"
-                      >
-                        <DirectSend size="14" />
-                      </button>
-                      <button
-                        type="button"
-                        className="p-1 rounded-sm text-muted-foreground hover:text-foreground cursor-pointer"
-                        title="Log call"
-                      >
-                        <Call size="14" />
-                      </button>
-                      <button
-                        type="button"
-                        className="p-1 rounded-sm text-muted-foreground hover:text-foreground cursor-pointer"
-                        title="Options"
-                      >
-                        <More size="14" />
-                      </button>
-                    </div>
+              {filteredContacts.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-muted-foreground">
+                    <p className="text-sm font-semibold text-foreground">No contacts found</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {searchQuery
+                        ? "No contacts match your search query."
+                        : "Submissions from your website contact forms will appear here automatically."}
+                    </p>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredContacts.map((contact) => (
+                  <tr key={contact.id} className="hover:bg-accent/40 transition-colors">
+                    <td className="py-3 px-4">
+                      <p className="font-semibold text-foreground">
+                        {contact.first_name} {contact.last_name}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground font-mono">{contact.email}</p>
+                    </td>
+                    <td className="py-3 px-4 text-foreground font-medium">
+                      {contact.company || "—"}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="inline-block px-2 py-0.5 rounded-sm bg-muted text-foreground text-[11px] font-medium">
+                        {STAGE_LABELS[contact.stage] || contact.stage}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 font-mono font-semibold text-foreground">
+                      {contact.value > 0 ? `₹${contact.value.toLocaleString("en-IN")}` : "₹0"}
+                    </td>
+                    <td className="py-3 px-4">
+                      {contact.source === "website_form" ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-medium text-[11px]">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          Website Form
+                        </span>
+                      ) : contact.source === "webinar" ? (
+                        <span className="inline-block px-2 py-0.5 rounded-sm bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 text-[11px]">
+                          Webinar
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground capitalize">
+                          {contact.source.replace("_", " ")}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-muted-foreground font-mono text-[11px]">
+                      {formatRelativeTime(contact.last_activity_at || contact.created_at)}
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <div className="inline-flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          className="p-1 rounded-sm text-muted-foreground hover:text-foreground cursor-pointer"
+                          title="Send email"
+                        >
+                          <DirectSend size="14" />
+                        </button>
+                        <button
+                          type="button"
+                          className="p-1 rounded-sm text-muted-foreground hover:text-foreground cursor-pointer"
+                          title="Log call"
+                        >
+                          <Call size="14" />
+                        </button>
+                        <button
+                          type="button"
+                          className="p-1 rounded-sm text-muted-foreground hover:text-foreground cursor-pointer"
+                          title="Options"
+                        >
+                          <More size="14" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Manual Add Contact Modal */}
+      {isAddOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-card border border-border rounded-sm shadow-2xl max-w-md w-full flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-4 border-b border-border/40 flex items-center justify-between bg-muted/20">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-sm bg-brand-subtle flex items-center justify-center text-brand-text">
+                  <UserAdd size="16" />
+                </div>
+                <h3 className="font-display text-sm font-bold text-foreground">Add New CRM Contact</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddOpen(false)}
+                className="p-1 rounded-sm text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                <CloseCircle size="18" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateContact} className="p-4 space-y-3 text-xs">
+              {formError && (
+                <div className="p-2 rounded-sm bg-destructive/10 text-destructive text-[11px]">
+                  {formError}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-semibold uppercase text-muted-foreground block mb-1">
+                    First Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newFirstName}
+                    onChange={(e) => setNewFirstName(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-sm border bg-background text-foreground text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold uppercase text-muted-foreground block mb-1">
+                    Last Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newLastName}
+                    onChange={(e) => setNewLastName(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-sm border bg-background text-foreground text-xs"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-semibold uppercase text-muted-foreground block mb-1">
+                  Email *
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded-sm border bg-background text-foreground text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-semibold uppercase text-muted-foreground block mb-1">
+                  Company
+                </label>
+                <input
+                  type="text"
+                  value={newCompany}
+                  onChange={(e) => setNewCompany(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded-sm border bg-background text-foreground text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-semibold uppercase text-muted-foreground block mb-1">
+                    Stage
+                  </label>
+                  <select
+                    value={newStage}
+                    onChange={(e) => setNewStage(e.target.value as ContactStage)}
+                    className="w-full px-2.5 py-1.5 rounded-sm border bg-background text-foreground text-xs"
+                  >
+                    <option value="lead">New Leads</option>
+                    <option value="contacted">Contacted</option>
+                    <option value="qualified">Qualified</option>
+                    <option value="proposal">Proposal Sent</option>
+                    <option value="customer">Won Customers</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold uppercase text-muted-foreground block mb-1">
+                    Deal Value (₹)
+                  </label>
+                  <input
+                    type="number"
+                    value={newValue}
+                    onChange={(e) => setNewValue(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-sm border bg-background text-foreground text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsAddOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="sm"
+                  disabled={createContactMutation.isPending}
+                >
+                  {createContactMutation.isPending ? "Creating..." : "Save Contact"}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

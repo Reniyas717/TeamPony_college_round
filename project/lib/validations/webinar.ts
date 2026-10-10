@@ -5,7 +5,7 @@ const timezone = z.string().min(1).max(100).refine((value) => {
   catch { return false; }
 }, "Use a valid IANA timezone");
 
-export const WebinarInputSchema = z.object({
+const WebinarBaseObject = z.object({
   title: z.string().trim().min(1).max(180),
   description: z.string().trim().max(5000).nullable().optional(),
   presenter: z.string().trim().max(180).nullable().optional(),
@@ -19,7 +19,9 @@ export const WebinarInputSchema = z.object({
   series_id: z.string().uuid().nullable().optional(),
   status: z.enum(["draft", "scheduled"]).optional(),
   expected_version: z.number().int().positive().optional(),
-}).superRefine((value, context) => {
+});
+
+export const WebinarInputSchema = WebinarBaseObject.superRefine((value, context) => {
   if (value.registration_closes_at && value.scheduled_start && Date.parse(value.registration_closes_at) > Date.parse(value.scheduled_start)) {
     context.addIssue({ code: "custom", path: ["registration_closes_at"], message: "Registration must close by the session start" });
   }
@@ -40,7 +42,7 @@ export const WebinarActionSchema = z.object({
   no_show_body: z.string().trim().max(10000).optional(),
 }).strict();
 
-export const WebinarRescheduleSchema = WebinarInputSchema.extend({
+export const WebinarRescheduleSchema = WebinarBaseObject.extend({
   action: z.literal("reschedule"),
   expected_version: z.number().int().positive(),
   expected_recipient_count: z.number().int().nonnegative(),
