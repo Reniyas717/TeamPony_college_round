@@ -1,161 +1,60 @@
 import { createHash } from "node:crypto";
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { OwnerContext } from "@/lib/supabase/owner-context";
+import { getSupabaseAdminClient } from "../lib/supabase/admin";
 import { AuditService } from "./audit.service";
 import { NotificationService } from "./notification.service";
-import { CrmService, DEFAULT_BUSINESS_ID } from "./crm.service";
 import {
   AutomationWorkflow,
   WorkflowRun,
   WorkflowStepLog,
   CreateWorkflowInput,
   WorkflowNode,
-  WorkflowDAG,
+  WorkflowDAGSchema,
 } from "@/lib/validations/workflow";
 
 if (typeof window !== "undefined") {
   throw new Error("Security Violation: WorkflowEngineService must never be imported into browser bundles.");
 }
 
-// In-Memory Dev Store for offline/fallback execution
-let memoryWorkflows: AutomationWorkflow[] = [
-  {
-    id: "wf-webinar-conversion",
-    business_id: DEFAULT_BUSINESS_ID,
-    title: "Webinar Attendee Conversion Sequence",
-    description: "Waits 24h post-webinar, checks subscription status, and sends targeted email & WhatsApp follow-ups.",
-    natural_language_prompt: "When a customer attends our webinar, wait 24h, check if subscribed, and send 20% discount offer",
-    status: "ACTIVE",
-    dag_definition: {
-      title: "Webinar Attendee Conversion Sequence",
-      description: "Waits 24h post-webinar, checks subscription status, and sends targeted email & WhatsApp follow-ups.",
-      naturalLanguagePrompt: "When a customer attends our webinar, wait 24h, check if subscribed, and send 20% discount offer",
-      nodes: [
-        {
-          id: "node-trigger-1",
-          type: "TRIGGER",
-          capability: "webinar.attendee.checked_in",
-          label: "Webinar Attendee Checked In",
-          description: "Fires when lead attends live session",
-          config: {},
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-delay-1",
-          type: "DELAY",
-          capability: "delay.wait",
-          label: "Wait 24 Hours",
-          description: "Gives lead time to review materials",
-          config: { durationHours: 24 },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-action-1",
-          type: "ACTION",
-          capability: "marketing.email.send",
-          label: "Send 20% Discount Email",
-          description: "Personalized follow-up offer",
-          config: { subject: "20% Discount for Webinar Attendees" },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-action-2",
-          type: "ACTION",
-          capability: "marketing.whatsapp.send",
-          label: "Send WhatsApp Demo Link",
-          description: "Instant message with product walkthrough",
-          config: { message: "Thanks for attending our webinar! Access your private demo at nexus.biz/demo" },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-      ],
-      edges: [
-        { id: "e1", sourceNodeId: "node-trigger-1", targetNodeId: "node-delay-1", sourceHandle: "default" },
-        { id: "e2", sourceNodeId: "node-delay-1", targetNodeId: "node-action-1", sourceHandle: "default" },
-        { id: "e3", sourceNodeId: "node-action-1", targetNodeId: "node-action-2", sourceHandle: "default" },
-      ],
-      isHighImpact: false,
-      estimatedAudienceCount: 150,
-    },
-    is_high_impact: false,
-    execution_count: 14,
-    last_executed_at: new Date(Date.now() - 3600000).toISOString(),
-    created_at: new Date(Date.now() - 86400000).toISOString(),
-    updated_at: new Date(Date.now() - 3600000).toISOString(),
-  },
-  {
-    id: "wf-qualified-vip",
-    business_id: DEFAULT_BUSINESS_ID,
-    title: "Qualified Lead VIP Acceleration Workflow",
-    description: "Enforces human sign-off before dispatching VIP WhatsApp messages and generating enterprise deals.",
-    natural_language_prompt: "When a lead is marked qualified, pause for owner approval, then send VIP WhatsApp and create deal",
-    status: "ACTIVE",
-    dag_definition: {
-      title: "Qualified Lead VIP Acceleration Workflow",
-      description: "Enforces human sign-off before dispatching VIP WhatsApp messages and generating enterprise deals.",
-      naturalLanguagePrompt: "When a lead is marked qualified, pause for owner approval, then send VIP WhatsApp and create deal",
-      nodes: [
-        {
-          id: "node-trigger-1",
-          type: "TRIGGER",
-          capability: "crm.contact.stage_changed",
-          label: "Lead Moved to Qualified",
-          description: "Fires when stage changes",
-          config: { stage: "qualified" },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-gate-1",
-          type: "APPROVAL_GATE",
-          capability: "approval.manual_gate",
-          label: "Owner Approval Checkpoint",
-          description: "Requires explicit owner signature before outreach",
-          config: {},
-          requiresApproval: true,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-action-1",
-          type: "ACTION",
-          capability: "crm.lead.create_deal",
-          label: "Create Enterprise Deal",
-          description: "Adds deal to CRM with ₹50,000 value",
-          config: { value: 50000 },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-action-2",
-          type: "ACTION",
-          capability: "marketing.whatsapp.send",
-          label: "Send VIP Executive WhatsApp",
-          description: "Personal account manager outreach",
-          config: { message: "Hello! Our executive team is excited to schedule your VIP onboarding call." },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-      ],
-      edges: [
-        { id: "e1", sourceNodeId: "node-trigger-1", targetNodeId: "node-gate-1", sourceHandle: "default" },
-        { id: "e2", sourceNodeId: "node-gate-1", targetNodeId: "node-action-1", sourceHandle: "default" },
-        { id: "e3", sourceNodeId: "node-action-1", targetNodeId: "node-action-2", sourceHandle: "default" },
-      ],
-      isHighImpact: true,
-      estimatedAudienceCount: 25,
-    },
-    is_high_impact: true,
-    execution_count: 5,
-    last_executed_at: new Date(Date.now() - 7200000).toISOString(),
-    created_at: new Date(Date.now() - 172800000).toISOString(),
-    updated_at: new Date(Date.now() - 7200000).toISOString(),
-  },
-];
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const memoryRuns: WorkflowRun[] = [];
-const memoryStepLogs: WorkflowStepLog[] = [];
+export class WorkflowServiceError extends Error {
+  constructor(
+    message: string,
+    public readonly status: 400 | 404 | 409 | 500 = 500,
+    public readonly code: "VALIDATION_ERROR" | "NOT_FOUND" | "CONFLICT" | "INTERNAL_ERROR" = "INTERNAL_ERROR"
+  ) {
+    super(message);
+    this.name = "WorkflowServiceError";
+  }
+}
+
+type JsonObject = Record<string, unknown>;
+type NodeExecutionResult = JsonObject & {
+  result_status: "SUCCESS" | "SIMULATED" | "UNSUPPORTED" | "FAILED";
+  simulated?: boolean;
+};
+
+function requireUuid(value: string, name: string): void {
+  if (!UUID_PATTERN.test(value)) {
+    throw new WorkflowServiceError(`${name} must be a valid workflow UUID.`, 400, "VALIDATION_ERROR");
+  }
+}
+
+function asWorkflow(row: JsonObject): AutomationWorkflow {
+  const dag = WorkflowDAGSchema.safeParse(row.dag_definition);
+  if (!dag.success) throw new WorkflowServiceError("The saved workflow definition is invalid.");
+  return { ...(row as unknown as AutomationWorkflow), dag_definition: dag.data };
+}
+
+function asRun(row: JsonObject): WorkflowRun {
+  return row as unknown as WorkflowRun;
+}
+
+function asStepLog(row: JsonObject): WorkflowStepLog {
+  return row as unknown as WorkflowStepLog;
+}
 
 /**
  * Deterministic Workflow Execution Engine
@@ -165,145 +64,90 @@ export class WorkflowEngineService {
   /**
    * Lists all workflows for the business
    */
-  static async listWorkflows(businessId = DEFAULT_BUSINESS_ID): Promise<AutomationWorkflow[]> {
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from("automation_workflows")
-          .select("*")
-          .eq("business_id", businessId)
-          .order("created_at", { ascending: false });
-
-        if (!error && data && data.length > 0) {
-          return data as AutomationWorkflow[];
-        }
-      } catch {
-        // Fallback
-      }
-    }
-
-    return memoryWorkflows.filter((w) => w.business_id === businessId);
+  static async listWorkflows(context: OwnerContext): Promise<AutomationWorkflow[]> {
+    const { data, error } = await context.client
+      .from("automation_workflows")
+      .select("*")
+      .eq("business_id", context.businessId)
+      .order("created_at", { ascending: false });
+    if (error) throw new WorkflowServiceError("Failed to load workflows.");
+    return (data || []).map((row) => asWorkflow(row as JsonObject));
   }
 
   /**
    * Retrieves single workflow by ID
    */
-  static async getWorkflowById(id: string, businessId = DEFAULT_BUSINESS_ID): Promise<AutomationWorkflow | null> {
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from("automation_workflows")
-          .select("*")
-          .eq("business_id", businessId)
-          .eq("id", id)
-          .single();
-
-        if (!error && data) {
-          return data as AutomationWorkflow;
-        }
-      } catch {
-        // Fallback
-      }
-    }
-
-    return memoryWorkflows.find((w) => w.id === id && w.business_id === businessId) || null;
+  static async getWorkflowById(context: OwnerContext, id: string): Promise<AutomationWorkflow | null> {
+    requireUuid(id, "Workflow ID");
+    const { data, error } = await context.client
+      .from("automation_workflows")
+      .select("*")
+      .eq("business_id", context.businessId)
+      .eq("id", id)
+      .maybeSingle();
+    if (error) throw new WorkflowServiceError("Failed to load workflow.");
+    return data ? asWorkflow(data as JsonObject) : null;
   }
 
   /**
    * Creates and registers a new automation workflow
    */
   static async createWorkflow(
+    context: OwnerContext,
     input: CreateWorkflowInput,
-    businessId = DEFAULT_BUSINESS_ID
   ): Promise<AutomationWorkflow> {
-    const now = new Date().toISOString();
-    const newWorkflow: AutomationWorkflow = {
-      id: `wf-${Date.now()}`,
-      business_id: businessId,
-      title: input.title,
-      description: input.description || null,
-      natural_language_prompt: input.naturalLanguagePrompt,
-      status: input.status,
-      dag_definition: input.dag,
-      is_high_impact: input.dag.isHighImpact ?? false,
-      execution_count: 0,
-      last_executed_at: null,
-      created_at: now,
-      updated_at: now,
-    };
-
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from("automation_workflows")
-          .insert({
-            ...newWorkflow,
-            id: undefined, // Let PostgreSQL generate UUID
-          })
-          .select()
-          .single();
-
-        if (!error && data) {
-          const created = data as AutomationWorkflow;
-          await AuditService.recordEvent(
-            {
-              business_id: businessId,
-              action: "ai.workflow.created",
-              actor: { id: "owner", type: "user" },
-              resource: { type: "workflow", id: created.id },
-              outcome: "success",
-              metadata: { title: created.title, is_high_impact: created.is_high_impact },
-            },
-            { critical: false }
-          );
-          return created;
-        }
-      } catch {
-        // Fallback
-      }
-    }
-
-    memoryWorkflows.unshift(newWorkflow);
-
-    await AuditService.recordEvent(
-      {
-        business_id: businessId,
-        action: "ai.workflow.created",
-        actor: { id: "owner", type: "user" },
-        resource: { type: "workflow", id: newWorkflow.id },
-        outcome: "success",
-        metadata: { title: newWorkflow.title, is_high_impact: newWorkflow.is_high_impact },
-      },
-      { critical: false }
-    );
-
-    return newWorkflow;
+    const { data, error } = await context.client
+      .from("automation_workflows")
+      .insert({
+        business_id: context.businessId,
+        title: input.title,
+        description: input.description || null,
+        natural_language_prompt: input.naturalLanguagePrompt,
+        status: input.status,
+        dag_definition: input.dag,
+        is_high_impact: input.dag.isHighImpact ?? false,
+        execution_count: 0,
+        last_executed_at: null,
+      })
+      .select("*")
+      .single();
+    if (error || !data) throw new WorkflowServiceError("Workflow could not be saved.");
+    const created = asWorkflow(data as JsonObject);
+    await this.recordAudit(context, {
+      business_id: context.businessId,
+      action: "ai.workflow.created",
+      actor: { id: context.user.id, type: "user" },
+      resource: { type: "workflow", id: created.id },
+      outcome: "success",
+      metadata: { title: created.title, is_high_impact: created.is_high_impact },
+    });
+    return created;
   }
 
   /**
    * Deletes a workflow
    */
-  static async deleteWorkflow(id: string, businessId = DEFAULT_BUSINESS_ID): Promise<boolean> {
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
-      try {
-        const { error } = await supabase
-          .from("automation_workflows")
-          .delete()
-          .eq("business_id", businessId)
-          .eq("id", id);
-        if (!error) return true;
-      } catch {
-        // Fallback
-      }
+  static async deleteWorkflow(context: OwnerContext, id: string): Promise<boolean> {
+    requireUuid(id, "Workflow ID");
+    const { data, error } = await context.client
+      .from("automation_workflows")
+      .delete()
+      .eq("business_id", context.businessId)
+      .eq("id", id)
+      .select("id");
+    if (error) throw new WorkflowServiceError("Workflow could not be deleted.");
+    const deleted = Boolean(data && data.length > 0);
+    if (deleted) {
+      await this.recordAudit(context, {
+        business_id: context.businessId,
+        action: "ai.workflow.deleted",
+        actor: { id: context.user.id, type: "user" },
+        resource: { type: "workflow", id },
+        outcome: "success",
+        metadata: {},
+      });
     }
-
-    const initLen = memoryWorkflows.length;
-    memoryWorkflows = memoryWorkflows.filter((w) => !(w.id === id && w.business_id === businessId));
-    return memoryWorkflows.length < initLen;
+    return deleted;
   }
 
   /**
@@ -311,198 +155,154 @@ export class WorkflowEngineService {
    * Traverses nodes deterministically, evaluating conditions and actions.
    */
   static async triggerWorkflow(
+    context: OwnerContext,
     workflowId: string,
-    eventPayload: Record<string, unknown> = {},
-    businessId = DEFAULT_BUSINESS_ID
+    eventPayload: Record<string, unknown> = {}
   ): Promise<{ run: WorkflowRun; stepLogs: WorkflowStepLog[] }> {
-    const workflow = await this.getWorkflowById(workflowId, businessId);
-    if (!workflow) {
-      throw new Error(`Workflow with ID '${workflowId}' not found`);
-    }
-
-    const now = new Date().toISOString();
-    const runId = `run-${Date.now()}`;
-
-    const run: WorkflowRun = {
-      id: runId,
-      workflow_id: workflow.id,
-      business_id: businessId,
-      trigger_event_id: (eventPayload.event_id as string) || `evt-${Date.now()}`,
-      status: "RUNNING",
-      current_node_id: null,
-      context_data: { ...eventPayload },
-      error_details: null,
-      started_at: now,
-      completed_at: null,
-    };
-
-    memoryRuns.unshift(run);
-
-    const stepLogs: WorkflowStepLog[] = [];
-    const dag: WorkflowDAG = workflow.dag_definition;
-
-    // Traverse nodes sequentially according to DAG
-    let pausedForApproval = false;
-
-    for (const node of dag.nodes) {
-      run.current_node_id = node.id;
-
-      // Deterministic idempotency key
-      const idempotencyKey = createHash("sha256")
-        .update(`${businessId}:${workflow.id}:${run.id}:${node.id}:${now}`)
-        .digest("hex");
-
-      const startTime = Date.now();
-      const stepLog: WorkflowStepLog = {
-        id: `step-${Date.now()}-${node.id}`,
-        run_id: run.id,
-        workflow_id: workflow.id,
-        node_id: node.id,
-        node_type: node.type,
-        capability: node.capability,
-        status: "PENDING",
-        idempotency_key: idempotencyKey,
-        input_payload: { ...run.context_data },
-        output_payload: {},
-        retry_count: 0,
-        execution_duration_ms: 0,
-        executed_at: new Date().toISOString(),
-      };
-
-      try {
-        if (node.type === "APPROVAL_GATE") {
-          stepLog.status = "PAUSED_FOR_APPROVAL";
-          stepLog.execution_duration_ms = Date.now() - startTime;
-          stepLogs.push(stepLog);
-          memoryStepLogs.push(stepLog);
-
-          run.status = "AWAITING_APPROVAL";
-          pausedForApproval = true;
-          break; // Stop execution until approved
-        }
-
-        // Execute Node Capability
-        const result = await this.executeNode(node, run.context_data);
-        stepLog.output_payload = result;
-        stepLog.status = "SUCCESS";
-        stepLog.execution_duration_ms = Date.now() - startTime;
-
-        // Merge step output into context for downstream nodes
-        run.context_data = { ...run.context_data, [node.id]: result };
-      } catch (err: unknown) {
-        stepLog.status = "FAILED";
-        stepLog.execution_duration_ms = Date.now() - startTime;
-        stepLog.output_payload = { error: err instanceof Error ? err.message : String(err) };
-        run.error_details = { failedNodeId: node.id, error: String(err) };
+    const workflow = await this.requireWorkflow(context, workflowId);
+    const startedAt = new Date().toISOString();
+    let run: WorkflowRun;
+    const { data, error } = await context.client.rpc("workflow_create_run_with_audit", {
+      p_workflow_id: workflow.id,
+      p_trigger_event_id: typeof eventPayload.event_id === "string" ? eventPayload.event_id : null,
+      p_event_payload: eventPayload,
+      p_started_at: startedAt,
+    });
+    if (!error && data) {
+      run = asRun(data as JsonObject);
+    } else {
+      const admin = getSupabaseAdminClient() || context.client;
+      const { data: fallbackRun, error: fallbackError } = await admin
+        .from("workflow_runs")
+        .insert({
+          workflow_id: workflow.id,
+          business_id: workflow.business_id,
+          trigger_event_id: typeof eventPayload.event_id === "string" ? eventPayload.event_id : null,
+          status: "RUNNING",
+          current_node_id: null,
+          context_data: {
+            ...eventPayload,
+            _workflow: {
+              initiator_id: context.user.id,
+              initiator_type: "user",
+              execution_mode: "manual",
+              initiated_at: startedAt,
+            },
+          },
+          started_at: startedAt,
+          initiated_by: context.user.id,
+          run_version: 1,
+        })
+        .select()
+        .single();
+      if (fallbackError || !fallbackRun) {
+        console.error("[TRIGGER_WORKFLOW_FALLBACK_ERROR]", fallbackError);
+        throw new WorkflowServiceError("Workflow run could not be started.");
       }
-
-      stepLogs.push(stepLog);
-      memoryStepLogs.push(stepLog);
-
-      if (stepLog.status === "FAILED") {
-        run.status = "FAILED";
-        break;
-      }
+      run = asRun(fallbackRun as JsonObject);
     }
 
-    if (!pausedForApproval && run.status !== "FAILED") {
-      run.status = "COMPLETED";
-      run.completed_at = new Date().toISOString();
-      workflow.execution_count += 1;
-      workflow.last_executed_at = run.completed_at;
-
-      await AuditService.recordEvent(
-        {
-          business_id: businessId,
-          action: "ai.workflow.executed",
-          actor: { id: "ai_agent", type: "ai_agent" },
-          resource: { type: "workflow", id: workflow.id },
-          outcome: "success",
-          metadata: { run_id: run.id, total_steps: stepLogs.length },
-        },
-        { critical: false }
-      );
+    const execution = await this.executeNodes(context, workflow, run, workflow.dag_definition.nodes);
+    if (!execution.paused) {
+      await this.incrementExecutionCount(context, workflow);
     }
-
-    return { run, stepLogs };
+    return execution;
   }
 
   /**
    * Executes a single DAG node action
    */
   private static async executeNode(
+    context: OwnerContext,
     node: WorkflowNode,
-    context: Record<string, unknown>
-  ): Promise<Record<string, unknown>> {
+    runContext: Record<string, unknown>
+  ): Promise<NodeExecutionResult> {
     const config = node.config || {};
-    const recipient = (context.email as string) || (config.to as string) || "lead@example.com";
-    const phone = (context.phone as string) || (config.phone as string) || "+919876543210";
-    const contactId = context.contactId as string | undefined;
+    const contactId = typeof runContext.contactId === "string" ? runContext.contactId : undefined;
 
     switch (node.capability) {
       case "marketing.email.send": {
-        const res = await NotificationService.sendEmail({
+        const recipient = await this.resolveRecipient(context, contactId, config.to, runContext.email);
+        const result = await NotificationService.sendEmail({
           to: recipient,
-          subject: (config.subject as string) || "Important Update from Nexus",
-          text: (config.template as string) || "Thank you for engaging with our business.",
-          contactId,
+          subject: typeof config.subject === "string" ? config.subject : "Nexus workflow update",
+          text: typeof config.template === "string" ? config.template : "This message was sent by a Nexus workflow.",
         });
-        return { dispatched: true, channel: "email", to: recipient, simulated: res.simulated };
+        return {
+          result_status: result.simulated ? "SIMULATED" : "SUCCESS",
+          simulated: result.simulated,
+          channel: "email",
+          provider_status: result.success ? (result.simulated ? "simulated" : "accepted") : "failed",
+        };
       }
 
       case "marketing.sms.send": {
-        const res = await NotificationService.sendSms({
-          to: phone,
-          message: (config.message as string) || "Hello from Nexus! Your request has been received.",
-          contactId,
+        const recipient = await this.resolveRecipient(context, contactId, config.phone, runContext.phone);
+        const result = await NotificationService.sendSms({
+          to: recipient,
+          message: typeof config.message === "string" ? config.message : "This message was sent by a Nexus workflow.",
         });
-        return { dispatched: true, channel: "sms", to: phone, simulated: res.simulated };
+        return {
+          result_status: result.simulated ? "SIMULATED" : "SUCCESS",
+          simulated: result.simulated,
+          channel: "sms",
+          provider_status: result.success ? (result.simulated ? "simulated" : "accepted") : "failed",
+        };
       }
 
       case "marketing.whatsapp.send": {
-        const res = await NotificationService.sendWhatsApp({
-          to: phone,
-          message: (config.message as string) || "Hello! We are reaching out regarding your inquiry.",
-          contactId,
+        const recipient = await this.resolveRecipient(context, contactId, config.phone, runContext.phone);
+        const result = await NotificationService.sendWhatsApp({
+          to: recipient,
+          message: typeof config.message === "string" ? config.message : "This message was sent by a Nexus workflow.",
         });
-        return { dispatched: true, channel: "whatsapp", to: phone, simulated: res.simulated };
+        return {
+          result_status: result.simulated ? "SIMULATED" : "SUCCESS",
+          simulated: result.simulated,
+          channel: "whatsapp",
+          provider_status: result.success ? (result.simulated ? "simulated" : "accepted") : "failed",
+        };
       }
 
       case "crm.lead.create_deal": {
-        if (contactId) {
-          const value = (config.dealValue as number) || (config.value as number) || 25000;
-          await CrmService.updateContact(contactId, {
-            value,
-            stage: "proposal",
-          });
-        }
-        return { dealCreated: true, value: config.dealValue || 25000, stage: "proposal" };
+        if (!contactId) return { result_status: "UNSUPPORTED", reason: "An owned CRM contact is required." };
+        const value = typeof config.dealValue === "number" ? config.dealValue : 25000;
+        const { error } = await context.client
+          .from("crm_contacts")
+          .update({ value, stage: "proposal", updated_at: new Date().toISOString() })
+          .eq("business_id", context.businessId)
+          .eq("id", contactId);
+        if (error) throw new Error("The owned CRM contact could not be updated.");
+        return { result_status: "SUCCESS", deal_created: true, value, stage: "proposal" };
       }
 
-      case "crm.notification.slack": {
-        if (contactId) {
-          await CrmService.logActivity(
-            contactId,
-            "note",
-            "Sales Channel Notification Dispatched",
-            `Alerted team in ${(config.channel as string) || "#sales"}`,
-            "ai_agent"
-          );
-        }
-        return { notified: true, channel: config.channel || "#sales" };
-      }
+      case "crm.notification.slack":
+        return {
+          result_status: "UNSUPPORTED",
+          reason: "Slack delivery is not implemented by the current workflow executor.",
+        };
 
-      case "delay.wait": {
-        return { delayed: true, durationHours: config.durationHours || 1 };
-      }
+      case "delay.wait":
+        return {
+          result_status: "SIMULATED",
+          simulated: true,
+          reason: "The manual demo records the delay without starting a background scheduler.",
+          duration_hours: config.durationHours || 1,
+        };
 
-      case "condition.branch": {
-        return { evaluated: true, branchTaken: "true" };
-      }
+      case "condition.branch":
+        return {
+          result_status: "SIMULATED",
+          simulated: true,
+          reason: "Branch evaluation is represented for the manual demo; full DAG dispatch is not enabled.",
+          branch_taken: "true",
+        };
 
-      default: {
-        return { executed: true, capability: node.capability };
-      }
+      default:
+        return {
+          result_status: "UNSUPPORTED",
+          reason: `Capability '${node.capability}' has no implemented executor.`,
+        };
     }
   }
 
@@ -511,95 +311,392 @@ export class WorkflowEngineService {
    * Per AGENTS.md §8.2, transitions state AWAITING_APPROVAL -> RUNNING -> COMPLETED.
    */
   static async approveWorkflowRun(
+    context: OwnerContext,
+    workflowId: string,
     runId: string,
     approved: boolean,
-    reason?: string,
-    businessId = DEFAULT_BUSINESS_ID
+    reason?: string
   ): Promise<WorkflowRun> {
-    const run = memoryRuns.find((r) => r.id === runId && r.business_id === businessId);
-    if (!run) {
-      throw new Error(`Workflow run with ID '${runId}' not found`);
-    }
-
+    const workflow = await this.requireWorkflow(context, workflowId);
+    const run = await this.getRun(context, workflowId, runId);
+    if (!run) throw new WorkflowServiceError("Workflow run was not found.", 404, "NOT_FOUND");
     if (run.status !== "AWAITING_APPROVAL") {
-      throw new Error(`Run '${runId}' is not awaiting approval (current status: ${run.status})`);
-    }
-
-    if (!approved) {
-      run.status = "CANCELLED";
-      run.completed_at = new Date().toISOString();
-      run.error_details = { rejectionReason: reason || "Rejected by business owner" };
-
-      await AuditService.recordEvent(
-        {
-          business_id: businessId,
-          action: "ai.workflow.rejected",
-          actor: { id: "owner", type: "user" },
-          resource: { type: "workflow_run", id: run.id },
-          outcome: "success",
-          metadata: { reason: reason || "User rejected high-impact action" },
-        },
-        { critical: false }
+      throw new WorkflowServiceError(
+        `Run is not awaiting approval (current status: ${run.status}).`,
+        409,
+        "CONFLICT"
       );
-
-      return run;
     }
 
-    // Approved: Resume downstream execution
-    const workflow = await this.getWorkflowById(run.workflow_id, businessId);
-    if (workflow) {
-      const dag = workflow.dag_definition;
-      const gateIndex = dag.nodes.findIndex((n) => n.type === "APPROVAL_GATE");
-      const remainingNodes = gateIndex !== -1 ? dag.nodes.slice(gateIndex + 1) : [];
-
-      for (const node of remainingNodes) {
-        const stepLog: WorkflowStepLog = {
-          id: `step-${Date.now()}-${node.id}`,
-          run_id: run.id,
-          workflow_id: workflow.id,
-          node_id: node.id,
-          node_type: node.type,
-          capability: node.capability,
-          status: "SUCCESS",
-          idempotency_key: createHash("sha256")
-            .update(`${businessId}:${workflow.id}:${run.id}:${node.id}:resume`)
-            .digest("hex"),
-          input_payload: { ...run.context_data },
-          output_payload: await this.executeNode(node, run.context_data),
-          retry_count: 0,
-          execution_duration_ms: 12,
-          executed_at: new Date().toISOString(),
-        };
-
-        memoryStepLogs.push(stepLog);
+    const decidedAt = new Date().toISOString();
+    let decidedRun: WorkflowRun;
+    const { data: decidedData, error: decidedError } = await context.client.rpc("workflow_decide_run_with_audit", {
+      p_workflow_id: workflowId,
+      p_run_id: runId,
+      p_approved: approved,
+      p_reason: reason || null,
+      p_decided_at: decidedAt,
+    });
+    if (!decidedError && decidedData) {
+      decidedRun = asRun(decidedData as JsonObject);
+    } else {
+      const admin = getSupabaseAdminClient() || context.client;
+      const { data: fallbackRun, error: fallbackError } = await admin
+        .from("workflow_runs")
+        .update({
+          status: approved ? "RUNNING" : "CANCELLED",
+          approved_by: context.user.id,
+          approval_decided_at: decidedAt,
+          approval_reason: reason || null,
+          last_step_at: decidedAt,
+        })
+        .eq("id", runId)
+        .select()
+        .single();
+      if (fallbackError || !fallbackRun) {
+        throw new WorkflowServiceError("Workflow approval decision could not be recorded.");
       }
-
-      workflow.execution_count += 1;
-      workflow.last_executed_at = new Date().toISOString();
+      decidedRun = asRun(fallbackRun as JsonObject);
     }
+    if (!approved) return decidedRun;
 
-    run.status = "COMPLETED";
-    run.completed_at = new Date().toISOString();
-
-    await AuditService.recordEvent(
-      {
-        business_id: businessId,
-        action: "ai.workflow.approved",
-        actor: { id: "owner", type: "user" },
-        resource: { type: "workflow_run", id: run.id },
-        outcome: "success",
-        metadata: { approved_by: "owner", reason },
-      },
-      { critical: false }
-    );
-
-    return run;
+    const gateIndex = workflow.dag_definition.nodes.findIndex((node) => node.id === decidedRun.current_node_id);
+    const remainingNodes = gateIndex >= 0 ? workflow.dag_definition.nodes.slice(gateIndex + 1) : [];
+    const execution = await this.executeNodes(context, workflow, decidedRun, remainingNodes);
+    if (!execution.paused) await this.incrementExecutionCount(context, workflow);
+    return execution.run;
   }
 
   /**
    * Retrieves step logs for a run
    */
-  static async getRunStepLogs(runId: string): Promise<WorkflowStepLog[]> {
-    return memoryStepLogs.filter((s) => s.run_id === runId);
+  static async getRunStepLogs(context: OwnerContext, runId: string): Promise<WorkflowStepLog[]> {
+    const run = await this.getRunById(context, runId);
+    if (!run) throw new WorkflowServiceError("Workflow run was not found.", 404, "NOT_FOUND");
+    const { data, error } = await context.client
+      .from("workflow_step_logs")
+      .select("*")
+      .eq("run_id", run.id)
+      .eq("workflow_id", run.workflow_id)
+      .order("executed_at", { ascending: true });
+    if (error) throw new WorkflowServiceError("Failed to load workflow telemetry.");
+    return (data || []).map((row) => asStepLog(row as JsonObject));
+  }
+
+  static async getLatestRun(context: OwnerContext, workflowId: string): Promise<WorkflowRun | null> {
+    await this.requireWorkflow(context, workflowId);
+    const { data, error } = await context.client
+      .from("workflow_runs")
+      .select("*")
+      .eq("business_id", context.businessId)
+      .eq("workflow_id", workflowId)
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new WorkflowServiceError("Failed to load workflow runs.");
+    return data ? asRun(data as JsonObject) : null;
+  }
+
+  private static async executeNodes(
+    context: OwnerContext,
+    workflow: AutomationWorkflow,
+    initialRun: WorkflowRun,
+    nodes: WorkflowNode[]
+  ): Promise<{ run: WorkflowRun; stepLogs: WorkflowStepLog[]; paused: boolean }> {
+    let run = initialRun;
+    const stepLogs: WorkflowStepLog[] = [];
+    const warnings: string[] = [];
+    let paused = false;
+
+    for (const node of nodes) {
+      run = await this.updateRun(context, workflow.id, run.id, { current_node_id: node.id });
+      const idempotencyKey = createHash("sha256")
+        .update(`${context.businessId}:${workflow.id}:${run.id}:${node.id}`)
+        .digest("hex");
+      let pendingStep: WorkflowStepLog;
+      const { data: pendingRow, error: pendingError } = await context.client.rpc("workflow_record_step_with_audit", {
+        p_workflow_id: workflow.id,
+        p_run_id: run.id,
+        p_step_id: null,
+        p_node_id: node.id,
+        p_node_type: node.type,
+        p_capability: node.capability,
+        p_status: "PENDING",
+        p_idempotency_key: idempotencyKey,
+        p_input_payload: run.context_data,
+        p_output_payload: {},
+        p_execution_duration_ms: null,
+        p_executed_at: new Date().toISOString(),
+      });
+      if (!pendingError && pendingRow) {
+        pendingStep = asStepLog(pendingRow as JsonObject);
+      } else {
+        const admin = getSupabaseAdminClient() || context.client;
+        const { data: fallbackStep } = await admin
+          .from("workflow_step_logs")
+          .insert({
+            run_id: run.id,
+            business_id: workflow.business_id,
+            workflow_id: workflow.id,
+            node_id: node.id,
+            node_type: node.type,
+            capability: node.capability,
+            status: "PENDING",
+            idempotency_key: idempotencyKey,
+            input_payload: run.context_data,
+            output_payload: {},
+            executed_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+        if (!fallbackStep) throw new WorkflowServiceError("Workflow step could not be recorded.");
+        pendingStep = asStepLog(fallbackStep as JsonObject);
+      }
+
+      if (node.type === "APPROVAL_GATE" || node.requiresApproval) {
+        const pausedStep = await this.updateStep(context, run, workflow, pendingStep.id, {
+          status: "PAUSED_FOR_APPROVAL",
+          output_payload: { result_status: "PENDING_APPROVAL" },
+          execution_duration_ms: 0,
+        });
+        stepLogs.push(pausedStep);
+        run = await this.updateRun(context, workflow.id, run.id, {
+          status: "AWAITING_APPROVAL",
+          current_node_id: node.id,
+        });
+        paused = true;
+        break;
+      }
+
+      const startedAt = Date.now();
+      let result: NodeExecutionResult;
+      try {
+        result = await this.executeNode(context, node, run.context_data);
+      } catch (error) {
+        result = {
+          result_status: "FAILED",
+          error: error instanceof Error ? error.message : "Workflow capability failed.",
+        };
+      }
+
+      const status = result.result_status === "FAILED"
+        ? "FAILED"
+        : result.result_status === "UNSUPPORTED"
+          ? "SKIPPED"
+          : "SUCCESS";
+      const step = await this.updateStep(context, run, workflow, pendingStep.id, {
+        status,
+        output_payload: result,
+        execution_duration_ms: Date.now() - startedAt,
+      });
+      stepLogs.push(step);
+
+      if (result.result_status === "UNSUPPORTED") {
+        warnings.push(`${node.capability}: unsupported in the manual workflow demo`);
+      }
+      if (result.result_status === "SIMULATED") {
+        warnings.push(`${node.capability}: simulated result`);
+      }
+
+      run = await this.updateRun(context, workflow.id, run.id, {
+        context_data: { ...(run.context_data || {}), [node.id]: result },
+        error_details: warnings.length > 0 ? { warnings } : run.error_details,
+      });
+
+      if (result.result_status === "FAILED") {
+        run = await this.updateRun(context, workflow.id, run.id, {
+          status: "FAILED",
+          error_details: {
+            failed_node_id: node.id,
+            error: result.error || "Workflow step failed.",
+            warnings,
+          },
+          completed_at: new Date().toISOString(),
+        });
+        break;
+      }
+    }
+
+    if (!paused && run.status !== "FAILED") {
+      run = await this.updateRun(context, workflow.id, run.id, {
+        status: "COMPLETED",
+        error_details: warnings.length > 0 ? { warnings } : run.error_details,
+        completed_at: new Date().toISOString(),
+      });
+    }
+    return { run, stepLogs, paused };
+  }
+
+  private static async updateStep(
+    context: OwnerContext,
+    run: WorkflowRun,
+    workflow: AutomationWorkflow,
+    stepId: string,
+    patch: JsonObject
+  ): Promise<WorkflowStepLog> {
+    const { data, error } = await context.client.rpc("workflow_record_step_with_audit", {
+      p_workflow_id: workflow.id,
+      p_run_id: run.id,
+      p_step_id: stepId,
+      p_node_id: null,
+      p_node_type: null,
+      p_capability: null,
+      p_status: typeof patch.status === "string" ? patch.status : "PENDING",
+      p_idempotency_key: null,
+      p_input_payload: null,
+      p_output_payload: patch.output_payload || null,
+      p_execution_duration_ms: typeof patch.execution_duration_ms === "number"
+        ? patch.execution_duration_ms
+        : null,
+      p_executed_at: new Date().toISOString(),
+    });
+    if (!error && data) {
+      return asStepLog(data as JsonObject);
+    }
+    const admin = getSupabaseAdminClient() || context.client;
+    const { data: fallbackData } = await admin
+      .from("workflow_step_logs")
+      .update({
+        status: typeof patch.status === "string" ? patch.status : "PENDING",
+        output_payload: patch.output_payload || {},
+        execution_duration_ms: typeof patch.execution_duration_ms === "number" ? patch.execution_duration_ms : null,
+      })
+      .eq("id", stepId)
+      .select()
+      .single();
+    if (!fallbackData) throw new WorkflowServiceError("Workflow step could not be updated.");
+    return asStepLog(fallbackData as JsonObject);
+  }
+
+  private static async updateRun(
+    context: OwnerContext,
+    workflowId: string,
+    runId: string,
+    patch: JsonObject
+  ): Promise<WorkflowRun> {
+    const { data, error } = await context.client.rpc("workflow_update_run_with_audit", {
+      p_workflow_id: workflowId,
+      p_run_id: runId,
+      p_status: typeof patch.status === "string" ? patch.status : null,
+      p_current_node_id: typeof patch.current_node_id === "string" ? patch.current_node_id : null,
+      p_context_data: patch.context_data || null,
+      p_error_details: patch.error_details || null,
+      p_completed_at: typeof patch.completed_at === "string" ? patch.completed_at : null,
+    });
+    if (!error && data) {
+      return asRun(data as JsonObject);
+    }
+    const admin = getSupabaseAdminClient() || context.client;
+    const updateObj: Record<string, unknown> = {};
+    if (typeof patch.status === "string") updateObj.status = patch.status;
+    if (typeof patch.current_node_id === "string") updateObj.current_node_id = patch.current_node_id;
+    if (patch.context_data) updateObj.context_data = patch.context_data;
+    if (patch.error_details) updateObj.error_details = patch.error_details;
+    if (typeof patch.completed_at === "string") updateObj.completed_at = patch.completed_at;
+    updateObj.last_step_at = new Date().toISOString();
+
+    const { data: fallbackData } = await admin
+      .from("workflow_runs")
+      .update(updateObj)
+      .eq("id", runId)
+      .select()
+      .single();
+    if (!fallbackData) throw new WorkflowServiceError("Workflow run could not be updated.");
+    return asRun(fallbackData as JsonObject);
+  }
+
+  private static async incrementExecutionCount(
+    context: OwnerContext,
+    workflow: AutomationWorkflow
+  ): Promise<void> {
+    const { error } = await context.client
+      .from("automation_workflows")
+      .update({
+        execution_count: workflow.execution_count + 1,
+        last_executed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("business_id", context.businessId)
+      .eq("id", workflow.id);
+    if (error) throw new WorkflowServiceError("Workflow execution count could not be updated.");
+  }
+
+  private static async getRun(
+    context: OwnerContext,
+    workflowId: string,
+    runId: string
+  ): Promise<WorkflowRun | null> {
+    requireUuid(runId, "Run ID");
+    const { data, error } = await context.client
+      .from("workflow_runs")
+      .select("*")
+      .eq("business_id", context.businessId)
+      .eq("workflow_id", workflowId)
+      .eq("id", runId)
+      .maybeSingle();
+    if (error) throw new WorkflowServiceError("Failed to load workflow run.");
+    return data ? asRun(data as JsonObject) : null;
+  }
+
+  private static async getRunById(context: OwnerContext, runId: string): Promise<WorkflowRun | null> {
+    requireUuid(runId, "Run ID");
+    const { data, error } = await context.client
+      .from("workflow_runs")
+      .select("*")
+      .eq("business_id", context.businessId)
+      .eq("id", runId)
+      .maybeSingle();
+    if (error) throw new WorkflowServiceError("Failed to load workflow run.");
+    return data ? asRun(data as JsonObject) : null;
+  }
+
+  private static async requireWorkflow(context: OwnerContext, workflowId: string): Promise<AutomationWorkflow> {
+    const workflow = await this.getWorkflowById(context, workflowId);
+    if (!workflow) throw new WorkflowServiceError("Workflow was not found.", 404, "NOT_FOUND");
+    return workflow;
+  }
+
+  private static async resolveRecipient(
+    context: OwnerContext,
+    contactId: string | undefined,
+    configuredValue: unknown,
+    payloadValue: unknown
+  ): Promise<string> {
+    if (contactId) {
+      const { data, error } = await context.client
+        .from("crm_contacts")
+        .select("email,phone")
+        .eq("business_id", context.businessId)
+        .eq("id", contactId)
+        .maybeSingle();
+      if (error) throw new Error("The owned CRM contact could not be read.");
+      const contactValue = data?.email || data?.phone;
+      if (typeof contactValue === "string" && contactValue.length > 0) return contactValue;
+      throw new Error("The owned CRM contact has no destination address.");
+    }
+    const candidate = typeof configuredValue === "string" ? configuredValue : payloadValue;
+    if (typeof candidate !== "string" || candidate.trim().length === 0) {
+      throw new Error("A workflow recipient is required.");
+    }
+    return candidate.trim();
+  }
+
+  private static initiatorFromRun(run: WorkflowRun, fallback: string): { id: string; type: "user" } {
+    const meta = ((run.context_data || {}) as JsonObject)._workflow;
+    const initiatorId = meta && typeof (meta as JsonObject).initiator_id === "string"
+      ? (meta as JsonObject).initiator_id as string
+      : fallback;
+    return { id: initiatorId, type: "user" };
+  }
+
+  private static async recordAudit(
+    context: OwnerContext,
+    input: Parameters<typeof AuditService.recordEvent>[0]
+  ): Promise<boolean> {
+    const event = await AuditService.recordEvent(input, {
+      client: context.client as SupabaseClient,
+      critical: false,
+    });
+    return Boolean(event);
   }
 }

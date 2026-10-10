@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { z } from "zod";
+import {
+  ownerContextErrorResponse,
+  requireOwnerContext,
+} from "@/lib/supabase/owner-context";
 
 const AiAssistInputSchema = z.object({
   action: z.enum(["refine_heading", "shorten_subtitle", "generate_ctas", "generate_section_copy"]),
@@ -196,18 +199,7 @@ Do NOT include markdown formatting or reasoning text outside the JSON object.`;
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
-        { status: 401 }
-      );
-    }
+    await requireOwnerContext();
 
     const json = await request.json().catch(() => null);
     const parsed = AiAssistInputSchema.safeParse(json);
@@ -252,10 +244,13 @@ export async function POST(request: Request) {
         provider: "nexus-engine",
       },
     });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Internal server error";
+  } catch (error: unknown) {
+    const ownerError = ownerContextErrorResponse(error);
+    if (ownerError) return ownerError;
+
+    console.error("[WEBSITE_AI_API_ERROR]", error);
     return NextResponse.json(
-      { error: { code: "INTERNAL_ERROR", message } },
+      { error: { code: "INTERNAL_ERROR", message: "Unable to generate website assistance", details: null } },
       { status: 500 }
     );
   }

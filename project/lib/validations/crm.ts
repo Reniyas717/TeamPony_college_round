@@ -76,9 +76,13 @@ export interface Contact {
   email: string;
   phone?: string | null;
   company?: string | null;
-  stage: ContactStage;
+  // Persisted legacy values are preserved for owners to review; write schemas
+  // still accept only the current ContactStage values.
+  stage: ContactStage | "unknown";
+  legacy_stage?: string;
   value: number; // In INR or base currency
-  source: ContactSource;
+  source: ContactSource | "unknown";
+  legacy_source?: string;
   tags: string[];
   next_action_text?: string | null;
   next_action_due_at?: string | null;

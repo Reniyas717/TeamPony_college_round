@@ -40,11 +40,17 @@ export function CrmPipeline({
                   <p className="text-xs text-muted-foreground line-clamp-1">{contact.company || contact.email}</p>
                 </div>
                 
-                {contact.value > 0 && (
-                  <div className="text-sm font-semibold text-foreground tabular-nums">
-                    {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(contact.value)}
-                  </div>
-                )}
+                <div className="text-xs font-semibold">
+                  {contact.stage === 'churned' ? (
+                    <span className="text-status-danger-fg">❌ Churned (No)</span>
+                  ) : ['qualified', 'proposal', 'customer'].includes(contact.stage) ? (
+                    <span className="text-status-success-fg">✅ Interested (Yes)</span>
+                  ) : contact.stage === 'contacted' ? (
+                    <span className="text-primary">⏳ Awaiting Reply</span>
+                  ) : (
+                    <span className="text-muted-foreground">📥 New Inquiry</span>
+                  )}
+                </div>
                 
                 {contact.next_action_text && (
                   <div className="mt-1 flex items-start gap-1.5 pt-2 border-t border-border/50">

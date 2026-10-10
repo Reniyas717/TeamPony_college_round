@@ -4,9 +4,10 @@ import { useApproveWorkflowRun } from "@/hooks/use-workflows";
 
 interface ApprovalBannerProps {
   run: WorkflowRun;
+  onDecision?: (updatedRun: WorkflowRun) => void;
 }
 
-export function ApprovalBanner({ run }: ApprovalBannerProps) {
+export function ApprovalBanner({ run, onDecision }: ApprovalBannerProps) {
   const [reason, setReason] = useState("");
   const approveMutation = useApproveWorkflowRun();
 
@@ -16,7 +17,7 @@ export function ApprovalBanner({ run }: ApprovalBannerProps) {
 
   const handleDecision = async (approved: boolean) => {
     try {
-      await approveMutation.mutateAsync({
+      const updated = await approveMutation.mutateAsync({
         workflowId: run.workflow_id,
         payload: {
           runId: run.id,
@@ -24,6 +25,9 @@ export function ApprovalBanner({ run }: ApprovalBannerProps) {
           reason,
         }
       });
+      if (onDecision) {
+        onDecision(updated);
+      }
     } catch (err) {
       console.error("Failed to submit approval", err);
     }

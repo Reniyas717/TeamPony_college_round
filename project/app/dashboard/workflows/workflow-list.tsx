@@ -1,10 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useWorkflows } from "@/hooks/use-workflows";
+import { WorkflowEditModal } from "@/components/workflows/workflow-edit-modal";
+import { WorkflowDeleteDialog } from "@/components/workflows/workflow-delete-dialog";
+import { AutomationWorkflow } from "@/lib/validations/workflow";
 
 export function WorkflowList() {
   const { data: workflows, isLoading, error } = useWorkflows();
+  const [editingWorkflow, setEditingWorkflow] = useState<AutomationWorkflow | null>(null);
+  const [deletingWorkflow, setDeletingWorkflow] = useState<AutomationWorkflow | null>(null);
 
   if (isLoading) {
     return (
@@ -63,8 +69,34 @@ export function WorkflowList() {
               )}
             </div>
             
-            <div className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            <div className="flex items-center gap-1 opacity-90 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setEditingWorkflow(workflow);
+                }}
+                className="p-1 rounded-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                title="Edit workflow"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDeletingWorkflow(workflow);
+                }}
+                className="p-1 rounded-sm text-muted-foreground hover:text-status-danger-fg hover:bg-status-danger-bg/20 transition-colors cursor-pointer"
+                title="Delete workflow"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              </button>
+              <div className="text-muted-foreground pl-0.5">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              </div>
             </div>
           </div>
           
@@ -90,6 +122,23 @@ export function WorkflowList() {
           </div>
         </Link>
       ))}
+
+      {editingWorkflow && (
+        <WorkflowEditModal
+          workflow={editingWorkflow}
+          isOpen={Boolean(editingWorkflow)}
+          onClose={() => setEditingWorkflow(null)}
+        />
+      )}
+
+      {deletingWorkflow && (
+        <WorkflowDeleteDialog
+          workflowId={deletingWorkflow.id}
+          workflowTitle={deletingWorkflow.title}
+          isOpen={Boolean(deletingWorkflow)}
+          onClose={() => setDeletingWorkflow(null)}
+        />
+      )}
     </div>
   );
 }

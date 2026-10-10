@@ -19,9 +19,9 @@ export const EvidenceTypeSchema = z.enum(["hypothesis", "data_backed"]);
 export type EvidenceType = z.infer<typeof EvidenceTypeSchema>;
 
 export const JourneyStageActionSchema = z.object({
-  id: z.string(),
-  stage_id: z.string(),
-  journey_map_id: z.string(),
+  id: z.string().uuid(),
+  stage_id: z.string().uuid(),
+  journey_map_id: z.string().uuid(),
   title: z.string().min(1),
   description: z.string().min(1),
   why_it_helps: z.string().default("Helps remove friction and guides customer to the next journey step"),
@@ -46,8 +46,8 @@ export const JourneyStageActionSchema = z.object({
 export type JourneyStageAction = z.infer<typeof JourneyStageActionSchema>;
 
 export const JourneyMapStageSchema = z.object({
-  id: z.string(),
-  journey_map_id: z.string(),
+  id: z.string().uuid(),
+  journey_map_id: z.string().uuid(),
   order_index: z.number().int().min(1),
   stage_key: z.string(),
   stage_name: z.string(),
@@ -65,8 +65,8 @@ export const JourneyMapStageSchema = z.object({
 export type JourneyMapStage = z.infer<typeof JourneyMapStageSchema>;
 
 export const CustomerJourneyMapSchema = z.object({
-  id: z.string(),
-  business_id: z.string(),
+  id: z.string().uuid(),
+  business_id: z.string().uuid(),
   title: z.string(),
   objective: z.string(),
   journey_type: z.string().default("custom"),
@@ -93,8 +93,14 @@ export const UpdateStageInputSchema = z.object({
   emotion: StageEmotionSchema.optional(),
   friction_points: z.array(z.string()).optional(),
   opportunities: z.array(z.string()).optional(),
+  findings_type: EvidenceTypeSchema.optional(),
 });
 export type UpdateStageInput = z.infer<typeof UpdateStageInputSchema>;
+
+export const AddStageInputSchema = z.object({
+  stage_name: z.string().trim().min(1).max(120),
+});
+export type AddStageInput = z.infer<typeof AddStageInputSchema>;
 
 export const ExecuteActionInputSchema = z.object({
   decision: z.enum(["approve", "dismiss"]),

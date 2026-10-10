@@ -1,7 +1,13 @@
 import * as React from "react";
 import { useState } from "react";
-import { useContact, useContactActivities, useUpdateContact, useAddActivity } from "@/hooks/use-crm";
-import { Contact } from "@/lib/validations/crm";
+import {
+  useContact,
+  useContactActivities,
+  useUpdateContact,
+  useAddActivity,
+  useSendMessage,
+} from "@/hooks/use-crm";
+import { Contact, ContactStageSchema } from "@/lib/validations/crm";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
@@ -10,15 +16,19 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
   const { data: activities, isLoading: isLoadingActivities } = useContactActivities(contactId);
   const { mutateAsync: updateContact } = useUpdateContact();
   const { mutateAsync: addActivity, isPending: isAddingActivity } = useAddActivity();
+  const { mutateAsync: sendMessage, isPending: isSendingMessage } = useSendMessage();
 
   const [noteText, setNoteText] = useState("");
   const [activeTab, setActiveTab] = useState<"overview" | "timeline">("overview");
+  const [outreachStatus, setOutreachStatus] = useState<string | null>(null);
+  const [customMsg, setCustomMsg] = useState("");
 
   if (!contactId) return null;
 
   const handleStageChange = async (newStage: Contact['stage']) => {
-    if (!contact) return;
-    await updateContact({ id: contact.id, data: { stage: newStage } });
+    const parsedStage = ContactStageSchema.safeParse(newStage);
+    if (!contact || !parsedStage.success) return;
+    await updateContact({ id: contact.id, data: { stage: parsedStage.data } });
   };
 
   const handleAddNote = async (e: React.FormEvent) => {
@@ -33,11 +43,38 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
     setNoteText("");
   };
 
+  const handleSendOutreach = async (channel: "email" | "whatsapp") => {
+    if (!contact) return;
+    try {
+      setOutreachStatus(`Dispatching ${channel === 'email' ? 'Email via Resend' : 'WhatsApp'}...`);
+      const defaultSubject = `Welcome to Nexus — Regarding your inquiry`;
+      const defaultText = customMsg.trim() || (channel === "email"
+        ? `Hi ${contact.first_name}, thank you for reaching out via our website! We reviewed your submission and are excited to assist you.`
+        : `Hello ${contact.first_name}! We received your inquiry on Nexus. When is a good time to connect?`);
+
+      await sendMessage({
+        contactId: contact.id,
+        channel,
+        subject: defaultSubject,
+        message: defaultText,
+      });
+
+      // Automatically advance contact to contacted stage
+      await updateContact({ id: contact.id, data: { stage: "contacted" } });
+
+      setOutreachStatus(`Dispatched ${channel.toUpperCase()}! Contact moved to Contacted.`);
+      setCustomMsg("");
+      setTimeout(() => setOutreachStatus(null), 5000);
+    } catch (err: unknown) {
+      setOutreachStatus(`Failed to send: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
   return (
     <>
       <div className="fixed inset-0 bg-foreground/20 backdrop-blur-sm z-40 transition-opacity" onClick={onClose} />
       <div className="fixed inset-y-0 right-0 w-full md:w-[600px] xl:w-[800px] bg-card border-l border-border shadow-xl z-50 flex flex-col animate-in slide-in-from-right duration-300 ease-out">
-        
+
         {/* Header */}
         <div className="flex items-start justify-between p-6 border-b border-border bg-muted/20">
           {isLoadingContact ? (
@@ -51,7 +88,7 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                 <h2 className="text-2xl font-display font-semibold text-foreground">
                   {contact.first_name} {contact.last_name}
                 </h2>
-                <select 
+                <select
                   className="h-8 px-2 py-1 text-sm rounded-sm border border-input bg-background font-semibold"
                   value={contact.stage}
                   onChange={(e) => handleStageChange(e.target.value as Contact['stage'])}
@@ -77,13 +114,13 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
 
         {/* Tabs */}
         <div className="flex px-6 border-b border-border bg-card">
-          <button 
+          <button
             className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
             onClick={() => setActiveTab('overview')}
           >
             Overview
           </button>
-          <button 
+          <button
             className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'timeline' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
             onClick={() => setActiveTab('timeline')}
           >
@@ -95,6 +132,47 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
         <div className="flex-1 overflow-y-auto p-6 bg-background">
           {activeTab === 'overview' && contact && (
             <div className="flex flex-col gap-6">
+
+              {/* Engagement Status Banner */}
+              <div className={`p-4 rounded-lg border flex items-center justify-between ${
+                contact.stage === 'churned'
+                  ? 'bg-status-danger-bg/20 border-status-danger-border text-status-danger-fg'
+                  : ['qualified', 'proposal', 'customer'].includes(contact.stage)
+                    ? 'bg-status-success-bg/20 border-status-success-border text-status-success-fg'
+                    : contact.stage === 'contacted'
+                      ? 'bg-primary/10 border-primary/20 text-primary'
+                      : 'bg-muted/30 border-border text-foreground'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">
+                    {contact.stage === 'churned' ? '❌' : ['qualified', 'proposal', 'customer'].includes(contact.stage) ? '✅' : contact.stage === 'contacted' ? '⏳' : '📥'}
+                  </span>
+                  <div>
+                    <h4 className="font-semibold text-sm">
+                      {contact.stage === 'churned'
+                        ? 'Lead Churned (Opted Out / Declined)'
+                        : ['qualified', 'proposal', 'customer'].includes(contact.stage)
+                          ? 'Lead Qualified (Said Yes / Interested)'
+                          : contact.stage === 'contacted'
+                            ? 'Awaiting Customer Response'
+                            : 'New Website Inquiry'}
+                    </h4>
+                    <p className="text-xs opacity-90 mt-0.5">
+                      {contact.stage === 'churned'
+                        ? 'Customer declined outreach or replied with No. Automated outreach stopped.'
+                        : ['qualified', 'proposal', 'customer'].includes(contact.stage)
+                          ? 'Customer confirmed interest in discussion. Retained in active pipeline.'
+                          : contact.stage === 'contacted'
+                            ? 'Email / WhatsApp dispatched. Waiting for Yes / No reply.'
+                            : 'Inquiry captured from website builder form.'}
+                    </p>
+                  </div>
+                </div>
+                <Badge variant={contact.stage === 'churned' ? 'danger' : ['qualified', 'proposal', 'customer'].includes(contact.stage) ? 'success' : 'neutral'}>
+                  {contact.stage.toUpperCase()}
+                </Badge>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-card p-4 rounded-lg border border-border flex flex-col gap-1">
                   <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Email</span>
@@ -105,9 +183,15 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                   <span className="text-sm font-medium">{contact.phone || '-'}</span>
                 </div>
                 <div className="bg-card p-4 rounded-lg border border-border flex flex-col gap-1">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Deal Value</span>
-                  <span className="text-sm font-medium tabular-nums font-semibold">
-                    {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(contact.value)}
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Response Outcome</span>
+                  <span className={`text-sm font-semibold ${
+                    contact.stage === 'churned'
+                      ? 'text-status-danger-fg'
+                      : ['qualified', 'proposal', 'customer'].includes(contact.stage)
+                        ? 'text-status-success-fg'
+                        : 'text-muted-foreground'
+                  }`}>
+                    {contact.stage === 'churned' ? 'Churned (Said No)' : ['qualified', 'proposal', 'customer'].includes(contact.stage) ? 'Interested (Said Yes)' : 'Awaiting Reply'}
                   </span>
                 </div>
                 <div className="bg-card p-4 rounded-lg border border-border flex flex-col gap-1">
@@ -116,22 +200,124 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                 </div>
               </div>
 
-              {/* Next Action */}
-              <div className="bg-card p-5 rounded-lg border border-border">
-                <h3 className="font-semibold text-base mb-3">Next Action</h3>
-                {contact.next_action_text ? (
-                  <div className="flex flex-col gap-1">
-                    <p className="text-sm">{contact.next_action_text}</p>
-                    {contact.next_action_due_at && (
-                      <span className={`text-xs ${new Date(contact.next_action_due_at) < new Date() ? 'text-status-danger-fg font-semibold' : 'text-muted-foreground'}`}>
-                        Due: {new Date(contact.next_action_due_at).toLocaleDateString()}
-                      </span>
-                    )}
+              {/* Direct Outreach & Customer Communication */}
+              <div className="bg-card p-5 rounded-lg border border-border flex flex-col gap-4 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-base text-foreground">1. Send Outreach (Message or Email)</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Send initial message via Email (Resend) or WhatsApp (Twilio) to {contact.first_name}.
+                    </p>
                   </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No next action scheduled.</p>
+                  <Badge variant="brand" className="text-xs">Outbound</Badge>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <textarea
+                    className="w-full min-h-[70px] p-3 text-sm rounded-sm border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                    placeholder={`Write custom message to ${contact.first_name} (optional)...`}
+                    value={customMsg}
+                    onChange={(e) => setCustomMsg(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    disabled={isSendingMessage}
+                    onClick={() => handleSendOutreach("email")}
+                    className="cursor-pointer"
+                  >
+                    ✉️ {isSendingMessage ? "Dispatching..." : "Send Email via Resend"}
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isSendingMessage}
+                    onClick={() => handleSendOutreach("whatsapp")}
+                    className="cursor-pointer"
+                  >
+                    💬 {isSendingMessage ? "Dispatching..." : "Send WhatsApp"}
+                  </Button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("timeline")}
+                    className="text-xs text-primary hover:underline ml-auto font-semibold"
+                  >
+                    View Timeline &rarr;
+                  </button>
+                </div>
+              </div>
+
+              {/* Customer Response & Status Tracking */}
+              <div className="bg-card p-5 rounded-lg border border-border flex flex-col gap-4 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-base text-foreground">2. Customer Response & Status</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      The customer receives the email or WhatsApp on their device. When they reply or click Yes/No, the decision engine updates their status here automatically.
+                    </p>
+                  </div>
+                  <Badge variant={contact.stage === 'churned' ? 'danger' : ['qualified', 'proposal', 'customer'].includes(contact.stage) ? 'success' : 'neutral'} className="text-xs">
+                    {contact.stage === 'churned' ? 'Declined / Churned' : ['qualified', 'proposal', 'customer'].includes(contact.stage) ? 'Interested / Qualified' : 'Awaiting Reply'}
+                  </Badge>
+                </div>
+
+                {/* Customer View Link Card */}
+                <div className="p-4 rounded-lg bg-muted/30 border border-border flex flex-col gap-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <span>📱</span> Customer-Facing Response Portal
+                      </span>
+                      <p className="text-[12px] text-muted-foreground leading-relaxed">
+                        This is the exact link sent to the customer in their Email and WhatsApp message. Open it to test from the customer&apos;s phone or browser:
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 bg-background p-2 rounded border border-border/80">
+                    <code className="text-[11px] text-foreground font-mono truncate flex-1 select-all">
+                      {typeof window !== 'undefined' ? `${window.location.origin}/response?id=${contact.id}` : `/response?id=${contact.id}`}
+                    </code>
+                    <a
+                      href={`/response?id=${contact.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors shadow-2xs whitespace-nowrap cursor-pointer"
+                    >
+                      <span>Open Customer View</span>
+                      <span>&rarr;</span>
+                    </a>
+                  </div>
+
+                  <div className="text-[11px] text-muted-foreground flex items-center gap-2 pt-1 border-t border-border/40">
+                    <span className="text-primary font-bold">ℹ️ Note:</span>
+                    <span>When the customer taps <strong>&ldquo;Yes&rdquo;</strong> or <strong>&ldquo;No&rdquo;</strong> on that page or email, this CRM row instantly updates to Qualified or Churned.</span>
+                  </div>
+                </div>
+
+                {outreachStatus && (
+                  <div className={`p-2.5 rounded-sm text-xs font-semibold ${
+                    outreachStatus.toLowerCase().includes("churned") || outreachStatus.startsWith("Failed")
+                      ? "bg-status-danger-bg text-status-danger-fg border border-status-danger-border"
+                      : "bg-status-success-bg text-status-success-fg border border-status-success-border"
+                  }`}>
+                    {outreachStatus}
+                  </div>
                 )}
               </div>
+
+              {/* Latest Action / Note */}
+              {contact.next_action_text && (
+                <div className="bg-card p-4 rounded-lg border border-border">
+                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Latest Communication Log</h4>
+                  <p className="text-sm font-medium text-foreground">{contact.next_action_text}</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -140,7 +326,7 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
               {/* Note composer */}
               <div className="bg-card p-4 rounded-lg border border-border">
                 <form onSubmit={handleAddNote} className="flex flex-col gap-3">
-                  <textarea 
+                  <textarea
                     className="w-full min-h-[80px] p-3 text-sm rounded-sm border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none"
                     placeholder="Write a note..."
                     value={noteText}
@@ -167,7 +353,7 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                       <div key={activity.id} className="relative">
                         {/* Timeline dot */}
                         <div className="absolute -left-[25px] mt-1.5 w-2.5 h-2.5 rounded-full bg-border ring-4 ring-background" />
-                        
+
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-sm">{activity.title}</span>

@@ -1,16 +1,21 @@
 import "server-only";
 
-import { createClient } from "@/lib/supabase/server";
+import { requireOwnerContext } from "@/lib/supabase/owner-context";
 import { WebinarServiceError } from "./session.service";
+import { recordWebinarAudit } from "./audit";
 
 async function owner() {
-  const supabase = await createClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) throw new WebinarServiceError("UNAUTHORIZED", "Sign in to manage webinar series.");
-  const { data: business, error } = await supabase.from("businesses").select("id")
-    .eq("owner_id", user.id).maybeSingle();
-  if (error || !business) throw new WebinarServiceError("NOT_FOUND", "Business workspace not found.");
-  return { supabase, businessId: business.id };
+  try {
+    const context = await requireOwnerContext();
+    return { ...context, supabase: context.client };
+  } catch (error) {
+    if (error instanceof Error && "status" in error) {
+      const status = (error as { status?: number }).status;
+      if (status === 401) throw new WebinarServiceError("UNAUTHORIZED", error.message);
+      if (status === 404) throw new WebinarServiceError("NOT_FOUND", error.message);
+    }
+    throw new WebinarServiceError("DATABASE_ERROR", "Business data is temporarily unavailable.");
+  }
 }
 
 export async function listSeries() {
@@ -22,11 +27,16 @@ export async function listSeries() {
 }
 
 export async function createSeries(input: { title: string; description?: string | null }) {
-  const { supabase, businessId } = await owner();
+  const context = await owner();
+  const { supabase, businessId } = context;
   const { data, error } = await supabase.from("webinar_series").insert({
     business_id: businessId, title: input.title, description: input.description ?? null,
   }).select("*").single();
   if (error || !data) throw new WebinarServiceError("DATABASE_ERROR", "Could not create webinar series.");
+  await recordWebinarAudit(context, {
+    action: "webinar.series.created", resourceType: "webinar_series", resourceId: data.id,
+    metadata: { series_id: data.id, session_count: 0 },
+  });
   return data;
 }
 
@@ -42,7 +52,8 @@ export async function getSeriesDeletePreview(id: string) {
 }
 
 export async function deleteWebinarSeries(id: string, expectedCounts: Record<string, number>) {
-  const { supabase } = await owner();
+  const context = await owner();
+  const { supabase } = context;
   const { data, error } = await supabase.rpc("delete_webinar_series", {
     p_series_id: id,
     p_expected_counts: expectedCounts,
@@ -54,5 +65,9 @@ export async function deleteWebinarSeries(id: string, expectedCounts: Record<str
     if (error.message.includes("WEBINAR_SERIES_NOT_FOUND")) throw new WebinarServiceError("NOT_FOUND", "Webinar series not found.");
     throw new WebinarServiceError("DATABASE_ERROR", "Could not delete webinar series.");
   }
+  await recordWebinarAudit(context, {
+    action: "webinar.series.deleted", resourceType: "webinar_series", resourceId: id,
+    metadata: { series_id: id, result: "deleted" },
+  });
   return { deleted: true, counts: data as Record<string, number> };
 }

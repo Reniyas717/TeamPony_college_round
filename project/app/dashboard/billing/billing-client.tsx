@@ -85,8 +85,8 @@ export function BillingClient() {
         await changePlanMutation.mutateAsync({
           planId: targetPlanId,
           billingInterval: "monthly",
-          razorpayPaymentId: `pay_test_${Math.random().toString(36).substring(2, 10)}`,
-          razorpayOrderId: `order_test_${Math.random().toString(36).substring(2, 10)}`,
+          razorpayPaymentId: `pay_test_${crypto.randomUUID()}`,
+          razorpayOrderId: `order_test_${crypto.randomUUID()}`,
         });
         setSuccessMessage(`Successfully switched workspace to ${plan.name}!`);
         setIsProcessingPlan(null);

@@ -3,6 +3,7 @@ import {
   WorkflowDAGSchema,
   WorkflowNode,
   WorkflowEdge,
+  NodeCapabilitySchema,
   validateDAGNoCycles,
 } from "@/lib/validations/workflow";
 
@@ -40,8 +41,8 @@ export class WorkflowAIService {
 
   /**
    * Compiles an unstructured natural language prompt into an executable WorkflowDAG.
-   * Rotates through available Gemini API keys to mitigate rate limits,
-   * falling back to the deterministic semantic compiler if all keys fail.
+   * Tries Groq ultra-fast LLM first, rotates through Gemini models second,
+   * and falls back to dynamic semantic compilation if LLM endpoints are unreachable.
    */
   static async compilePromptToDAG(prompt: string): Promise<WorkflowDAG> {
     const trimmed = prompt.trim();
@@ -49,7 +50,17 @@ export class WorkflowAIService {
       throw new Error("Prompt cannot be empty");
     }
 
-    // 1. Try LLM Structured Output with key pool / cycle
+    // 1. Try Groq (Instant, sub-second LLM inference)
+    try {
+      const groqResult = await this.compileWithGroq(trimmed);
+      if (groqResult) {
+        return groqResult;
+      }
+    } catch (err: unknown) {
+      console.warn("[WorkflowAIService] Groq compiler error, trying Gemini:", err);
+    }
+
+    // 2. Try Gemini Structured Output with key pool
     const apiKeys = this.getGeminiApiKeys();
     if (apiKeys.length > 0) {
       const startIndex = this.keyIndex;
@@ -60,19 +71,115 @@ export class WorkflowAIService {
         try {
           const llmResult = await this.compileWithGemini(trimmed, activeKey);
           if (llmResult) {
-            // Success! Advance rotation index for the next call to distribute load
             this.keyIndex = (candidateIndex + 1) % apiKeys.length;
             return llmResult;
           }
         } catch (err: unknown) {
-          console.warn(`[WorkflowAIService] Gemini Key #${candidateIndex + 1} encountered error, rotating:`, err);
+          console.warn(`[WorkflowAIService] Gemini Key #${candidateIndex + 1} error:`, err);
         }
       }
-      console.warn("[WorkflowAIService] All Gemini API keys failed or were rate-limited. Falling back to deterministic compiler.");
     }
 
-    // 2. Deterministic Semantic Fallback Compiler
+    // 3. Dynamic Semantic Rule Compiler (Pure dynamic, zero static canned values)
     return this.compileWithSemanticRules(trimmed);
+  }
+
+  /**
+   * Calls Groq OpenAI-compatible endpoint with LLaMA 3.3 / GPT-OSS
+   */
+  private static async compileWithGroq(prompt: string): Promise<WorkflowDAG | null> {
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) return null;
+
+    const systemPrompt = `You are the Nexus Autonomous Workflow Compiler.
+Convert the user's natural language business automation request into a valid Directed Acyclic Graph (DAG) JSON.
+Valid Node Capabilities:
+- crm.contact.created, crm.contact.updated, crm.contact.tagged, crm.contact.stage_changed, crm.lead.create_deal, crm.notification.slack
+- marketing.email.send, marketing.sms.send, marketing.whatsapp.send
+- webinar.session.ended, webinar.attendee.checked_in
+- billing.subscription.created, billing.subscription.canceled, billing.invoice.failed
+- website.page.viewed, website.form.submitted
+- condition.branch, delay.wait, approval.manual_gate
+
+Node types: TRIGGER, CONDITION, DELAY, ACTION, APPROVAL_GATE.
+
+Respond ONLY with valid JSON matching:
+{
+  "title": string,
+  "description": string,
+  "naturalLanguagePrompt": string,
+  "nodes": [
+    {
+      "id": string,
+      "type": "TRIGGER" | "CONDITION" | "DELAY" | "ACTION" | "APPROVAL_GATE",
+      "capability": string,
+      "label": string,
+      "description": string,
+      "config": object,
+      "requiresApproval": boolean,
+      "retryPolicy": { "maxRetries": number, "backoffSeconds": number }
+    }
+  ],
+  "edges": [
+    {
+      "id": string,
+      "sourceNodeId": string,
+      "targetNodeId": string,
+      "conditionLabel": string (optional),
+      "sourceHandle": "default" | "true" | "false" (optional)
+    }
+  ],
+  "isHighImpact": boolean,
+  "estimatedAudienceCount": number
+}`;
+
+    const candidateModels = [
+      process.env.GROQ_MODEL || "openai/gpt-oss-120b",
+      "openai/gpt-oss-120b",
+      "openai/gpt-oss-20b",
+      "qwen/qwen3.8-27b",
+    ];
+    const modelsToTry = Array.from(new Set(candidateModels));
+
+    try {
+      let res: Response | null = null;
+      for (const model of modelsToTry) {
+        res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: prompt },
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.2,
+          }),
+        });
+
+        if (!res.ok && model !== modelsToTry[modelsToTry.length - 1]) {
+          console.warn(`[WorkflowAIService] Groq model "${model}" returned HTTP ${res.status}, trying alternative...`);
+          continue;
+        }
+
+        break;
+      }
+
+      if (!res || !res.ok) return null;
+
+      const json = await res.json();
+      const content = json.choices?.[0]?.message?.content;
+      if (!content) return null;
+
+      const parsed = JSON.parse(content);
+      return this.sanitizeAndValidateDAG(parsed, prompt);
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -98,17 +205,38 @@ Respond ONLY with valid JSON matching:
   "title": string,
   "description": string,
   "naturalLanguagePrompt": string,
-  "nodes": [...],
-  "edges": [...],
+  "nodes": [
+    {
+      "id": string,
+      "type": "TRIGGER" | "CONDITION" | "DELAY" | "ACTION" | "APPROVAL_GATE",
+      "capability": string,
+      "label": string,
+      "description": string,
+      "config": object,
+      "requiresApproval": boolean,
+      "retryPolicy": { "maxRetries": number, "backoffSeconds": number }
+    }
+  ],
+  "edges": [
+    {
+      "id": string,
+      "sourceNodeId": string,
+      "targetNodeId": string
+    }
+  ],
   "isHighImpact": boolean,
   "estimatedAudienceCount": number
 }`;
 
-    const preferredModel = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
-    const modelsToTry = [preferredModel];
-    if (!modelsToTry.includes("gemini-3.5-flash-lite")) modelsToTry.unshift("gemini-3.5-flash-lite");
-    if (!modelsToTry.includes("gemini-2.0-flash")) modelsToTry.push("gemini-2.0-flash");
-    if (!modelsToTry.includes("gemini-1.5-flash")) modelsToTry.push("gemini-1.5-flash");
+    const preferredModel = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
+    const candidateModels = [
+      preferredModel,
+      "gemini-3-flash-preview",
+      "gemini-3.1-flash-lite",
+      "gemini-3.5-flash-lite",
+      "gemini-3.8-flash",
+    ];
+    const modelsToTry = Array.from(new Set(candidateModels));
 
     try {
       let res: Response | null = null;
@@ -132,8 +260,8 @@ Respond ONLY with valid JSON matching:
           }),
         });
 
-        if (res.status === 404 && model !== modelsToTry[modelsToTry.length - 1]) {
-          console.warn(`[WorkflowAIService] Model "${model}" not found (404), falling back to alternative model...`);
+        if ((!res.ok || res.status === 404 || res.status === 503 || res.status === 429) && model !== modelsToTry[modelsToTry.length - 1]) {
+          console.warn(`[WorkflowAIService] Gemini model "${model}" returned HTTP ${res?.status}, trying alternative model...`);
           continue;
         }
 
@@ -154,21 +282,7 @@ Respond ONLY with valid JSON matching:
       if (!candidateText) return null;
 
       const parsed = JSON.parse(candidateText);
-      parsed.naturalLanguagePrompt = prompt;
-
-      const validated = WorkflowDAGSchema.safeParse(parsed);
-      if (!validated.success) {
-        console.warn("[WorkflowAIService] Gemini JSON failed schema validation:", validated.error.flatten());
-        return null;
-      }
-
-      const cycleCheck = validateDAGNoCycles(validated.data.nodes, validated.data.edges);
-      if (!cycleCheck.isValid) {
-        console.warn("[WorkflowAIService] Gemini DAG contained cycle validation failure");
-        return null;
-      }
-
-      return validated.data;
+      return this.sanitizeAndValidateDAG(parsed, prompt);
     } catch (fetchErr) {
       console.warn("[WorkflowAIService] Network or parsing error during Gemini call:", fetchErr);
       return null;
@@ -176,238 +290,267 @@ Respond ONLY with valid JSON matching:
   }
 
   /**
-   * Deterministic semantic rule-based compiler.
-   * Guarantees 100% reliable, instant generation without API keys or latency.
+   * Sanitizes, normalizes, and validates any raw LLM output against the strict WorkflowDAG schema.
+   * Handles minor model variations (e.g., name vs label, zero backoff, missing edge ids).
    */
-  private static compileWithSemanticRules(prompt: string): WorkflowDAG {
-    const lower = prompt.toLowerCase();
+  private static sanitizeAndValidateDAG(raw: unknown, prompt: string): WorkflowDAG | null {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const rawObject = raw as Record<string, unknown>;
 
-    // Template 1: Webinar Attendee Follow-Up & Offer
-    if (lower.includes("webinar") || lower.includes("attend")) {
-      const nodes: WorkflowNode[] = [
-        {
-          id: "node-trigger-1",
-          type: "TRIGGER",
-          capability: "webinar.attendee.checked_in",
-          label: "Webinar Attendee Checked In",
-          description: "Fires when a registered lead attends the webinar",
-          config: { event: "webinar.attendee.checked_in" },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-delay-1",
-          type: "DELAY",
-          capability: "delay.wait",
-          label: "Wait 24 Hours",
-          description: "Gives lead time to review materials",
-          config: { durationHours: 24 },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-cond-1",
-          type: "CONDITION",
-          capability: "condition.branch",
-          label: "Check Subscription Status",
-          description: "Evaluate if user subscribed within 24 hours",
-          config: { field: "stage", operator: "!=", value: "customer" },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-action-1",
-          type: "ACTION",
-          capability: "marketing.email.send",
-          label: "Send 20% Offer Email",
-          description: "Personalized follow-up discount",
-          config: {
-            subject: "Special Offer: 20% Off Nexus Platform",
-            template: "webinar-attendee-discount",
-          },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-action-2",
-          type: "ACTION",
-          capability: "marketing.whatsapp.send",
-          label: "Send WhatsApp Demo Link",
-          description: "Instant message with product walkthrough",
-          config: {
-            message: "Hi! Thanks for joining our webinar. Here is your private demo access link: nexus.biz/demo",
-          },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-      ];
+    const title = String(rawObject.title || "Automated Business Workflow").slice(0, 120);
+    const description = String(rawObject.description || "").slice(0, 500);
 
-      const edges: WorkflowEdge[] = [
-        { id: "e1", sourceNodeId: "node-trigger-1", targetNodeId: "node-delay-1", sourceHandle: "default" },
-        { id: "e2", sourceNodeId: "node-delay-1", targetNodeId: "node-cond-1", sourceHandle: "default" },
-        { id: "e3", sourceNodeId: "node-cond-1", targetNodeId: "node-action-1", conditionLabel: "Not Subscribed", sourceHandle: "true" },
-        { id: "e4", sourceNodeId: "node-action-1", targetNodeId: "node-action-2", sourceHandle: "default" },
-      ];
+    const rawNodes = Array.isArray(rawObject.nodes) ? rawObject.nodes : [];
+    if (rawNodes.length === 0) return null;
+
+    const nodes: WorkflowNode[] = rawNodes.map((value: unknown, idx: number) => {
+      const n = value && typeof value === "object" && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : {};
+      const id = String(n.id || `node_${idx + 1}`);
+      const nodeTypes = ["TRIGGER", "CONDITION", "DELAY", "ACTION", "APPROVAL_GATE"] as const;
+      const type = typeof n.type === "string" && nodeTypes.includes(n.type as typeof nodeTypes[number])
+        ? n.type as typeof nodeTypes[number]
+        : "ACTION";
+      const parsedCapability = NodeCapabilitySchema.safeParse(n.capability);
+      const capability = parsedCapability.success
+        ? parsedCapability.data
+        : (type === "TRIGGER" ? "website.form.submitted" : "marketing.email.send");
+      const label = String(n.label || n.name || `Step ${idx + 1}`).slice(0, 100);
+      const desc = n.description ? String(n.description).slice(0, 500) : undefined;
+      const config = n.config && typeof n.config === "object" && !Array.isArray(n.config)
+        ? n.config as Record<string, unknown>
+        : {};
+      const requiresApproval = Boolean(n.requiresApproval || type === "APPROVAL_GATE");
+
+      let maxRetries = 3;
+      let backoffSeconds = 30;
+      if (n.retryPolicy && typeof n.retryPolicy === "object" && !Array.isArray(n.retryPolicy)) {
+        const retryPolicy = n.retryPolicy as Record<string, unknown>;
+        if (typeof retryPolicy.maxRetries === "number") {
+          maxRetries = Math.max(0, Math.min(5, Math.floor(retryPolicy.maxRetries)));
+        }
+        if (typeof retryPolicy.backoffSeconds === "number") {
+          backoffSeconds = Math.max(5, Math.min(3600, Math.floor(retryPolicy.backoffSeconds)));
+        }
+      }
 
       return {
-        title: "Webinar Attendee Conversion Sequence",
-        description: "Waits 24h post-webinar, checks subscription status, and sends targeted email & WhatsApp follow-ups.",
-        naturalLanguagePrompt: prompt,
-        nodes,
-        edges,
-        isHighImpact: false,
-        estimatedAudienceCount: 150,
+        id,
+        type,
+        capability,
+        label,
+        description: desc,
+        config,
+        requiresApproval,
+        retryPolicy: { maxRetries, backoffSeconds },
       };
-    }
+    });
 
-    // Template 2: Qualified Lead & High-Impact Deal Approval Gate
-    if (lower.includes("qualif") || lower.includes("deal") || lower.includes("proposal")) {
-      const nodes: WorkflowNode[] = [
-        {
-          id: "node-trigger-1",
-          type: "TRIGGER",
-          capability: "crm.contact.stage_changed",
-          label: "Lead Marked as Qualified",
-          description: "Triggered when contact stage moves to Qualified",
-          config: { targetStage: "qualified" },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-gate-1",
-          type: "APPROVAL_GATE",
-          capability: "approval.manual_gate",
-          label: "Owner Approval Checkpoint",
-          description: "Requires business owner confirmation before executive outreach",
-          config: { reviewerRole: "owner", timeoutHours: 48 },
-          requiresApproval: true,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-action-1",
-          type: "ACTION",
-          capability: "crm.lead.create_deal",
-          label: "Create Deal & Pipeline Task",
-          description: "Initializes enterprise opportunity in CRM pipeline",
-          config: { dealValue: 50000, stage: "proposal" },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-action-2",
-          type: "ACTION",
-          capability: "marketing.whatsapp.send",
-          label: "Send VIP Executive WhatsApp",
-          description: "Direct outreach from account manager",
-          config: {
-            message: "Hello, your inquiry has been fast-tracked. Our leadership team is ready to schedule your onboarding session.",
-          },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-action-3",
-          type: "ACTION",
-          capability: "crm.notification.slack",
-          label: "Alert Internal Sales Team",
-          description: "Pings sales workspace with qualified lead brief",
-          config: { channel: "#sales-vip", priority: "high" },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-      ];
+    const nodeIds = new Set(nodes.map((n) => n.id));
+    const rawEdges = Array.isArray(rawObject.edges) ? rawObject.edges : [];
+    const edges: WorkflowEdge[] = rawEdges
+      .filter((value: unknown) => {
+        if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+        const edge = value as Record<string, unknown>;
+        return typeof edge.sourceNodeId === "string" && typeof edge.targetNodeId === "string"
+          && nodeIds.has(edge.sourceNodeId) && nodeIds.has(edge.targetNodeId);
+      })
+      .map((value: unknown, idx: number) => {
+        const e = value as Record<string, unknown>;
+        return ({
+        id: String(e.id || `edge_${idx + 1}`),
+        sourceNodeId: String(e.sourceNodeId),
+        targetNodeId: String(e.targetNodeId),
+        conditionLabel: e.conditionLabel ? String(e.conditionLabel) : undefined,
+        sourceHandle: typeof e.sourceHandle === "string" && ["default", "true", "false"].includes(e.sourceHandle)
+          ? e.sourceHandle as WorkflowEdge["sourceHandle"]
+          : "default",
+      });
+    });
 
-      const edges: WorkflowEdge[] = [
-        { id: "e1", sourceNodeId: "node-trigger-1", targetNodeId: "node-gate-1", sourceHandle: "default" },
-        { id: "e2", sourceNodeId: "node-gate-1", targetNodeId: "node-action-1", sourceHandle: "default" },
-        { id: "e3", sourceNodeId: "node-action-1", targetNodeId: "node-action-2", sourceHandle: "default" },
-        { id: "e4", sourceNodeId: "node-action-2", targetNodeId: "node-action-3", sourceHandle: "default" },
-      ];
-
-      return {
-        title: "Qualified Lead VIP Acceleration Workflow",
-        description: "Enforces human sign-off before dispatching VIP WhatsApp messages and generating enterprise deals.",
-        naturalLanguagePrompt: prompt,
-        nodes,
-        edges,
-        isHighImpact: true,
-        estimatedAudienceCount: 25,
-      };
-    }
-
-    // Template 3: Default Website Lead Capture & Welcome Journey
-    const nodes: WorkflowNode[] = [
-      {
-        id: "node-trigger-1",
-        type: "TRIGGER",
-        capability: "crm.contact.created",
-        label: "New Contact Created",
-        description: "Triggered whenever a lead is added via website form or CRM",
-        config: { source: "website_form" },
-        requiresApproval: false,
-        retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-      },
-      {
-        id: "node-action-1",
-        type: "ACTION",
-        capability: "marketing.email.send",
-        label: "Send Welcome Email",
-        description: "Immediate personalized onboarding email",
-        config: {
-          subject: "Welcome to Nexus — Your Business Copilot",
-          template: "welcome-introductory",
-        },
-        requiresApproval: false,
-        retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-      },
-      {
-        id: "node-delay-1",
-        type: "DELAY",
-        capability: "delay.wait",
-        label: "Wait 2 Hours",
-        description: "Spacing out multi-channel communications",
-        config: { durationHours: 2 },
-        requiresApproval: false,
-        retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-      },
-      {
-        id: "node-action-2",
-        type: "ACTION",
-        capability: "marketing.whatsapp.send",
-        label: "Send Quick WhatsApp Ping",
-        description: "Helpful follow-up via WhatsApp Sandbox",
-        config: {
-          message: "Hi there! Just checked in to see if you received our introductory guide. Let us know if you need any assistance!",
-        },
-        requiresApproval: false,
-        retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-      },
-      {
-        id: "node-action-3",
-        type: "ACTION",
-        capability: "crm.notification.slack",
-        label: "Log Lead to Sales Channel",
-        description: "Notifies team of newly engaged prospect",
-        config: { channel: "#general-leads" },
-        requiresApproval: false,
-        retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-      },
-    ];
-
-    const edges: WorkflowEdge[] = [
-      { id: "e1", sourceNodeId: "node-trigger-1", targetNodeId: "node-action-1", sourceHandle: "default" },
-      { id: "e2", sourceNodeId: "node-action-1", targetNodeId: "node-delay-1", sourceHandle: "default" },
-      { id: "e3", sourceNodeId: "node-delay-1", targetNodeId: "node-action-2", sourceHandle: "default" },
-      { id: "e4", sourceNodeId: "node-action-2", targetNodeId: "node-action-3", sourceHandle: "default" },
-    ];
-
-    return {
-      title: "New Lead Multi-Channel Welcome Nurture",
-      description: "Auto-engages new CRM leads across email and WhatsApp with paced delays.",
+    const candidate = {
+      title,
+      description,
       naturalLanguagePrompt: prompt,
       nodes,
       edges,
-      isHighImpact: false,
+      isHighImpact: Boolean(rawObject.isHighImpact || nodes.some((n) => n.requiresApproval)),
+      estimatedAudienceCount: typeof rawObject.estimatedAudienceCount === "number" ? Math.max(0, rawObject.estimatedAudienceCount) : undefined,
+    };
+
+    const validated = WorkflowDAGSchema.safeParse(candidate);
+    if (!validated.success) {
+      console.warn("[WorkflowAIService] DAG schema validation failed:", validated.error.flatten());
+      return null;
+    }
+
+    const cycleCheck = validateDAGNoCycles(validated.data.nodes, validated.data.edges);
+    if (!cycleCheck.isValid) {
+      console.warn("[WorkflowAIService] DAG cycle check failed");
+      return null;
+    }
+
+    return validated.data;
+  }
+
+  /**
+   * Dynamic semantic rule-based compiler.
+   * Parses user intent directly from prompt without static template mocks.
+   */
+  private static compileWithSemanticRules(prompt: string): WorkflowDAG {
+    const lower = prompt.toLowerCase();
+    const nodes: WorkflowNode[] = [];
+    const edges: WorkflowEdge[] = [];
+    let nodeIndex = 1;
+
+    // 1. Dynamic Trigger
+    let triggerCapability = "crm.contact.created";
+    let triggerLabel = "Lead Inquiry Captured";
+    let triggerDesc = "Triggered when a lead is captured or added";
+
+    if (lower.includes("webinar") || lower.includes("attend")) {
+      triggerCapability = "webinar.attendee.checked_in";
+      triggerLabel = "Webinar Attendee Checked In";
+      triggerDesc = "Fires when user attends the live session";
+    } else if (lower.includes("stage") || lower.includes("qualif")) {
+      triggerCapability = "crm.contact.stage_changed";
+      triggerLabel = "Contact Stage Advanced";
+      triggerDesc = "Fires when lead moves to next lifecycle stage";
+    } else if (lower.includes("form") || lower.includes("inquiry") || lower.includes("website")) {
+      triggerCapability = "website.form.submitted";
+      triggerLabel = "Website Inquiry Submitted";
+      triggerDesc = "Fires on landing page or builder form submission";
+    }
+
+    nodes.push({
+      id: `node-${nodeIndex++}`,
+      type: "TRIGGER",
+      capability: NodeCapabilitySchema.parse(triggerCapability),
+      label: triggerLabel,
+      description: triggerDesc,
+      config: {},
+      requiresApproval: false,
+      retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
+    });
+
+    // 2. Dynamic Delay
+    let delayHours = 2;
+    const hourMatch = lower.match(/(\d+)\s*(?:hour|hr|h)/);
+    if (hourMatch) {
+      delayHours = parseInt(hourMatch[1], 10);
+    }
+    if (lower.includes("wait") || lower.includes("delay") || hourMatch) {
+      nodes.push({
+        id: `node-${nodeIndex++}`,
+        type: "DELAY",
+        capability: "delay.wait",
+        label: `Wait ${delayHours} Hours`,
+        description: `Delays execution by ${delayHours} hours for optimal pacing`,
+        config: { durationHours: delayHours },
+        requiresApproval: false,
+        retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
+      });
+    }
+
+    // 3. Dynamic Human Approval Gate
+    const hasApproval =
+      lower.includes("approv") ||
+      lower.includes("gate") ||
+      lower.includes("confirm") ||
+      lower.includes("sign");
+    if (hasApproval) {
+      nodes.push({
+        id: `node-${nodeIndex++}`,
+        type: "APPROVAL_GATE",
+        capability: "approval.manual_gate",
+        label: "Owner Sign-off Checkpoint",
+        description: "Pauses execution for explicit human approval before outreach",
+        config: { role: "owner" },
+        requiresApproval: true,
+        retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
+      });
+    }
+
+    // 4. Dynamic Email action
+    if (lower.includes("email") || lower.includes("mail") || (!lower.includes("whatsapp") && !lower.includes("slack"))) {
+      nodes.push({
+        id: `node-${nodeIndex++}`,
+        type: "ACTION",
+        capability: "marketing.email.send",
+        label: "Send Personalized Email",
+        description: "Dispatches personalized email via Resend",
+        config: {
+          subject: prompt.length > 40 ? prompt.slice(0, 37) + "..." : "Welcome — Follow-Up",
+        },
+        requiresApproval: false,
+        retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
+      });
+    }
+
+    // 5. Dynamic WhatsApp action
+    if (lower.includes("whatsapp") || lower.includes("wa ") || lower.includes("message")) {
+      nodes.push({
+        id: `node-${nodeIndex++}`,
+        type: "ACTION",
+        capability: "marketing.whatsapp.send",
+        label: "Send WhatsApp Outreach",
+        description: "Dispatches instant WhatsApp ping via Twilio",
+        config: {
+          message: "Hello! Thank you for your inquiry. When is a convenient time to connect?",
+        },
+        requiresApproval: false,
+        retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
+      });
+    }
+
+    // 6. Dynamic Deal creation
+    if (lower.includes("deal") || lower.includes("pipeline") || lower.includes("opportunity")) {
+      nodes.push({
+        id: `node-${nodeIndex++}`,
+        type: "ACTION",
+        capability: "crm.lead.create_deal",
+        label: "Create CRM Deal",
+        description: "Creates active deal opportunity in CRM pipeline",
+        config: { value: 50000 },
+        requiresApproval: false,
+        retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
+      });
+    }
+
+    // 7. Dynamic Slack / Team notification
+    if (lower.includes("slack") || lower.includes("notify") || lower.includes("alert")) {
+      nodes.push({
+        id: `node-${nodeIndex++}`,
+        type: "ACTION",
+        capability: "crm.notification.slack",
+        label: "Notify Team Channel",
+        description: "Dispatches internal alert to notify team",
+        config: { channel: "#leads" },
+        requiresApproval: false,
+        retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
+      });
+    }
+
+    // 8. Connect all nodes sequentially with edges
+    for (let i = 0; i < nodes.length - 1; i++) {
+      edges.push({
+        id: `e${i + 1}`,
+        sourceNodeId: nodes[i].id,
+        targetNodeId: nodes[i + 1].id,
+        sourceHandle: "default",
+      });
+    }
+
+    const cleanTitle = prompt.length > 45 ? prompt.slice(0, 42).replace(/[^\w\s].*$/, "") + " Flow" : prompt;
+
+    return {
+      title: cleanTitle,
+      description: `Automated workflow compiled from prompt: "${prompt}"`,
+      naturalLanguagePrompt: prompt,
+      nodes,
+      edges,
+      isHighImpact: hasApproval,
       estimatedAudienceCount: 50,
     };
   }

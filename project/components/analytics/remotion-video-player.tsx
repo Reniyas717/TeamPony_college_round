@@ -32,13 +32,14 @@ export function RemotionVideoPlayer({ briefing }: RemotionVideoPlayerProps) {
 
   // Compute scene frame boundaries
   const sceneRanges = React.useMemo(() => {
-    let acc = 0;
-    return scenes.map((scene) => {
-      const start = acc;
-      const end = acc + scene.durationFrames;
-      acc = end;
-      return { scene, start, end };
-    });
+    return scenes.reduce<Array<{ scene: VideoSceneData; start: number; end: number }>>(
+      (ranges, scene) => {
+        const start = ranges.at(-1)?.end ?? 0;
+        ranges.push({ scene, start, end: start + scene.durationFrames });
+        return ranges;
+      },
+      []
+    );
   }, [scenes]);
 
   // Determine active scene and local frame offset
@@ -55,7 +56,6 @@ export function RemotionVideoPlayer({ briefing }: RemotionVideoPlayerProps) {
     ? Math.max(0, currentFrame - activeRange.start)
     : 0;
   const sceneDuration = activeRange ? activeRange.end - activeRange.start : 90;
-  const sceneProgress = Math.min(1, Math.max(0, localSceneFrame / sceneDuration));
 
   // RequestAnimationFrame playback loop
   React.useEffect(() => {

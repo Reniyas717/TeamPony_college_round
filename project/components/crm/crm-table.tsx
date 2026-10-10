@@ -18,7 +18,7 @@ export function CrmTable({
               <th className="px-4 py-3 font-semibold text-muted-foreground w-1/4">Name</th>
               <th className="px-4 py-3 font-semibold text-muted-foreground w-[15%]">Stage</th>
               <th className="px-4 py-3 font-semibold text-muted-foreground w-1/4">Next Action</th>
-              <th className="px-4 py-3 font-semibold text-muted-foreground w-[15%] text-right">Value</th>
+              <th className="px-4 py-3 font-semibold text-muted-foreground w-[20%] text-right">Outcome</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -35,7 +35,7 @@ export function CrmTable({
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <StageBadge stage={contact.stage} />
+                  <StageBadge stage={contact.stage} legacyStage={contact.legacy_stage} />
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-col">
@@ -53,8 +53,24 @@ export function CrmTable({
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-3 text-right font-semibold tabular-nums text-foreground">
-                  {contact.value > 0 ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(contact.value) : '-'}
+                <td className="px-4 py-3 text-right">
+                  {contact.stage === 'churned' ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-status-danger-bg text-status-danger-fg border border-status-danger-border">
+                      ❌ Churned (No)
+                    </span>
+                  ) : ['qualified', 'proposal', 'customer'].includes(contact.stage) ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-status-success-bg text-status-success-fg border border-status-success-border">
+                      ✅ Qualified (Yes)
+                    </span>
+                  ) : contact.stage === 'contacted' ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                      ⏳ Awaiting Reply
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">
+                      📥 New Inquiry
+                    </span>
+                  )}
                 </td>
               </tr>
             ))}
@@ -65,8 +81,8 @@ export function CrmTable({
   );
 }
 
-function StageBadge({ stage }: { stage: Contact['stage'] }) {
-  const map: Record<Contact['stage'], { label: string; variant: "neutral" | "info" | "warning" | "success" | "danger" }> = {
+function StageBadge({ stage, legacyStage }: { stage: Contact['stage']; legacyStage?: string }) {
+  const map: Record<Exclude<Contact['stage'], "unknown">, { label: string; variant: "neutral" | "info" | "warning" | "success" | "danger" }> = {
     lead: { label: "Lead", variant: "neutral" },
     contacted: { label: "Contacted", variant: "info" },
     qualified: { label: "Qualified", variant: "info" },
@@ -75,6 +91,9 @@ function StageBadge({ stage }: { stage: Contact['stage'] }) {
     churned: { label: "Churned", variant: "danger" },
   };
 
+  if (stage === "unknown") {
+    return <Badge variant="warning">Unknown: {legacyStage || "legacy value"}</Badge>;
+  }
   const s = map[stage];
   return <Badge variant={s.variant}>{s.label}</Badge>;
 }
