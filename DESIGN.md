@@ -454,7 +454,7 @@ Every interactive component implements these states with the **same** visual voc
 | State | Visual treatment (all components) | Accessible attribute |
 |---|---|---|
 | Default | Resting tokens | — |
-| Hover (fine pointers only, `@media (hover: hover) and (pointer: fine)`, §20.4) | Background shifts one tone step: `primary` → `primary/90`; `secondary` → `secondary/80`; ghost/menu/row → `accent`. Text colour unchanged. Cursor `pointer` for buttons/links/rows that navigate. Animated hover effects never fire on touch. | — |
+| Hover (fine pointers only, `@media (hover: hover) and (pointer: fine)`, §20.4) | Background shifts one tone step: `primary` → `primary/90`; `secondary` → `secondary/80`; ghost/menu/row → `accent`. Text colour unchanged. **Cursor `pointer` (hand) is mandatory** for all buttons, links, clickable rows, controls, and any interactive element. Animated hover effects never fire on touch. | — |
 | Focus-visible | **2px `ring` outline, 2px offset**, rendered via `outline` (not `box-shadow`) so it works in forced-colours mode. Never removed without replacement. Mouse clicks do not show it (`:focus-visible`). | native focus |
 | Active / pressed | One step darker than hover, **plus `transform: scale(0.97)`** on pressable controls (buttons, chips, segmented items) so they feel responsive (§20.3). No scale on text links or navigating table rows. | `aria-pressed` for toggles |
 | Selected / current | `accent` or `brand-subtle` background + `foreground`/`brand-text` text + a non-colour cue (check icon, left indicator bar, or bold weight). | `aria-selected`, `aria-current="page"` for nav |
@@ -1249,7 +1249,10 @@ Banned unless a documented product requirement justifies an exception (§2.3):
 - More than one icon library; **Lucide**; emoji as icons; mixed filled/outline arbitrarily; decorative illustrations with no purpose.
 - Inconsistent component states; disabled controls that look enabled; double-submittable loading buttons.
 - Motion anti-patterns in §20.7 (e.g., `transition: all`, `scale(0)` entries, `ease-in` on UI, transitions ≥ 300ms, animated keyboard interactions, hover animations on touch).
-- Nested cards/borders without hierarchy; borders around everything.
+- **"Box inside box" design:** Never nest a bordered background card directly inside another background card. Use typography hierarchy, subtle top/bottom borders (`divide-y`), or negative space to group content instead.
+- **Thick side-border accents:** Do not use thick colored vertical strips (e.g., `border-l-4` or absolute positioned accent strips) to indicate status or active states. Accentuate via typography, icons, text color, or a delicate top rule.
+- **Missing hand cursor (`cursor: pointer`):** All buttons, links, clickable rows, and interactive controls must turn the cursor to a pointer hand. An arrow cursor on any clickable element is strictly prohibited.
+- Nested borders without hierarchy; borders around everything.
 - Dense dashboards with no grouping; oversized headings inside operational UI; Display font on tables/forms/dense nav.
 - Unreadable or shrunken-desktop tables on mobile; critical functionality hidden or clipped on small screens; horizontal page overflow.
 - Colour-only status; placeholder-only labels; inaccessible dialogs/menus; missing focus rings.
