@@ -1,5 +1,5 @@
 -- Nexus Platform PostgreSQL Schema (Supabase)
--- Single-Tenant Architecture with Row-Level Security (RLS)
+-- Single-Tenant Architecture with Row-Level Security (RLS) - Idempotent Safe Migration
 
 -- 1. EXTENSIONS
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -13,17 +13,18 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- Index for fast username and email lookups
 CREATE INDEX IF NOT EXISTS idx_profiles_username ON public.profiles(username);
 CREATE INDEX IF NOT EXISTS idx_profiles_email ON public.profiles(email);
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can read their own profile" ON public.profiles;
 CREATE POLICY "Users can read their own profile"
   ON public.profiles FOR SELECT
   TO authenticated
   USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
 CREATE POLICY "Users can update their own profile"
   ON public.profiles FOR UPDATE
   TO authenticated
@@ -43,6 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_businesses_owner ON public.businesses(owner_id);
 
 ALTER TABLE public.businesses ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Owners can access their business" ON public.businesses;
 CREATE POLICY "Owners can access their business"
   ON public.businesses FOR ALL
   TO authenticated
@@ -57,7 +59,7 @@ CREATE TABLE IF NOT EXISTS public.crm_contacts (
   last_name TEXT,
   email TEXT NOT NULL,
   phone TEXT,
-  status TEXT DEFAULT 'lead' NOT NULL, -- lead, active, churned, customer
+  status TEXT DEFAULT 'lead' NOT NULL,
   tags TEXT[] DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
@@ -68,6 +70,7 @@ CREATE INDEX IF NOT EXISTS idx_crm_contacts_email ON public.crm_contacts(busines
 
 ALTER TABLE public.crm_contacts ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Owners can manage CRM contacts" ON public.crm_contacts;
 CREATE POLICY "Owners can manage CRM contacts"
   ON public.crm_contacts FOR ALL
   TO authenticated
@@ -94,6 +97,7 @@ CREATE INDEX IF NOT EXISTS idx_websites_business ON public.websites(business_id)
 
 ALTER TABLE public.websites ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Owners can manage websites" ON public.websites;
 CREATE POLICY "Owners can manage websites"
   ON public.websites FOR ALL
   TO authenticated
@@ -112,7 +116,7 @@ CREATE TABLE IF NOT EXISTS public.billing_subscriptions (
   amount_cents INTEGER NOT NULL,
   currency TEXT DEFAULT 'USD' NOT NULL,
   interval TEXT DEFAULT 'month' NOT NULL,
-  status TEXT DEFAULT 'active' NOT NULL, -- active, past_due, canceled
+  status TEXT DEFAULT 'active' NOT NULL,
   current_period_end TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
@@ -122,6 +126,7 @@ CREATE INDEX IF NOT EXISTS idx_billing_business ON public.billing_subscriptions(
 
 ALTER TABLE public.billing_subscriptions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Owners can manage subscriptions" ON public.billing_subscriptions;
 CREATE POLICY "Owners can manage subscriptions"
   ON public.billing_subscriptions FOR ALL
   TO authenticated
@@ -139,7 +144,7 @@ CREATE TABLE IF NOT EXISTS public.marketing_campaigns (
   title TEXT NOT NULL,
   subject TEXT NOT NULL,
   content TEXT NOT NULL,
-  status TEXT DEFAULT 'DRAFT' NOT NULL, -- DRAFT, QUEUED, SENT, FAILED
+  status TEXT DEFAULT 'DRAFT' NOT NULL,
   audience_filter JSONB DEFAULT '{}'::jsonb NOT NULL,
   scheduled_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
@@ -150,6 +155,7 @@ CREATE INDEX IF NOT EXISTS idx_marketing_business ON public.marketing_campaigns(
 
 ALTER TABLE public.marketing_campaigns ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Owners can manage marketing campaigns" ON public.marketing_campaigns;
 CREATE POLICY "Owners can manage marketing campaigns"
   ON public.marketing_campaigns FOR ALL
   TO authenticated
@@ -168,7 +174,7 @@ CREATE TABLE IF NOT EXISTS public.webinars (
   description TEXT,
   scheduled_start TIMESTAMPTZ NOT NULL,
   duration_minutes INTEGER DEFAULT 60 NOT NULL,
-  status TEXT DEFAULT 'scheduled' NOT NULL, -- scheduled, live, completed, cancelled
+  status TEXT DEFAULT 'scheduled' NOT NULL,
   created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
@@ -177,6 +183,7 @@ CREATE INDEX IF NOT EXISTS idx_webinars_business ON public.webinars(business_id)
 
 ALTER TABLE public.webinars ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Owners can manage webinars" ON public.webinars;
 CREATE POLICY "Owners can manage webinars"
   ON public.webinars FOR ALL
   TO authenticated
@@ -195,7 +202,7 @@ CREATE TABLE IF NOT EXISTS public.ai_workflows (
   title TEXT NOT NULL,
   proposed_action TEXT NOT NULL,
   impact_summary TEXT,
-  status TEXT DEFAULT 'AWAITING_APPROVAL' NOT NULL, -- DRAFT, AWAITING_APPROVAL, RUNNING, COMPLETED, REJECTED, FAILED
+  status TEXT DEFAULT 'AWAITING_APPROVAL' NOT NULL,
   idempotency_key TEXT UNIQUE,
   payload JSONB DEFAULT '{}'::jsonb NOT NULL,
   created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
@@ -206,6 +213,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_workflows_business ON public.ai_workflows(busi
 
 ALTER TABLE public.ai_workflows ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Owners can view and manage AI workflows" ON public.ai_workflows;
 CREATE POLICY "Owners can view and manage AI workflows"
   ON public.ai_workflows FOR ALL
   TO authenticated
@@ -231,7 +239,11 @@ BEGIN
   INSERT INTO public.businesses (owner_id, name)
   VALUES (
     NEW.id,
-    COALESCE(NEW.raw_user_meta_data->>'username', 'My') || '''s Workspace'
+    COALESCE(
+      NEW.raw_user_meta_data->>'username',
+      NEW.raw_user_meta_data->>'full_name',
+      split_part(NEW.email, '@', 1)
+    ) || '''s Workspace'
   )
   ON CONFLICT (owner_id) DO NOTHING;
 
@@ -239,7 +251,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger to execute upon user signup
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
