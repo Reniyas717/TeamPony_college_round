@@ -1,4 +1,4 @@
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabaseServerClient } from "../lib/supabase/server";
 import { AuditService } from "./audit.service";
 import {
   Contact,
@@ -8,7 +8,7 @@ import {
   UpdateContactInput,
   ContactFilters,
   ContactStage,
-} from "@/lib/validations/crm";
+} from "../lib/validations/crm";
 
 /**
  * CRM Service Layer

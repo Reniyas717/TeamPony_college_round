@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import jiti/register --test tests/audit.test.ts tests/website.test.ts tests/webinar-time.test.mjs"
+    "test": "node --import jiti/register --test tests/audit.test.ts tests/website.test.ts tests/webinar-time.test.mjs tests/marketing.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

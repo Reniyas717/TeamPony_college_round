@@ -20,7 +20,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  */
 async function resolveDefaultSupabaseClient(useAdmin = false): Promise<SupabaseClient> {
   const { createClient, createAdminClient } = await import("../lib/supabase/server");
-  return useAdmin ? createAdminClient() : await createClient();
+  if (useAdmin) return createAdminClient();
+  try {
+    return await createClient();
+  } catch {
+    return createAdminClient();
+  }
 }
 
 /**
