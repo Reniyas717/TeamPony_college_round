@@ -1,4 +1,5 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { AuditService } from "./audit.service";
 import {
   Contact,
   Activity,
@@ -141,6 +142,7 @@ export class CrmService {
       updated_at: now,
     };
 
+    let created: Contact = newContact;
     const supabase = getSupabaseServerClient();
     if (supabase) {
       try {
@@ -154,31 +156,51 @@ export class CrmService {
           .single();
 
         if (!error && data) {
-          const created = data as Contact;
-          await this.logActivity(
-            created.id,
-            input.source === "website_form" ? "form_submission" : "note",
-            input.source === "website_form" ? "Website Lead Captured" : "Contact Created",
-            `Lead created via ${input.source}`,
-            input.source === "website_form" ? "system" : "owner"
-          );
-          return created;
+          created = data as Contact;
         }
       } catch {
         // Fallback
       }
     }
 
-    memoryContacts.unshift(newContact);
+    if (created === newContact) {
+      memoryContacts.unshift(newContact);
+    }
+
     await this.logActivity(
-      newContact.id,
+      created.id,
       input.source === "website_form" ? "form_submission" : "note",
       input.source === "website_form" ? "Website Lead Captured" : "Contact Created",
       `Lead created via ${input.source}`,
       input.source === "website_form" ? "system" : "owner"
     );
 
-    return newContact;
+    // Central Audit Logging per AGENTS.md §9
+    await AuditService.recordEvent(
+      {
+        business_id: DEFAULT_BUSINESS_ID,
+        action: "crm.contact.created",
+        actor: {
+          id: input.source === "website_form" ? "system" : "owner",
+          type: input.source === "website_form" ? "system" : "user",
+        },
+        resource: {
+          type: "crm_contact",
+          id: created.id,
+        },
+        outcome: "success",
+        metadata: {
+          first_name: created.first_name,
+          last_name: created.last_name,
+          email: created.email,
+          stage: created.stage,
+          source: created.source,
+        },
+      },
+      { critical: false }
+    );
+
+    return created;
   }
 
   /**
@@ -192,8 +214,9 @@ export class CrmService {
     if (!existing) return null;
 
     const now = new Date().toISOString();
-    const stageChanged = input.stage && input.stage !== existing.stage;
+    const stageChanged = Boolean(input.stage && input.stage !== existing.stage);
 
+    let updated: Contact | null = null;
     const supabase = getSupabaseServerClient();
     if (supabase) {
       try {
@@ -210,54 +233,71 @@ export class CrmService {
           .single();
 
         if (!error && data) {
-          if (stageChanged) {
-            await this.logActivity(
-              id,
-              "stage_change",
-              `Stage moved to ${input.stage}`,
-              `Stage changed from ${existing.stage} to ${input.stage}`,
-              "owner",
-              { previous_stage: existing.stage, new_stage: input.stage }
-            );
-          }
-          return data as Contact;
+          updated = data as Contact;
         }
       } catch {
         // Fallback
       }
     }
 
-    // In-memory fallback update
-    const index = memoryContacts.findIndex((c) => c.id === id);
-    if (index !== -1) {
-      const updated: Contact = {
-        ...memoryContacts[index],
-        ...input,
-        last_activity_at: now,
-        updated_at: now,
-      };
-      memoryContacts[index] = updated;
-
-      if (stageChanged) {
-        await this.logActivity(
-          id,
-          "stage_change",
-          `Stage moved to ${input.stage}`,
-          `Stage changed from ${existing.stage} to ${input.stage}`,
-          "owner",
-          { previous_stage: existing.stage, new_stage: input.stage }
-        );
+    if (!updated) {
+      const index = memoryContacts.findIndex((c) => c.id === id);
+      if (index !== -1) {
+        updated = {
+          ...memoryContacts[index],
+          ...input,
+          last_activity_at: now,
+          updated_at: now,
+        };
+        memoryContacts[index] = updated;
       }
-      return updated;
     }
 
-    return null;
+    if (!updated) return null;
+
+    if (stageChanged) {
+      await this.logActivity(
+        id,
+        "stage_change",
+        `Stage moved to ${input.stage}`,
+        `Stage changed from ${existing.stage} to ${input.stage}`,
+        "owner",
+        { previous_stage: existing.stage, new_stage: input.stage }
+      );
+    }
+
+    // Central Audit Logging per AGENTS.md §9
+    const action = stageChanged ? "crm.contact.stage_changed" : "crm.contact.updated";
+    await AuditService.recordEvent(
+      {
+        business_id: DEFAULT_BUSINESS_ID,
+        action,
+        actor: {
+          id: "owner",
+          type: "user",
+        },
+        resource: {
+          type: "crm_contact",
+          id,
+        },
+        outcome: "success",
+        metadata: {
+          previous_stage: existing.stage,
+          new_stage: input.stage ?? existing.stage,
+          updated_fields: Object.keys(input),
+        },
+      },
+      { critical: false }
+    );
+
+    return updated;
   }
 
   /**
    * Deletes a contact and cleans up associated memory.
    */
   static async deleteContact(id: string): Promise<boolean> {
+    let deleted = false;
     const supabase = getSupabaseServerClient();
     if (supabase) {
       try {
@@ -266,7 +306,7 @@ export class CrmService {
           .delete()
           .eq("business_id", DEFAULT_BUSINESS_ID)
           .eq("id", id);
-        if (!error) return true;
+        if (!error) deleted = true;
       } catch {
         // Fallback
       }
@@ -275,7 +315,34 @@ export class CrmService {
     const initialLen = memoryContacts.length;
     memoryContacts = memoryContacts.filter((c) => c.id !== id);
     memoryActivities = memoryActivities.filter((a) => a.contact_id !== id);
-    return memoryContacts.length < initialLen;
+    if (memoryContacts.length < initialLen) {
+      deleted = true;
+    }
+
+    if (deleted) {
+      // Central Audit Logging per AGENTS.md §9
+      await AuditService.recordEvent(
+        {
+          business_id: DEFAULT_BUSINESS_ID,
+          action: "crm.contact.deleted",
+          actor: {
+            id: "owner",
+            type: "user",
+          },
+          resource: {
+            type: "crm_contact",
+            id,
+          },
+          outcome: "success",
+          metadata: {
+            contact_id: id,
+          },
+        },
+        { critical: false }
+      );
+    }
+
+    return deleted;
   }
 
   /**

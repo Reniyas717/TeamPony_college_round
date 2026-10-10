@@ -14,6 +14,10 @@ CREATE TABLE IF NOT EXISTS public.businesses (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Ensure owner_id is nullable for system/default business, and currency exists
+ALTER TABLE public.businesses ALTER COLUMN owner_id DROP NOT NULL;
+ALTER TABLE public.businesses ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'INR';
+
 -- Seed default business for single-owner environment
 INSERT INTO public.businesses (id, name, currency)
 VALUES ('00000000-0000-0000-0000-000000000001', 'Nexus Studio', 'INR')
@@ -38,6 +42,15 @@ CREATE TABLE IF NOT EXISTS public.crm_contacts (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Ensure all CRM columns exist if table was partially created
+ALTER TABLE public.crm_contacts ADD COLUMN IF NOT EXISTS company TEXT;
+ALTER TABLE public.crm_contacts ADD COLUMN IF NOT EXISTS stage TEXT DEFAULT 'lead';
+ALTER TABLE public.crm_contacts ADD COLUMN IF NOT EXISTS value INTEGER DEFAULT 0;
+ALTER TABLE public.crm_contacts ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual';
+ALTER TABLE public.crm_contacts ADD COLUMN IF NOT EXISTS next_action_text TEXT;
+ALTER TABLE public.crm_contacts ADD COLUMN IF NOT EXISTS next_action_due_at TIMESTAMPTZ;
+ALTER TABLE public.crm_contacts ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMPTZ DEFAULT now();
 
 -- 3. CRM Activity Timeline
 CREATE TABLE IF NOT EXISTS public.crm_activities (
