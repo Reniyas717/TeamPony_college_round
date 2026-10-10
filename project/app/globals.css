@@ -267,3 +267,13 @@
   opacity: 0.045;
   mix-blend-mode: screen;
 }
+
+/* Hide scrollbar for Chrome, Safari, Opera and modern browsers */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+

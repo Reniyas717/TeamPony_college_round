@@ -15,7 +15,8 @@ import {
   LogoutCurve,
   ArrowRight,
   TickCircle,
-  Activity
+  Activity,
+  TrendUp
 } from "iconsax-react";
 
 interface DashboardClientProps {
@@ -47,7 +48,8 @@ export default function DashboardClient({ user }: DashboardClientProps) {
 
   const navItems = [
     { id: "overview", label: "Overview", icon: Activity },
-    { id: "crm", label: "Intelligent CRM", icon: SecurityUser },
+    { id: "intelligence", label: "Journey Intelligence", icon: TrendUp, href: "/dashboard/intelligence" },
+    { id: "crm", label: "Intelligent CRM", icon: SecurityUser, href: "/crm" },
     { id: "billing", label: "Billing & Plans", icon: CardIcon },
     { id: "website", label: "Website Builder", icon: Global },
     { id: "marketing", label: "Campaigns", icon: DirectSend },
@@ -58,12 +60,22 @@ export default function DashboardClient({ user }: DashboardClientProps) {
 
   const modules = [
     {
+      id: "intelligence",
+      title: "Customer Journey Intelligence",
+      description: "Multi-touchpoint timeline, Bayesian purchase intent scoring, churn risk estimation, and AI Next-Best Action recommendations.",
+      icon: TrendUp,
+      meta: "Predictive ML active",
+      action: "Explore NBA",
+      href: "/dashboard/intelligence",
+    },
+    {
       id: "crm",
       title: "Intelligent CRM",
       description: "Manage customer lifecycles, track touchpoints, and sync contacts with billing records.",
       icon: SecurityUser,
       meta: "0 Contacts recorded",
       action: "Manage CRM",
+      href: "/crm",
     },
     {
       id: "billing",
@@ -171,6 +183,22 @@ export default function DashboardClient({ user }: DashboardClientProps) {
           {navItems.map((item) => {
             const IconComp = item.icon;
             const isActive = activeTab === item.id;
+            if (item.href) {
+              return (
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-sm text-xs font-medium transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-accent/50 ${
+                    !sidebarOpen ? "justify-center px-0" : ""
+                  }`}
+                  title={item.label}
+                >
+                  <IconComp size="18" className="text-brand-text" />
+                  {sidebarOpen && <span className="truncate flex-1 text-left">{item.label}</span>}
+                </Link>
+              );
+            }
             return (
               <button
                 key={item.id}
@@ -353,14 +381,28 @@ export default function DashboardClient({ user }: DashboardClientProps) {
 
                       <div className="pt-4 mt-4 flex items-center justify-between">
                         <span className="text-[11px] font-mono text-muted-foreground">{mod.meta}</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs gap-1 group-hover:text-foreground cursor-pointer px-2 bg-muted/30 hover:bg-muted/60"
-                        >
-                          <span>{mod.action}</span>
-                          <ArrowRight size="12" className="group-hover:translate-x-0.5 transition-transform" />
-                        </Button>
+                        {mod.href ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            asChild
+                            className="h-7 text-xs gap-1 group-hover:text-foreground cursor-pointer px-2 bg-muted/30 hover:bg-muted/60"
+                          >
+                            <Link href={mod.href}>
+                              <span>{mod.action}</span>
+                              <ArrowRight size="12" className="group-hover:translate-x-0.5 transition-transform" />
+                            </Link>
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs gap-1 group-hover:text-foreground cursor-pointer px-2 bg-muted/30 hover:bg-muted/60"
+                          >
+                            <span>{mod.action}</span>
+                            <ArrowRight size="12" className="group-hover:translate-x-0.5 transition-transform" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   );
