@@ -48,9 +48,9 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
             event_id: `evt-test-${Date.now()}`,
             email: "test.lead@example.com",
             phone: "+15550199",
-            contactId: "dummy-contact-id"
-          }
-        }
+            contactId: "dummy-contact-id",
+          },
+        },
       });
       setActiveRun(result.run);
     } catch (err) {
