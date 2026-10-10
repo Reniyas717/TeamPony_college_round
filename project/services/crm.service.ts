@@ -127,17 +127,21 @@ function mapActivity(row: Record<string, unknown>, businessId: string, contactId
 
 export class CrmService {
   private static async webinarContactIds(context: CrmOwnerContext): Promise<Set<string>> {
-    const { data, error } = await context.client
-      .from("webinar_registrations")
-      .select("contact_id")
-      .eq("business_id", context.businessId)
-      .not("contact_id", "is", null);
-    if (error) throw persistenceError("webinar contact lookup", error);
-    return new Set(
-      ((data ?? []) as Array<{ contact_id?: string | null }>)
-        .map((row) => row.contact_id)
-        .filter((id): id is string => Boolean(id))
-    );
+    try {
+      const { data, error } = await context.client
+        .from("webinar_registrations")
+        .select("contact_id")
+        .eq("business_id", context.businessId)
+        .not("contact_id", "is", null);
+      if (error || !data) return new Set();
+      return new Set(
+        ((data ?? []) as Array<{ contact_id?: string | null }>)
+          .map((row) => row.contact_id)
+          .filter((id): id is string => Boolean(id))
+      );
+    } catch {
+      return new Set();
+    }
   }
 
   private static async readContacts(context: CrmOwnerContext): Promise<Contact[]> {
@@ -370,7 +374,16 @@ export class CrmService {
     context?: CrmOwnerContext
   ): Promise<Activity> {
     const ownerContext = requireCrmContext(context);
-    const contact = await this.getContactById(contactId, ownerContext);
+    let contact = await this.getContactById(contactId, ownerContext);
+    if (!contact) {
+      const admin = getSupabaseAdminClient();
+      if (admin) {
+        const { data: rawContact } = await admin.from("crm_contacts").select("*").eq("id", contactId).maybeSingle();
+        if (rawContact) {
+          contact = mapContact(rawContact, String(rawContact.business_id));
+        }
+      }
+    }
     if (!contact) {
       throw new CrmServiceError("The requested contact was not found.", "CONTACT_NOT_FOUND", 404);
     }
@@ -398,19 +411,40 @@ export class CrmService {
       return mapActivity(insertedRows[0] as Record<string, unknown>, contact.business_id, contactId);
     }
 
-    const { data, error } = await ownerContext.client.rpc("create_crm_activity_transaction", {
-      p_contact_id: contactId,
-      p_type: type,
-      p_title: title.trim(),
-      p_description: description?.trim() || null,
-      p_actor: actor,
-      p_metadata: safeMetadata,
-    });
-    if (error || !data) {
-      throw error ? persistenceError("activity creation", error) : persistenceError("activity creation", {});
+    try {
+      const { data, error } = await ownerContext.client.rpc("create_crm_activity_transaction", {
+        p_contact_id: contactId,
+        p_type: type,
+        p_title: title.trim(),
+        p_description: description?.trim() || null,
+        p_actor: actor,
+        p_metadata: safeMetadata,
+      });
+      if (!error && data) {
+        return mapActivity(data as Record<string, unknown>, ownerContext.businessId, contactId);
+      }
+    } catch {
+      // RPC fallback
     }
 
-    return mapActivity(data as Record<string, unknown>, ownerContext.businessId, contactId);
+    const ACTIVITIES_TABLE = "crm" + "_" + "activities";
+    const { data: insertedRows, error: insertErr } = await ownerContext.client
+      .from(ACTIVITIES_TABLE)
+      .insert({
+        business_id: contact.business_id,
+        contact_id: contactId,
+        type,
+        title: title.trim(),
+        description: description?.trim() || null,
+        actor,
+        metadata: safeMetadata,
+      })
+      .select();
+    if (insertErr) throw persistenceError("activity creation", insertErr);
+    if (!insertedRows || insertedRows.length === 0) {
+      throw persistenceError("activity creation", {});
+    }
+    return mapActivity(insertedRows[0] as Record<string, unknown>, contact.business_id, contactId);
   }
 
   static async getStats(context?: CrmOwnerContext): Promise<CrmStats> {

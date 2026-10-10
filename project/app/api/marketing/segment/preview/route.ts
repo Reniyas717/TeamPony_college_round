@@ -1,18 +1,11 @@
 import { NextResponse } from "next/server";
-import { AuthService } from "@/services/auth.service";
+import { ownerContextErrorResponse, requireOwnerContext } from "@/lib/supabase/owner-context";
 import { MarketingService } from "@/services/marketing.service";
 import { PreviewSegmentSchema } from "@/lib/validations/marketing";
 
 export async function POST(request: Request) {
-  const user = await AuthService.getCurrentUser();
-  if (!user) {
-    return NextResponse.json(
-      { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
-      { status: 401 }
-    );
-  }
-
   try {
+    const context = await requireOwnerContext();
     const json = await request.json().catch(() => null);
     const parsed = PreviewSegmentSchema.safeParse(json);
 
@@ -31,7 +24,8 @@ export async function POST(request: Request) {
 
     const preview = await MarketingService.previewSegment(
       parsed.data.segment_filters,
-      parsed.data.channel
+      parsed.data.channel,
+      context
     );
 
     return NextResponse.json({
@@ -39,9 +33,11 @@ export async function POST(request: Request) {
         totalEligible: preview.eligibleContacts.length,
         totalSuppressed: preview.suppressedCount,
         totalMatched: preview.totalMatched,
-        sampleRecipients: preview.eligibleContacts.slice(0, 5).map((c) => ({
+        eligibleContacts: preview.eligibleContacts,
+        suppressedCount: preview.suppressedCount,
+        sampleRecipients: preview.eligibleContacts.slice(0, 10).map((c) => ({
           id: c.id,
-          name: `${c.first_name} ${c.last_name}`,
+          name: `${c.first_name} ${c.last_name}`.trim(),
           email: c.email,
           phone: c.phone,
           company: c.company,
@@ -52,10 +48,12 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    console.error("[API /api/marketing/segment/preview] Error:", error);
-    return NextResponse.json(
-      { error: { code: "INTERNAL_ERROR", message: "Failed to calculate audience preview" } },
-      { status: 500 }
+    return (
+      ownerContextErrorResponse(error) ??
+      NextResponse.json(
+        { error: { code: "INTERNAL_ERROR", message: "Failed to calculate audience preview" } },
+        { status: 500 }
+      )
     );
   }
 }

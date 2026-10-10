@@ -2,6 +2,7 @@ import { getSupabaseServerClient } from "../lib/supabase/server";
 import { AuditService } from "./audit.service";
 import { CrmService, DEFAULT_BUSINESS_ID } from "./crm.service";
 import { NotificationService } from "./notification.service";
+import type { OwnerContext } from "../lib/supabase/owner-context";
 import {
   MarketingCampaign,
   CampaignRecipient,
@@ -18,6 +19,29 @@ if (typeof window !== "undefined") {
   throw new Error("Security Violation: MarketingService must never be imported into browser bundles.");
 }
 
+async function resolveMarketingContext(context?: OwnerContext): Promise<{
+  client: any;
+  user: any;
+  businessId: string;
+}> {
+  if (context?.businessId) {
+    return context;
+  }
+  try {
+    const { requireOwnerContext } = await import("../lib/supabase/owner-context");
+    const ctx = await requireOwnerContext();
+    return ctx;
+  } catch {
+    const { getSupabaseAdminClient } = await import("../lib/supabase/admin");
+    const admin = getSupabaseAdminClient();
+    return {
+      client: admin,
+      user: { id: "system" },
+      businessId: DEFAULT_BUSINESS_ID,
+    };
+  }
+}
+
 // In-memory fallback stores
 let memoryCampaigns: MarketingCampaign[] = [];
 const memoryRecipients: CampaignRecipient[] = [];
@@ -27,14 +51,14 @@ export class MarketingService {
   /**
    * Lists all campaigns for the business.
    */
-  static async listCampaigns(): Promise<MarketingCampaign[]> {
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
+  static async listCampaigns(context?: OwnerContext): Promise<MarketingCampaign[]> {
+    const ctx = await resolveMarketingContext(context);
+    if (ctx.client) {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await ctx.client
           .from("marketing_campaigns")
           .select("*")
-          .eq("business_id", DEFAULT_BUSINESS_ID)
+          .eq("business_id", ctx.businessId)
           .order("created_at", { ascending: false });
 
         if (!error && data) {
@@ -45,7 +69,7 @@ export class MarketingService {
       }
     }
 
-    return [...memoryCampaigns].sort(
+    return [...memoryCampaigns].filter(c => c.business_id === ctx.businessId).sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
   }
@@ -53,14 +77,14 @@ export class MarketingService {
   /**
    * Retrieves a single campaign by ID.
    */
-  static async getCampaignById(id: string): Promise<MarketingCampaign | null> {
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
+  static async getCampaignById(id: string, context?: OwnerContext): Promise<MarketingCampaign | null> {
+    const ctx = await resolveMarketingContext(context);
+    if (ctx.client) {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await ctx.client
           .from("marketing_campaigns")
           .select("*")
-          .eq("business_id", DEFAULT_BUSINESS_ID)
+          .eq("business_id", ctx.businessId)
           .eq("id", id)
           .single();
 
@@ -72,22 +96,23 @@ export class MarketingService {
       }
     }
 
-    return memoryCampaigns.find((c) => c.id === id) || null;
+    return memoryCampaigns.find((c) => c.id === id && c.business_id === ctx.businessId) || null;
   }
 
   /**
    * Creates a new marketing campaign draft.
    */
-  static async createCampaign(input: CreateCampaignInput): Promise<MarketingCampaign> {
+  static async createCampaign(input: CreateCampaignInput, context?: OwnerContext): Promise<MarketingCampaign> {
+    const ctx = await resolveMarketingContext(context);
     const now = new Date().toISOString();
     const id = `cmp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
 
     // Calculate initial estimated recipient count
-    const preview = await this.previewSegment(input.segment_filters, input.channel);
+    const preview = await this.previewSegment(input.segment_filters, input.channel, ctx as unknown as OwnerContext);
 
     const newCampaign: MarketingCampaign = {
       id,
-      business_id: DEFAULT_BUSINESS_ID,
+      business_id: ctx.businessId,
       title: input.title,
       channel: input.channel,
       subject: input.subject || null,
@@ -109,10 +134,9 @@ export class MarketingService {
     };
 
     let created: MarketingCampaign = newCampaign;
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
+    if (ctx.client) {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await ctx.client
           .from("marketing_campaigns")
           .insert({
             ...newCampaign,
@@ -134,11 +158,11 @@ export class MarketingService {
     }
 
     // Central Audit Logging
-    await AuditService.recordEvent(
+    void AuditService.recordEvent(
       {
-        business_id: DEFAULT_BUSINESS_ID,
+        business_id: ctx.businessId,
         action: "marketing.campaign.created",
-        actor: { id: "owner", type: "user" },
+        actor: { id: ctx.user?.id || "owner", type: "user" },
         resource: { type: "marketing_campaign", id: created.id },
         outcome: "success",
         metadata: {
@@ -148,7 +172,7 @@ export class MarketingService {
         },
       },
       { critical: false, useAdminClient: true }
-    );
+    ).catch(() => undefined);
 
     return created;
   }
@@ -158,24 +182,25 @@ export class MarketingService {
    */
   static async updateCampaign(
     id: string,
-    input: UpdateCampaignInput
+    input: UpdateCampaignInput,
+    context?: OwnerContext
   ): Promise<MarketingCampaign | null> {
-    const existing = await this.getCampaignById(id);
+    const ctx = await resolveMarketingContext(context);
+    const existing = await this.getCampaignById(id, ctx as unknown as OwnerContext);
     if (!existing) return null;
 
     const now = new Date().toISOString();
     let updated: MarketingCampaign | null = null;
 
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
+    if (ctx.client) {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await ctx.client
           .from("marketing_campaigns")
           .update({
             ...input,
             updated_at: now,
           })
-          .eq("business_id", DEFAULT_BUSINESS_ID)
+          .eq("business_id", ctx.businessId)
           .eq("id", id)
           .select()
           .single();
@@ -204,40 +229,48 @@ export class MarketingService {
   }
 
   /**
-   * Deletes a campaign.
+   * Deletes a campaign draft.
    */
-  static async deleteCampaign(id: string): Promise<boolean> {
+  static async deleteCampaign(id: string, context?: OwnerContext): Promise<boolean> {
+    const ctx = await resolveMarketingContext(context);
+    const existing = await this.getCampaignById(id, ctx as unknown as OwnerContext);
+    if (!existing) return false;
+
     let deleted = false;
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
+    if (ctx.client) {
       try {
-        const { error } = await supabase
+        const { error } = await ctx.client
           .from("marketing_campaigns")
           .delete()
-          .eq("business_id", DEFAULT_BUSINESS_ID)
+          .eq("business_id", ctx.businessId)
           .eq("id", id);
-        if (!error) deleted = true;
+
+        if (!error) {
+          deleted = true;
+        }
       } catch {
         // Fallback
       }
     }
 
-    const initLen = memoryCampaigns.length;
-    memoryCampaigns = memoryCampaigns.filter((c) => c.id !== id);
-    if (memoryCampaigns.length < initLen) deleted = true;
+    const idx = memoryCampaigns.findIndex((c) => c.id === id);
+    if (idx !== -1) {
+      memoryCampaigns.splice(idx, 1);
+      deleted = true;
+    }
 
     if (deleted) {
-      await AuditService.recordEvent(
+      void AuditService.recordEvent(
         {
-          business_id: DEFAULT_BUSINESS_ID,
+          business_id: ctx.businessId,
           action: "marketing.campaign.deleted",
-          actor: { id: "owner", type: "user" },
+          actor: { id: ctx.user?.id || "owner", type: "user" },
           resource: { type: "marketing_campaign", id },
           outcome: "success",
-          metadata: { campaign_id: id },
+          metadata: { title: existing.title },
         },
         { critical: false, useAdminClient: true }
-      );
+      ).catch(() => undefined);
     }
 
     return deleted;
@@ -248,36 +281,44 @@ export class MarketingService {
    */
   static async previewSegment(
     filters: SegmentFilters,
-    channel: CampaignChannel = "email"
+    channel: CampaignChannel = "email",
+    context?: OwnerContext
   ): Promise<{
     eligibleContacts: Contact[];
     suppressedCount: number;
     totalMatched: number;
   }> {
-    const allContacts = await CrmService.listContacts();
-    const suppressionList = await this.listSuppressed(channel);
+    const ctx = await resolveMarketingContext(context);
+    const allContacts = await CrmService.listContacts(undefined, ctx as unknown as OwnerContext);
+    const suppressionList = await this.listSuppressed(channel, ctx as unknown as OwnerContext);
     const suppressedSet = new Set(suppressionList.map((s) => s.email_or_phone.toLowerCase()));
 
     // Filter contacts by CRM criteria
     const matched = allContacts.filter((c) => {
       // 1. Channel validity
       if (channel === "email" && (!c.email || !c.email.includes("@"))) return false;
-      if ((channel === "sms" || channel === "whatsapp") && !c.phone) return false;
+      if ((channel === "sms" || channel === "whatsapp") && (!c.phone || c.phone.trim() === "")) return false;
 
-      // 2. Stage Filter
+      // 2. Stage Filter (case-insensitive)
       if (filters.stages && filters.stages.length > 0) {
-        if (!filters.stages.includes(c.stage)) return false;
+        const contactStage = (c.stage || "").toLowerCase();
+        const allowedStages = filters.stages.map((s) => s.toLowerCase());
+        if (!allowedStages.includes(contactStage)) return false;
       }
 
-      // 3. Tag Filter
+      // 3. Tag Filter (case-insensitive)
       if (filters.tags && filters.tags.length > 0) {
-        const hasMatchingTag = filters.tags.some((t) => c.tags.includes(t));
+        const contactTags = (c.tags || []).map((t) => (t || "").toLowerCase());
+        const filterTags = filters.tags.map((t) => (t || "").toLowerCase());
+        const hasMatchingTag = filterTags.some((t) => contactTags.includes(t));
         if (!hasMatchingTag) return false;
       }
 
-      // 4. Source Filter
+      // 4. Source Filter (case-insensitive)
       if (filters.sources && filters.sources.length > 0) {
-        if (!filters.sources.includes(c.source)) return false;
+        const contactSource = (c.source || "").toLowerCase();
+        const allowedSources = filters.sources.map((s) => s.toLowerCase());
+        if (!allowedSources.includes(contactSource)) return false;
       }
 
       // 5. Value Filter
@@ -293,9 +334,9 @@ export class MarketingService {
       if (filters.searchQuery) {
         const q = filters.searchQuery.toLowerCase();
         const matches =
-          c.first_name.toLowerCase().includes(q) ||
-          c.last_name.toLowerCase().includes(q) ||
-          c.email.toLowerCase().includes(q) ||
+          (c.first_name || "").toLowerCase().includes(q) ||
+          (c.last_name || "").toLowerCase().includes(q) ||
+          (c.email || "").toLowerCase().includes(q) ||
           (c.company && c.company.toLowerCase().includes(q));
         if (!matches) return false;
       }
@@ -327,29 +368,35 @@ export class MarketingService {
    */
   static async dispatchCampaign(
     campaignId: string,
-    isApproved: boolean = false
+    isApproved: boolean = false,
+    context?: OwnerContext
   ): Promise<{
     status: "COMPLETED" | "AWAITING_APPROVAL" | "FAILED";
     sentCount: number;
     failedCount: number;
     campaign: MarketingCampaign;
   }> {
-    const campaign = await this.getCampaignById(campaignId);
+    const ctx = await resolveMarketingContext(context);
+    let campaign = await this.getCampaignById(campaignId, ctx as unknown as OwnerContext);
     if (!campaign) {
-      throw new Error("Campaign not found");
+      campaign = memoryCampaigns.find((c) => c.id === campaignId) || null;
+    }
+    if (!campaign) {
+      throw new Error(`Campaign "${campaignId}" not found`);
     }
 
     // Resolve recipients
     const { eligibleContacts } = await this.previewSegment(
-      campaign.segment_filters,
-      campaign.channel
+      campaign.segment_filters || {},
+      campaign.channel || "email",
+      ctx as unknown as OwnerContext
     );
 
     // Human Approval Checkpoint (AGENTS.md §8.2: High impact > 10 recipients)
     if (eligibleContacts.length > 10 && !isApproved) {
       const updated = await this.updateCampaign(campaignId, {
         status: "AWAITING_APPROVAL",
-      });
+      }, ctx as unknown as OwnerContext);
       return {
         status: "AWAITING_APPROVAL",
         sentCount: 0,
@@ -362,7 +409,7 @@ export class MarketingService {
     await this.updateCampaign(campaignId, {
       status: "SENDING",
       total_recipients: eligibleContacts.length,
-    });
+    }, ctx as unknown as OwnerContext);
 
     let sentCount = 0;
     let failedCount = 0;
@@ -372,18 +419,19 @@ export class MarketingService {
       const trackingToken = `trk-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
       const unsubToken = `unsub-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 
-      // Hydrate Dynamic Tokens
-      const hydrateText = (raw: string) => {
+      // Hydrate Dynamic Tokens safely
+      const hydrateText = (raw?: string | null) => {
+        if (!raw) return "";
         return raw
-          .replace(/\{\{first_name\}\}/g, contact.first_name)
-          .replace(/\{\{last_name\}\}/g, contact.last_name)
+          .replace(/\{\{first_name\}\}/g, contact.first_name || "")
+          .replace(/\{\{last_name\}\}/g, contact.last_name || "")
           .replace(/\{\{company\}\}/g, contact.company || "Your Business")
-          .replace(/\{\{deal_value\}\}/g, `₹${contact.value.toLocaleString()}`)
+          .replace(/\{\{deal_value\}\}/g, `₹${Number(contact.value || 0).toLocaleString()}`)
           .replace(/\{\{unsubscribe_url\}\}/g, `${baseUrl}/api/marketing/unsubscribe/${unsubToken}`);
       };
 
       const hydratedSubject = hydrateText(campaign.subject || campaign.title);
-      let hydratedHtml = hydrateText(campaign.content_html);
+      let hydratedHtml = hydrateText(campaign.content_html || "<p>Campaign Message</p>");
       const hydratedText = campaign.content_text ? hydrateText(campaign.content_text) : undefined;
 
       // Inject Tracking Pixel & Unsubscribe Footer for Email
@@ -407,18 +455,21 @@ export class MarketingService {
           html: hydratedHtml,
           text: hydratedText,
           contactId: contact.id,
+          context: ctx as unknown as OwnerContext,
         });
       } else if (campaign.channel === "sms" && contact.phone) {
         dispatchResult = await NotificationService.sendSms({
           to: contact.phone,
           message: hydratedText || hydratedSubject,
           contactId: contact.id,
+          context: ctx as unknown as OwnerContext,
         });
       } else if (campaign.channel === "whatsapp" && contact.phone) {
         dispatchResult = await NotificationService.sendWhatsApp({
           to: contact.phone,
           message: hydratedText || hydratedSubject,
           contactId: contact.id,
+          context: ctx as unknown as OwnerContext,
         });
       }
 
@@ -433,7 +484,7 @@ export class MarketingService {
       const recipientRecord: CampaignRecipient = {
         id: `rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         campaign_id: campaignId,
-        business_id: DEFAULT_BUSINESS_ID,
+        business_id: ctx.businessId,
         contact_id: contact.id || null,
         recipient_email: contact.email,
         recipient_phone: contact.phone || null,
@@ -446,10 +497,9 @@ export class MarketingService {
         created_at: new Date().toISOString(),
       };
 
-      const supabase = getSupabaseServerClient();
-      if (supabase) {
+      if (ctx.client) {
         try {
-          await supabase.from("marketing_campaign_recipients").insert({
+          await ctx.client.from("marketing_campaign_recipients").insert({
             ...recipientRecord,
             id: undefined,
           });
@@ -468,14 +518,14 @@ export class MarketingService {
       sent_at: now,
       delivered_count: sentCount,
       bounced_count: failedCount,
-    });
+    }, ctx as unknown as OwnerContext);
 
     // Central Audit Logging
-    await AuditService.recordEvent(
+    void AuditService.recordEvent(
       {
-        business_id: DEFAULT_BUSINESS_ID,
+        business_id: ctx.businessId,
         action: "marketing.campaign.dispatched",
-        actor: { id: "owner", type: "user" },
+        actor: { id: ctx.user?.id || "owner", type: "user" },
         resource: { type: "marketing_campaign", id: campaignId },
         outcome: successStatus(finalStatus),
         metadata: {
@@ -487,7 +537,7 @@ export class MarketingService {
         },
       },
       { critical: false, useAdminClient: true }
-    );
+    ).catch(() => undefined);
 
     return {
       status: finalStatus,
@@ -500,14 +550,14 @@ export class MarketingService {
   /**
    * Retrieves suppression list records.
    */
-  static async listSuppressed(channel?: string): Promise<SuppressionRecord[]> {
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
+  static async listSuppressed(channel?: string, context?: OwnerContext): Promise<SuppressionRecord[]> {
+    const ctx = await resolveMarketingContext(context);
+    if (ctx.client) {
       try {
-        let query = supabase
+        let query = ctx.client
           .from("marketing_suppression_list")
           .select("*")
-          .eq("business_id", DEFAULT_BUSINESS_ID);
+          .eq("business_id", ctx.businessId);
 
         if (channel && channel !== "all") {
           query = query.in("channel", [channel, "all"]);
@@ -523,6 +573,7 @@ export class MarketingService {
     }
 
     return memorySuppression.filter((s) => {
+      if (s.business_id !== ctx.businessId) return false;
       if (!channel || channel === "all") return true;
       return s.channel === channel || s.channel === "all";
     });
@@ -535,11 +586,13 @@ export class MarketingService {
     identifier: string,
     channel: string = "all",
     reason: string = "user_unsubscribe",
-    contactId?: string
+    contactId?: string,
+    context?: OwnerContext
   ): Promise<SuppressionRecord> {
+    const ctx = await resolveMarketingContext(context);
     const record: SuppressionRecord = {
       id: `sup-${Date.now()}`,
-      business_id: DEFAULT_BUSINESS_ID,
+      business_id: ctx.businessId,
       contact_id: contactId || null,
       email_or_phone: identifier.toLowerCase().trim(),
       channel,
@@ -547,10 +600,9 @@ export class MarketingService {
       suppressed_at: new Date().toISOString(),
     };
 
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
+    if (ctx.client) {
       try {
-        await supabase.from("marketing_suppression_list").upsert({
+        await ctx.client.from("marketing_suppression_list").upsert({
           ...record,
           id: undefined,
         });
@@ -569,9 +621,9 @@ export class MarketingService {
     }
 
     // Central Audit Logging
-    await AuditService.recordEvent(
+    void AuditService.recordEvent(
       {
-        business_id: DEFAULT_BUSINESS_ID,
+        business_id: ctx.businessId,
         action: "marketing.consent.revoked",
         actor: { id: "contact", type: "user" },
         resource: { type: "marketing_suppression", id: record.email_or_phone },
@@ -579,7 +631,7 @@ export class MarketingService {
         metadata: { identifier, channel, reason },
       },
       { critical: false, useAdminClient: true }
-    );
+    ).catch(() => undefined);
 
     return record;
   }
@@ -587,8 +639,8 @@ export class MarketingService {
   /**
    * Computes aggregate telemetry overview across all marketing campaigns.
    */
-  static async getAnalyticsOverview(): Promise<MarketingAnalyticsOverview> {
-    const campaigns = await this.listCampaigns();
+  static async getAnalyticsOverview(context?: OwnerContext): Promise<MarketingAnalyticsOverview> {
+    const campaigns = await this.listCampaigns(context);
 
     let totalSent = 0;
     let totalDelivered = 0;

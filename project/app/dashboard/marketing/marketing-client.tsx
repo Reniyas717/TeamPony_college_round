@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useState, useTransition, useCallback } from "react";
+import { useState, useTransition, useCallback, useEffect } from "react";
 import {
   DirectSend,
   Add,
@@ -186,10 +186,10 @@ export default function MarketingClient({
 
   // Creation Wizard Stepper State
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
-  const [formTitle, setFormTitle] = useState("");
+  const [formTitle, setFormTitle] = useState("Workflow Automation & Infrastructure Update");
   const [formChannel, setFormChannel] = useState<CampaignChannel>("email");
-  const [formSubject, setFormSubject] = useState("");
-  const [formPreviewText, setFormPreviewText] = useState("");
+  const [formSubject, setFormSubject] = useState("Priority Update: Workflow Automation & Infrastructure Update for {{company}}");
+  const [formPreviewText, setFormPreviewText] = useState("Important briefing and key action items for {{first_name}} at {{company}}");
 
   // Visual Composer Fields
   const [formGreeting, setFormGreeting] = useState("Dear {{first_name}},");
@@ -197,9 +197,10 @@ export default function MarketingClient({
   const [formHighlights, setFormHighlights] = useState<string[]>([
     "Dedicated high-throughput routing with zero performance impact",
     "Comprehensive audit logging and verified security compliance",
+    "Priority assistance and data migration review",
   ]);
   const [newHighlightInput, setNewHighlightInput] = useState("");
-  const [formCtaText, setFormCtaText] = useState("Review Details");
+  const [formCtaText, setFormCtaText] = useState("Review Update Details");
   const [formCtaUrl, setFormCtaUrl] = useState("https://nexus.local/offer");
   const [formSignoff, setFormSignoff] = useState("Sincerely,\nThe Nexus Team");
 
@@ -212,7 +213,14 @@ export default function MarketingClient({
   const [sampleCompany, setSampleCompany] = useState("Acme Global");
 
   // Segmentation Filters
-  const [selectedStages, setSelectedStages] = useState<string[]>(["lead", "contacted", "qualified", "proposal", "customer"]);
+  const [selectedStages, setSelectedStages] = useState<string[]>([
+    "lead",
+    "contacted",
+    "qualified",
+    "proposal",
+    "customer",
+    "churned",
+  ]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [minValue, setMinValue] = useState<number | "">("");
@@ -360,6 +368,11 @@ export default function MarketingClient({
     [formChannel, selectedStages, selectedTags, minValue]
   );
 
+  // Load preview data immediately on mount and when modal opens
+  useEffect(() => {
+    void runSegmentPreview();
+  }, [runSegmentPreview]);
+
   // Apply Strategy Preset
   const applyStrategyPreset = (preset: StrategyPreset) => {
     setFormTitle(preset.title);
@@ -391,47 +404,37 @@ export default function MarketingClient({
     });
   };
 
-  // Direct Personalization Replacements
+  // Direct Personalization Replacements across all content fields
   const applyDirectPersonalization = () => {
     const firstName = sampleName.trim().split(" ")[0] || "Customer";
+    const lastName = sampleName.trim().split(" ").slice(1).join(" ") || "";
     const comp = sampleCompany.trim() || "Your Business";
 
-    setFormGreeting((prev) => prev.replace(/\{\{first_name\}\}/g, firstName).replace(/\{firstname\}/gi, firstName));
-    setFormBody((prev) =>
-      prev
-        .replace(/\{\{company\}\}/g, comp)
-        .replace(/\{company\}/gi, comp)
+    const replaceTokens = (str: string) => {
+      if (!str) return str;
+      return str
         .replace(/\{\{first_name\}\}/g, firstName)
         .replace(/\{firstname\}/gi, firstName)
-    );
-    setFormSubject((prev) =>
-      prev
+        .replace(/\{\{firstName\}\}/g, firstName)
+        .replace(/\{\{last_name\}\}/g, lastName)
+        .replace(/\{lastname\}/gi, lastName)
         .replace(/\{\{company\}\}/g, comp)
-        .replace(/\{company\}/gi, comp)
-        .replace(/\{\{first_name\}\}/g, firstName)
-        .replace(/\{firstname\}/gi, firstName)
-    );
-    setFormPreviewText((prev) =>
-      prev.replace(/\{\{first_name\}\}/g, firstName).replace(/\{firstname\}/gi, firstName)
-    );
-    setFormSmsText((prev) =>
-      prev
-        .replace(/\{\{company\}\}/g, comp)
-        .replace(/\{company\}/gi, comp)
-        .replace(/\{\{first_name\}\}/g, firstName)
-        .replace(/\{firstname\}/gi, firstName)
-    );
-    setFormWhatsappText((prev) =>
-      prev
-        .replace(/\{\{company\}\}/g, comp)
-        .replace(/\{company\}/gi, comp)
-        .replace(/\{\{first_name\}\}/g, firstName)
-        .replace(/\{firstname\}/gi, firstName)
-    );
+        .replace(/\{company\}/gi, comp);
+    };
+
+    setFormGreeting((prev) => replaceTokens(prev));
+    setFormBody((prev) => replaceTokens(prev));
+    setFormSubject((prev) => replaceTokens(prev));
+    setFormPreviewText((prev) => replaceTokens(prev));
+    setFormHighlights((prev) => prev.map((h) => replaceTokens(h)));
+    setFormCtaText((prev) => replaceTokens(prev));
+    setFormSignoff((prev) => replaceTokens(prev));
+    setFormSmsText((prev) => replaceTokens(prev));
+    setFormWhatsappText((prev) => replaceTokens(prev));
 
     setFeedbackMessage({
       type: "success",
-      text: `Replaced template tokens with "${firstName}" and "${comp}".`,
+      text: `Personalized all campaign fields for "${firstName}" and "${comp}".`,
     });
   };
 
@@ -439,73 +442,75 @@ export default function MarketingClient({
     const firstName = sampleName.trim().split(" ")[0] || "Customer";
     const comp = sampleCompany.trim() || "Your Business";
 
-    setFormGreeting(`Dear {{first_name}},`);
-    setFormBody((prev) =>
-      prev
-        .replace(new RegExp(comp, "g"), "{{company}}")
-        .replace(new RegExp(firstName, "g"), "{{first_name}}")
-    );
-    setFormSubject((prev) =>
-      prev
-        .replace(new RegExp(comp, "g"), "{{company}}")
-        .replace(new RegExp(firstName, "g"), "{{first_name}}")
-    );
-    setFormSmsText((prev) =>
-      prev
-        .replace(new RegExp(comp, "g"), "{{company}}")
-        .replace(new RegExp(firstName, "g"), "{{first_name}}")
-    );
-    setFormWhatsappText((prev) =>
-      prev
-        .replace(new RegExp(comp, "g"), "{{company}}")
-        .replace(new RegExp(firstName, "g"), "{{first_name}}")
-    );
+    const restoreTags = (str: string) => {
+      if (!str) return str;
+      let res = str;
+      if (comp) {
+        const escapedComp = comp.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        res = res.replace(new RegExp(escapedComp, "gi"), "{{company}}");
+      }
+      if (firstName) {
+        const escapedFirst = firstName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        res = res.replace(new RegExp(escapedFirst, "gi"), "{{first_name}}");
+      }
+      return res;
+    };
+
+    setFormGreeting((prev) => restoreTags(prev));
+    setFormBody((prev) => restoreTags(prev));
+    setFormSubject((prev) => restoreTags(prev));
+    setFormPreviewText((prev) => restoreTags(prev));
+    setFormHighlights((prev) => prev.map((h) => restoreTags(h)));
+    setFormCtaText((prev) => restoreTags(prev));
+    setFormSignoff((prev) => restoreTags(prev));
+    setFormSmsText((prev) => restoreTags(prev));
+    setFormWhatsappText((prev) => restoreTags(prev));
 
     setFeedbackMessage({
       type: "success",
-      text: `Restored dynamic tags for automated multi-lead CRM broadcasting.`,
+      text: `Restored dynamic CRM tags ({{first_name}}, {{company}}) across all fields.`,
     });
   };
 
   // Smart Content Generator based on title
   const handleAiAutoDraft = () => {
-    if (!formTitle.trim()) {
-      applyStrategyPreset(STRATEGY_PRESETS[0]);
-      return;
+    const title = formTitle.trim() || "Workflow Automation & Infrastructure Update";
+    const lower = title.toLowerCase();
+
+    let matchedPreset: StrategyPreset = STRATEGY_PRESETS[0];
+    if (lower.includes("webinar") || lower.includes("event") || lower.includes("workshop") || lower.includes("session")) {
+      matchedPreset = STRATEGY_PRESETS[1];
+    } else if (lower.includes("launch") || lower.includes("feature") || lower.includes("release") || lower.includes("update") || lower.includes("product")) {
+      matchedPreset = STRATEGY_PRESETS[2];
+    } else if (lower.includes("winback") || lower.includes("miss") || lower.includes("discount") || lower.includes("reconnect") || lower.includes("renew") || lower.includes("upgrade")) {
+      matchedPreset = STRATEGY_PRESETS[3];
     }
 
-    const lower = formTitle.toLowerCase();
-    if (lower.includes("webinar") || lower.includes("event") || lower.includes("workshop") || lower.includes("session")) {
-      applyStrategyPreset(STRATEGY_PRESETS[1]);
-    } else if (lower.includes("launch") || lower.includes("feature") || lower.includes("release") || lower.includes("update")) {
-      applyStrategyPreset(STRATEGY_PRESETS[2]);
-    } else if (lower.includes("winback") || lower.includes("miss") || lower.includes("discount") || lower.includes("reconnect") || lower.includes("renew")) {
-      applyStrategyPreset(STRATEGY_PRESETS[3]);
-    } else {
-      const p = STRATEGY_PRESETS[0];
-      setFormTitle(formTitle.trim());
-      setFormSubject(`Priority Update: ${formTitle.trim()} for {{company}}`);
-      setFormPreviewText(`Details and resources for {{first_name}} at {{company}}`);
-      setFormGreeting("Dear {{first_name}},");
-      setFormBody(`Regarding our ongoing collaboration with {{company}}, we are pleased to announce our ${formTitle.trim()}.`);
-      setFormHighlights(p.highlights);
-      setFormCtaText("Review Details");
-      setFormCtaUrl("https://nexus.local/offer");
-      setFormSignoff("Sincerely,\nThe Nexus Team");
-      setFormSmsText(`Good news, {{first_name}}! ${formTitle.trim()} is now active for {{company}}: https://nexus.local/offer. Reply STOP to opt out.`);
-      setFormWhatsappText(`*Hello {{first_name}}*,\n\nWe have activated *${formTitle.trim()}* for *{{company}}*.\n\n*View details:* https://nexus.local/offer\n\n_Reply STOP to unsubscribe._`);
-      setSelectedStages(["qualified", "proposal", "customer"]);
-      setMinValue(5000);
+    setFormTitle(title);
+    setFormSubject(`Priority Update: ${title} for {{company}}`);
+    setFormPreviewText(`Important briefing and key action items for {{first_name}} at {{company}}`);
+    setFormGreeting("Dear {{first_name}},");
+    setFormBody(`Regarding our ongoing collaboration with {{company}}, we are pleased to introduce our ${title}. We have assembled the core features and next steps for your team.`);
+    setFormHighlights(matchedPreset.highlights);
+    setFormCtaText(matchedPreset.ctaText);
+    setFormCtaUrl(matchedPreset.ctaUrl);
+    setFormSignoff(matchedPreset.signoff);
+    setFormSmsText(`Good news, {{first_name}}! ${title} is now active for {{company}}: https://nexus.local/offer. Reply STOP to opt out.`);
+    setFormWhatsappText(`*Hello {{first_name}}*,\n\nWe have activated *${title}* for *{{company}}*.\n\n• Verified platform uptime & SLA\n• Live telemetry & unified logs\n\n*View details:* https://nexus.local/offer\n\n_Reply STOP to unsubscribe._`);
 
-      void runSegmentPreview({
-        stages: ["qualified", "proposal", "customer"],
-        minValue: 5000,
-      });
+    setFeedbackMessage({
+      type: "success",
+      text: `Auto-drafted complete multi-channel campaign content for "${title}".`,
+    });
+  };
 
-      setFeedbackMessage({
-        type: "success",
-        text: `Generated multi-channel copy and audience segment for "${formTitle.trim()}".`,
-      });
+  const handleTitleChange = (newTitle: string) => {
+    setFormTitle(newTitle);
+    if (!formSubject || formSubject.startsWith("Priority Update:")) {
+      setFormSubject(newTitle.trim() ? `Priority Update: ${newTitle.trim()} for {{company}}` : "");
+    }
+    if (!formPreviewText || formPreviewText.startsWith("Important briefing")) {
+      setFormPreviewText(newTitle.trim() ? `Important briefing and key action items for {{first_name}} at {{company}}` : "");
     }
   };
 
@@ -761,22 +766,23 @@ export default function MarketingClient({
 
   const resetWizardForm = () => {
     setWizardStep(1);
-    setFormTitle("");
+    setFormTitle("Workflow Automation & Infrastructure Update");
     setFormChannel("email");
-    setFormSubject("");
-    setFormPreviewText("");
+    setFormSubject("Priority Update: Workflow Automation & Infrastructure Update for {{company}}");
+    setFormPreviewText("Important briefing and key action items for {{first_name}} at {{company}}");
     setFormGreeting("Dear {{first_name}},");
     setFormBody("We have an important operational update regarding your workspace at {{company}}.");
     setFormHighlights([
       "Dedicated high-throughput routing with zero performance impact",
       "Comprehensive audit logging and verified security compliance",
+      "Priority assistance and data migration review",
     ]);
-    setFormCtaText("Review Details");
+    setFormCtaText("Review Update Details");
     setFormCtaUrl("https://nexus.local/offer");
     setFormSignoff("Sincerely,\nThe Nexus Team");
     setFormSmsText("Hello {{first_name}}, check your exclusive update for {{company}}: https://nexus.local/offer. Reply STOP to opt out.");
     setFormWhatsappText("*Hello {{first_name}}*,\n\nWe have an exclusive update for *{{company}}*.\n\n*View details:* https://nexus.local/offer\n\n_Reply STOP to unsubscribe_");
-    setSelectedStages(["lead", "contacted", "qualified", "proposal", "customer"]);
+    setSelectedStages(["lead", "contacted", "qualified", "proposal", "customer", "churned"]);
     setSelectedTags([]);
     setMinValue("");
   };
@@ -820,7 +826,7 @@ export default function MarketingClient({
               setIsCreateModalOpen(true);
               void runSegmentPreview({
                 channel: "email",
-                stages: ["lead", "contacted", "qualified", "proposal", "customer"],
+                stages: ["lead", "contacted", "qualified", "proposal", "customer", "churned"],
                 tags: [],
                 minValue: "",
               });
@@ -1506,7 +1512,7 @@ export default function MarketingClient({
                     type="text"
                     required
                     value={formTitle}
-                    onChange={(e) => setFormTitle(e.target.value)}
+                    onChange={(e) => handleTitleChange(e.target.value)}
                     placeholder="e.g. Enterprise Cloud Infrastructure Update"
                     className="w-full text-xs p-2.5 rounded-sm border border-border/40 bg-background text-foreground focus:outline-none focus:border-brand font-medium"
                   />
@@ -1574,14 +1580,40 @@ export default function MarketingClient({
             {wizardStep === 2 && (
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-foreground mb-1.5">Target CRM Stages</label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-semibold text-foreground">Target CRM Stages</label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const all = availableStages.map((s) => s.key);
+                          setSelectedStages(all);
+                          void runSegmentPreview({ stages: all });
+                        }}
+                        className="text-[11px] text-brand hover:underline font-semibold cursor-pointer"
+                      >
+                        Select All
+                      </button>
+                      <span className="text-muted-foreground text-[10px]">|</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedStages([]);
+                          void runSegmentPreview({ stages: [] });
+                        }}
+                        className="text-[11px] text-muted-foreground hover:text-foreground cursor-pointer"
+                      >
+                        Clear All
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {availableStages.map((st) => (
                       <label
                         key={st.key}
                         className={`p-2 rounded border text-xs flex items-center gap-2 cursor-pointer transition-colors ${
                           selectedStages.includes(st.key)
-                            ? "bg-brand/10 border-brand text-foreground"
+                            ? "bg-brand/10 border-brand text-foreground font-medium"
                             : "border-border/40 text-muted-foreground"
                         }`}
                       >

@@ -1,20 +1,13 @@
 import { NextResponse } from "next/server";
-import { AuthService } from "@/services/auth.service";
+import { ownerContextErrorResponse, requireOwnerContext } from "@/lib/supabase/owner-context";
 import { MarketingService } from "@/services/marketing.service";
 import { CreateCampaignSchema } from "@/lib/validations/marketing";
 
 export async function GET() {
-  const user = await AuthService.getCurrentUser();
-  if (!user) {
-    return NextResponse.json(
-      { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
-      { status: 401 }
-    );
-  }
-
   try {
-    const campaigns = await MarketingService.listCampaigns();
-    const analytics = await MarketingService.getAnalyticsOverview();
+    const context = await requireOwnerContext();
+    const campaigns = await MarketingService.listCampaigns(context);
+    const analytics = await MarketingService.getAnalyticsOverview(context);
 
     return NextResponse.json({
       data: {
@@ -24,24 +17,19 @@ export async function GET() {
       },
     });
   } catch (error) {
-    console.error("[API /api/marketing/campaigns GET] Error:", error);
-    return NextResponse.json(
-      { error: { code: "INTERNAL_ERROR", message: "Failed to retrieve marketing campaigns" } },
-      { status: 500 }
+    return (
+      ownerContextErrorResponse(error) ??
+      NextResponse.json(
+        { error: { code: "INTERNAL_ERROR", message: "Failed to retrieve marketing campaigns" } },
+        { status: 500 }
+      )
     );
   }
 }
 
 export async function POST(request: Request) {
-  const user = await AuthService.getCurrentUser();
-  if (!user) {
-    return NextResponse.json(
-      { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
-      { status: 401 }
-    );
-  }
-
   try {
+    const context = await requireOwnerContext();
     const json = await request.json().catch(() => null);
     const parsed = CreateCampaignSchema.safeParse(json);
 
@@ -58,14 +46,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const campaign = await MarketingService.createCampaign(parsed.data);
+    const campaign = await MarketingService.createCampaign(parsed.data, context);
 
     return NextResponse.json({ data: campaign }, { status: 201 });
   } catch (error) {
-    console.error("[API /api/marketing/campaigns POST] Error:", error);
-    return NextResponse.json(
-      { error: { code: "INTERNAL_ERROR", message: "Failed to create campaign draft" } },
-      { status: 500 }
+    return (
+      ownerContextErrorResponse(error) ??
+      NextResponse.json(
+        { error: { code: "INTERNAL_ERROR", message: "Failed to create campaign draft" } },
+        { status: 500 }
+      )
     );
   }
 }
