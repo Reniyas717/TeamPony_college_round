@@ -1,26 +1,33 @@
+import { ownerContextErrorResponse, requireOwnerContext } from "@/lib/supabase/owner-context";
+import { ContactFiltersSchema, CreateContactSchema } from "@/lib/validations/crm";
+import { CrmService, CrmServiceError } from "@/services/crm.service";
 import { NextResponse } from "next/server";
-import { CrmService } from "@/services/crm.service";
-import { CreateContactSchema, ContactFiltersSchema } from "@/lib/validations/crm";
 
-/**
- * /api/crm/contacts
- * Handles contact listing with query filters and validated lead creation.
- * Standard response contract per AGENTS.md §6.2
- */
+function serviceErrorResponse(error: unknown, message: string) {
+  if (error instanceof CrmServiceError) {
+    return NextResponse.json(
+      { error: { code: error.code, message: error.message, details: null } },
+      { status: error.status }
+    );
+  }
+  return NextResponse.json(
+    { error: { code: "INTERNAL_ERROR", message, details: null } },
+    { status: 500 }
+  );
+}
 
 export async function GET(request: Request) {
   try {
+    const context = await requireOwnerContext();
     const { searchParams } = new URL(request.url);
-
-    const queryParams: Record<string, string | number | undefined> = {};
-    if (searchParams.get("search")) queryParams.search = searchParams.get("search")!;
-    if (searchParams.get("stage")) queryParams.stage = searchParams.get("stage")!;
-    if (searchParams.get("source")) queryParams.source = searchParams.get("source")!;
-    if (searchParams.get("tag")) queryParams.tag = searchParams.get("tag")!;
-    if (searchParams.get("limit")) queryParams.limit = Number(searchParams.get("limit"));
-    if (searchParams.get("offset")) queryParams.offset = Number(searchParams.get("offset"));
-
-    const parsedFilters = ContactFiltersSchema.safeParse(queryParams);
+    const parsedFilters = ContactFiltersSchema.safeParse({
+      search: searchParams.get("search") || undefined,
+      stage: searchParams.get("stage") || undefined,
+      source: searchParams.get("source") || undefined,
+      tag: searchParams.get("tag") || undefined,
+      limit: searchParams.get("limit") || undefined,
+      offset: searchParams.get("offset") || undefined,
+    });
     if (!parsedFilters.success) {
       return NextResponse.json(
         {
@@ -33,41 +40,17 @@ export async function GET(request: Request) {
         { status: 400 }
       );
     }
-
-    const contacts = await CrmService.listContacts(parsedFilters.data);
-
+    const contacts = await CrmService.listContacts(parsedFilters.data, context);
     return NextResponse.json({ data: contacts }, { status: 200 });
-  } catch (err: unknown) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: err instanceof Error ? err.message : "Failed to retrieve contacts",
-          details: null,
-        },
-      },
-      { status: 500 }
-    );
+  } catch (error) {
+    return ownerContextErrorResponse(error) ?? serviceErrorResponse(error, "Failed to retrieve contacts");
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const json = await request.json().catch(() => null);
-    if (!json) {
-      return NextResponse.json(
-        {
-          error: {
-            code: "VALIDATION_ERROR",
-            message: "Invalid or empty request body",
-            details: null,
-          },
-        },
-        { status: 400 }
-      );
-    }
-
-    const parsed = CreateContactSchema.safeParse(json);
+    const context = await requireOwnerContext();
+    const parsed = CreateContactSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) {
       return NextResponse.json(
         {
@@ -80,20 +63,9 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-
-    const newContact = await CrmService.createContact(parsed.data);
-
-    return NextResponse.json({ data: newContact }, { status: 201 });
-  } catch {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "Failed to create contact",
-          details: null,
-        },
-      },
-      { status: 500 }
-    );
+    const contact = await CrmService.createContact(parsed.data, context);
+    return NextResponse.json({ data: contact }, { status: 201 });
+  } catch (error) {
+    return ownerContextErrorResponse(error) ?? serviceErrorResponse(error, "Failed to create contact");
   }
 }

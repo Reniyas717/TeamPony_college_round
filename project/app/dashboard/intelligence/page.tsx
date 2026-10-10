@@ -1,28 +1,26 @@
 import * as React from "react";
 import { connection } from "next/server";
-import { redirect } from "next/navigation";
-import { AuthService } from "@/services/auth.service";
+import { requireOwnerContext } from "@/lib/supabase/owner-context";
 import { JourneyMapService } from "@/services/journey-map.service";
 import IntelligenceClient from "./intelligence-client";
 
 async function IntelligenceContent() {
   await connection();
-  const user = await AuthService.getCurrentUser();
-
-  if (!user) {
-    redirect("/login");
-  }
+  const context = await requireOwnerContext();
 
   const [journeyMaps, telemetry] = await Promise.all([
-    JourneyMapService.getJourneyMaps(),
-    JourneyMapService.getTelemetry(),
+    JourneyMapService.getJourneyMaps(context),
+    JourneyMapService.getTelemetry(context),
   ]);
 
   return (
     <IntelligenceClient
       initialJourneyMaps={journeyMaps}
       initialTelemetry={telemetry}
-      user={user}
+      user={{
+        username: context.user.user_metadata?.full_name || context.user.email || "Owner",
+        email: context.user.email,
+      }}
     />
   );
 }

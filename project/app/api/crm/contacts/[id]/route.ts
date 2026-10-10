@@ -1,68 +1,47 @@
-import { NextResponse } from "next/server";
-import { CrmService } from "@/services/crm.service";
+import { ownerContextErrorResponse, requireOwnerContext } from "@/lib/supabase/owner-context";
 import { UpdateContactSchema } from "@/lib/validations/crm";
-
-/**
- * /api/crm/contacts/[id]
- * Handles single contact retrieval, stage/detail updates, and deletion.
- */
+import { CrmService, CrmServiceError } from "@/services/crm.service";
+import { NextResponse } from "next/server";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
+function serviceErrorResponse(error: unknown, message: string) {
+  if (error instanceof CrmServiceError) {
+    return NextResponse.json(
+      { error: { code: error.code, message: error.message, details: null } },
+      { status: error.status }
+    );
+  }
+  return NextResponse.json(
+    { error: { code: "INTERNAL_ERROR", message, details: null } },
+    { status: 500 }
+  );
+}
+
 export async function GET(_request: Request, { params }: RouteParams) {
   try {
+    const context = await requireOwnerContext();
     const { id } = await params;
-    const contact = await CrmService.getContactById(id);
-
+    const contact = await CrmService.getContactById(id, context);
     if (!contact) {
       return NextResponse.json(
-        {
-          error: {
-            code: "NOT_FOUND",
-            message: `Contact with ID '${id}' was not found`,
-            details: null,
-          },
-        },
+        { error: { code: "NOT_FOUND", message: "Contact was not found.", details: null } },
         { status: 404 }
       );
     }
-
     return NextResponse.json({ data: contact }, { status: 200 });
-  } catch {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "Failed to fetch contact details",
-          details: null,
-        },
-      },
-      { status: 500 }
-    );
+  } catch (error) {
+    return ownerContextErrorResponse(error) ?? serviceErrorResponse(error, "Failed to fetch contact details");
   }
 }
 
 export async function PATCH(request: Request, { params }: RouteParams) {
   try {
+    const context = await requireOwnerContext();
     const { id } = await params;
-    const json = await request.json().catch(() => null);
-
-    if (!json) {
-      return NextResponse.json(
-        {
-          error: {
-            code: "VALIDATION_ERROR",
-            message: "Empty update payload",
-            details: null,
-          },
-        },
-        { status: 400 }
-      );
-    }
-
-    const parsed = UpdateContactSchema.safeParse(json);
+    const parsed = UpdateContactSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) {
       return NextResponse.json(
         {
@@ -75,65 +54,32 @@ export async function PATCH(request: Request, { params }: RouteParams) {
         { status: 400 }
       );
     }
-
-    const updated = await CrmService.updateContact(id, parsed.data);
-    if (!updated) {
+    const contact = await CrmService.updateContact(id, parsed.data, context);
+    if (!contact) {
       return NextResponse.json(
-        {
-          error: {
-            code: "NOT_FOUND",
-            message: `Contact with ID '${id}' was not found`,
-            details: null,
-          },
-        },
+        { error: { code: "NOT_FOUND", message: "Contact was not found.", details: null } },
         { status: 404 }
       );
     }
-
-    return NextResponse.json({ data: updated }, { status: 200 });
-  } catch {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "Failed to update contact",
-          details: null,
-        },
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ data: contact }, { status: 200 });
+  } catch (error) {
+    return ownerContextErrorResponse(error) ?? serviceErrorResponse(error, "Failed to update contact");
   }
 }
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
   try {
+    const context = await requireOwnerContext();
     const { id } = await params;
-    const success = await CrmService.deleteContact(id);
-
-    if (!success) {
+    const deleted = await CrmService.deleteContact(id, context);
+    if (!deleted) {
       return NextResponse.json(
-        {
-          error: {
-            code: "NOT_FOUND",
-            message: `Contact with ID '${id}' not found or could not be deleted`,
-            details: null,
-          },
-        },
+        { error: { code: "NOT_FOUND", message: "Contact was not found.", details: null } },
         { status: 404 }
       );
     }
-
     return NextResponse.json({ data: { success: true } }, { status: 200 });
-  } catch {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "Failed to delete contact",
-          details: null,
-        },
-      },
-      { status: 500 }
-    );
+  } catch (error) {
+    return ownerContextErrorResponse(error) ?? serviceErrorResponse(error, "Failed to delete contact");
   }
 }

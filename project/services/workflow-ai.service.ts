@@ -293,36 +293,45 @@ Respond ONLY with valid JSON matching:
    * Sanitizes, normalizes, and validates any raw LLM output against the strict WorkflowDAG schema.
    * Handles minor model variations (e.g., name vs label, zero backoff, missing edge ids).
    */
-  private static sanitizeAndValidateDAG(raw: any, prompt: string): WorkflowDAG | null {
-    if (!raw || typeof raw !== "object") return null;
+  private static sanitizeAndValidateDAG(raw: unknown, prompt: string): WorkflowDAG | null {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const rawObject = raw as Record<string, unknown>;
 
-    const title = String(raw.title || "Automated Business Workflow").slice(0, 120);
-    const description = String(raw.description || "").slice(0, 500);
+    const title = String(rawObject.title || "Automated Business Workflow").slice(0, 120);
+    const description = String(rawObject.description || "").slice(0, 500);
 
-    const rawNodes = Array.isArray(raw.nodes) ? raw.nodes : [];
+    const rawNodes = Array.isArray(rawObject.nodes) ? rawObject.nodes : [];
     if (rawNodes.length === 0) return null;
 
-    const nodes: WorkflowNode[] = rawNodes.map((n: any, idx: number) => {
+    const nodes: WorkflowNode[] = rawNodes.map((value: unknown, idx: number) => {
+      const n = value && typeof value === "object" && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : {};
       const id = String(n.id || `node_${idx + 1}`);
-      const type = ["TRIGGER", "CONDITION", "DELAY", "ACTION", "APPROVAL_GATE"].includes(n.type)
-        ? n.type
+      const nodeTypes = ["TRIGGER", "CONDITION", "DELAY", "ACTION", "APPROVAL_GATE"] as const;
+      const type = typeof n.type === "string" && nodeTypes.includes(n.type as typeof nodeTypes[number])
+        ? n.type as typeof nodeTypes[number]
         : "ACTION";
-      const capability = NodeCapabilitySchema.safeParse(n.capability).success
-        ? n.capability
+      const parsedCapability = NodeCapabilitySchema.safeParse(n.capability);
+      const capability = parsedCapability.success
+        ? parsedCapability.data
         : (type === "TRIGGER" ? "website.form.submitted" : "marketing.email.send");
       const label = String(n.label || n.name || `Step ${idx + 1}`).slice(0, 100);
       const desc = n.description ? String(n.description).slice(0, 500) : undefined;
-      const config = (n.config && typeof n.config === "object") ? n.config : {};
+      const config = n.config && typeof n.config === "object" && !Array.isArray(n.config)
+        ? n.config as Record<string, unknown>
+        : {};
       const requiresApproval = Boolean(n.requiresApproval || type === "APPROVAL_GATE");
 
       let maxRetries = 3;
       let backoffSeconds = 30;
-      if (n.retryPolicy && typeof n.retryPolicy === "object") {
-        if (typeof n.retryPolicy.maxRetries === "number") {
-          maxRetries = Math.max(0, Math.min(5, Math.floor(n.retryPolicy.maxRetries)));
+      if (n.retryPolicy && typeof n.retryPolicy === "object" && !Array.isArray(n.retryPolicy)) {
+        const retryPolicy = n.retryPolicy as Record<string, unknown>;
+        if (typeof retryPolicy.maxRetries === "number") {
+          maxRetries = Math.max(0, Math.min(5, Math.floor(retryPolicy.maxRetries)));
         }
-        if (typeof n.retryPolicy.backoffSeconds === "number") {
-          backoffSeconds = Math.max(5, Math.min(3600, Math.floor(n.retryPolicy.backoffSeconds)));
+        if (typeof retryPolicy.backoffSeconds === "number") {
+          backoffSeconds = Math.max(5, Math.min(3600, Math.floor(retryPolicy.backoffSeconds)));
         }
       }
 
@@ -339,16 +348,26 @@ Respond ONLY with valid JSON matching:
     });
 
     const nodeIds = new Set(nodes.map((n) => n.id));
-    const rawEdges = Array.isArray(raw.edges) ? raw.edges : [];
+    const rawEdges = Array.isArray(rawObject.edges) ? rawObject.edges : [];
     const edges: WorkflowEdge[] = rawEdges
-      .filter((e: any) => e && nodeIds.has(e.sourceNodeId) && nodeIds.has(e.targetNodeId))
-      .map((e: any, idx: number) => ({
+      .filter((value: unknown) => {
+        if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+        const edge = value as Record<string, unknown>;
+        return typeof edge.sourceNodeId === "string" && typeof edge.targetNodeId === "string"
+          && nodeIds.has(edge.sourceNodeId) && nodeIds.has(edge.targetNodeId);
+      })
+      .map((value: unknown, idx: number) => {
+        const e = value as Record<string, unknown>;
+        return ({
         id: String(e.id || `edge_${idx + 1}`),
         sourceNodeId: String(e.sourceNodeId),
         targetNodeId: String(e.targetNodeId),
         conditionLabel: e.conditionLabel ? String(e.conditionLabel) : undefined,
-        sourceHandle: ["default", "true", "false"].includes(e.sourceHandle) ? e.sourceHandle : "default",
-      }));
+        sourceHandle: typeof e.sourceHandle === "string" && ["default", "true", "false"].includes(e.sourceHandle)
+          ? e.sourceHandle as WorkflowEdge["sourceHandle"]
+          : "default",
+      });
+    });
 
     const candidate = {
       title,
@@ -356,8 +375,8 @@ Respond ONLY with valid JSON matching:
       naturalLanguagePrompt: prompt,
       nodes,
       edges,
-      isHighImpact: Boolean(raw.isHighImpact || nodes.some((n) => n.requiresApproval)),
-      estimatedAudienceCount: typeof raw.estimatedAudienceCount === "number" ? Math.max(0, raw.estimatedAudienceCount) : undefined,
+      isHighImpact: Boolean(rawObject.isHighImpact || nodes.some((n) => n.requiresApproval)),
+      estimatedAudienceCount: typeof rawObject.estimatedAudienceCount === "number" ? Math.max(0, rawObject.estimatedAudienceCount) : undefined,
     };
 
     const validated = WorkflowDAGSchema.safeParse(candidate);
@@ -407,7 +426,7 @@ Respond ONLY with valid JSON matching:
     nodes.push({
       id: `node-${nodeIndex++}`,
       type: "TRIGGER",
-      capability: triggerCapability as any,
+      capability: NodeCapabilitySchema.parse(triggerCapability),
       label: triggerLabel,
       description: triggerDesc,
       config: {},

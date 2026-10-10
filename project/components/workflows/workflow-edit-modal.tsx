@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { AutomationWorkflow, WorkflowDAG, WorkflowStatus } from "@/lib/validations/workflow";
 import { useUpdateWorkflow, useGenerateWorkflow } from "@/hooks/use-workflows";
 
@@ -27,18 +27,6 @@ export function WorkflowEditModal({
 
   const updateMutation = useUpdateWorkflow();
   const generateMutation = useGenerateWorkflow();
-
-  useEffect(() => {
-    if (isOpen) {
-      setTitle(workflow.title);
-      setDescription(workflow.description || "");
-      setStatus(workflow.status);
-      setPrompt(workflow.natural_language_prompt);
-      setUpdatedDag(null);
-      setErrorMsg(null);
-      setSuccessNotice(null);
-    }
-  }, [isOpen, workflow]);
 
   if (!isOpen) return null;
 
@@ -90,7 +78,7 @@ export function WorkflowEditModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div 
+      <div
         className="bg-card w-full max-w-2xl rounded-xl shadow-2xl border border-border flex flex-col overflow-hidden max-h-[90vh] animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getGoogleAccessTokenForBusiness } from "./google-token-vault.service";
+import { getGoogleAccessTokenForBusiness, GoogleTokenVaultError } from "./google-token-vault.service";
 
 export type MeetSpaceResult = { name: string; meetingUri: string };
 
@@ -14,7 +14,9 @@ export async function createGoogleMeetSpace(businessId: string): Promise<MeetSpa
   let accessToken: string;
   try {
     accessToken = await getGoogleAccessTokenForBusiness(businessId);
-  } catch {
+  } catch (error) {
+    const code = error instanceof GoogleTokenVaultError ? error.code : "UNKNOWN";
+    console.error(`[GOOGLE-MEET-TOKEN-UNAVAILABLE] code=${code}`);
     throw new MeetApiError("reconnect", "Google Meet access is unavailable. Sign in with Google again.");
   }
 
@@ -40,6 +42,19 @@ export async function createGoogleMeetSpace(businessId: string): Promise<MeetSpa
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
+      const payload = await response.clone().json().catch(() => null) as {
+        error?: {
+          status?: unknown;
+          errors?: Array<{ reason?: unknown }>;
+          details?: Array<{ reason?: unknown }>;
+        };
+      } | null;
+      const labels = [
+        payload?.error?.status,
+        ...(payload?.error?.details ?? []).map((detail) => detail.reason),
+        ...(payload?.error?.errors ?? []).map((detail) => detail.reason),
+      ].filter((value): value is string => typeof value === "string" && /^[A-Z0-9_]{1,64}$/.test(value));
+      console.error(`[GOOGLE-MEET-AUTH-REJECTED] status=${response.status}${labels.length ? ` reason=${labels.join(",")}` : ""}`);
       throw new MeetApiError("reconnect", "Google Meet access is unavailable. Sign in with Google again.");
     }
     if (response.status >= 500) {

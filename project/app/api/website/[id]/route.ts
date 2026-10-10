@@ -1,7 +1,31 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { WebsiteService } from "@/services/website.service";
+import {
+  WebsiteService,
+  WebsiteServiceError,
+} from "@/services/website.service";
 import { UpdateWebsiteInputSchema } from "@/lib/validations/website";
+import {
+  ownerContextErrorResponse,
+  requireOwnerContext,
+} from "@/lib/supabase/owner-context";
+
+function websiteErrorResponse(error: unknown) {
+  const ownerError = ownerContextErrorResponse(error);
+  if (ownerError) return ownerError;
+
+  if (error instanceof WebsiteServiceError) {
+    return NextResponse.json(
+      { error: { code: error.code, message: error.message, details: null } },
+      { status: error.status }
+    );
+  }
+
+  console.error("[WEBSITE_API_ERROR]", error);
+  return NextResponse.json(
+    { error: { code: "INTERNAL_ERROR", message: "Unable to complete website request", details: null } },
+    { status: 500 }
+  );
+}
 
 export async function GET(
   _request: Request,
@@ -9,33 +33,9 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const owner = await requireOwnerContext();
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
-        { status: 401 }
-      );
-    }
-
-    const { data: business } = await supabase
-      .from("businesses")
-      .select("id")
-      .eq("owner_id", user.id)
-      .maybeSingle();
-
-    if (!business?.id) {
-      return NextResponse.json(
-        { error: { code: "NOT_FOUND", message: "No business workspace found for user" } },
-        { status: 404 }
-      );
-    }
-
-    const website = await WebsiteService.getWebsite(business.id, id);
+    const website = await WebsiteService.getWebsite(owner, id);
     if (!website) {
       return NextResponse.json(
         { error: { code: "NOT_FOUND", message: "Website not found" } },
@@ -44,12 +44,8 @@ export async function GET(
     }
 
     return NextResponse.json({ data: website });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json(
-      { error: { code: "INTERNAL_ERROR", message } },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    return websiteErrorResponse(error);
   }
 }
 
@@ -59,31 +55,7 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
-        { status: 401 }
-      );
-    }
-
-    const { data: business } = await supabase
-      .from("businesses")
-      .select("id")
-      .eq("owner_id", user.id)
-      .maybeSingle();
-
-    if (!business?.id) {
-      return NextResponse.json(
-        { error: { code: "NOT_FOUND", message: "No business workspace found for user" } },
-        { status: 404 }
-      );
-    }
+    const owner = await requireOwnerContext();
 
     const json = await request.json().catch(() => null);
     const parsed = UpdateWebsiteInputSchema.safeParse(json);
@@ -102,19 +74,14 @@ export async function PUT(
     }
 
     const updatedWebsite = await WebsiteService.updateWebsite(
-      business.id,
-      user.id,
+      owner,
       id,
       parsed.data
     );
 
     return NextResponse.json({ data: updatedWebsite });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json(
-      { error: { code: "INTERNAL_ERROR", message } },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    return websiteErrorResponse(error);
   }
 }
 
@@ -124,39 +91,11 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const owner = await requireOwnerContext();
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
-        { status: 401 }
-      );
-    }
-
-    const { data: business } = await supabase
-      .from("businesses")
-      .select("id")
-      .eq("owner_id", user.id)
-      .maybeSingle();
-
-    if (!business?.id) {
-      return NextResponse.json(
-        { error: { code: "NOT_FOUND", message: "No business workspace found for user" } },
-        { status: 404 }
-      );
-    }
-
-    const result = await WebsiteService.deleteWebsite(business.id, user.id, id);
+    const result = await WebsiteService.deleteWebsite(owner, id);
     return NextResponse.json({ data: result });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json(
-      { error: { code: "INTERNAL_ERROR", message } },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    return websiteErrorResponse(error);
   }
 }

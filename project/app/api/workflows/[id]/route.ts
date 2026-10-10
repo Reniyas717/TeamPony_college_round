@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { WorkflowEngineService } from "@/services/workflow-engine.service";
-import { UpdateWorkflowSchema } from "@/lib/validations/workflow";
+import { requireOwnerContext } from "@/lib/supabase/owner-context";
+import { workflowErrorResponse } from "../_errors";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -13,7 +14,8 @@ interface RouteParams {
 export async function GET(_request: Request, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const workflow = await WorkflowEngineService.getWorkflowById(id);
+    const context = await requireOwnerContext();
+    const workflow = await WorkflowEngineService.getWorkflowById(context, id);
 
     if (!workflow) {
       return NextResponse.json(
@@ -30,68 +32,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
 
     return NextResponse.json({ data: workflow }, { status: 200 });
   } catch (err: unknown) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: err instanceof Error ? err.message : "Failed to fetch workflow",
-          details: null,
-        },
-      },
-      { status: 500 }
-    );
-  }
-}
-
-/**
- * PATCH /api/workflows/[id]
- * Updates an existing workflow.
- */
-export async function PATCH(request: Request, { params }: RouteParams) {
-  try {
-    const { id } = await params;
-    const json = await request.json().catch(() => null);
-    const parsed = UpdateWorkflowSchema.safeParse(json);
-
-    if (!parsed.success) {
-      return NextResponse.json(
-        {
-          error: {
-            code: "VALIDATION_ERROR",
-            message: "Invalid update payload",
-            details: parsed.error.flatten(),
-          },
-        },
-        { status: 400 }
-      );
-    }
-
-    const updated = await WorkflowEngineService.updateWorkflow(id, parsed.data);
-    if (!updated) {
-      return NextResponse.json(
-        {
-          error: {
-            code: "NOT_FOUND",
-            message: `Workflow '${id}' was not found`,
-            details: null,
-          },
-        },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({ data: updated }, { status: 200 });
-  } catch (err: unknown) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: err instanceof Error ? err.message : "Failed to update workflow",
-          details: null,
-        },
-      },
-      { status: 500 }
-    );
+    return workflowErrorResponse(err, "Failed to fetch workflow");
   }
 }
 
@@ -102,7 +43,8 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 export async function DELETE(_request: Request, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const deleted = await WorkflowEngineService.deleteWorkflow(id);
+    const context = await requireOwnerContext();
+    const deleted = await WorkflowEngineService.deleteWorkflow(context, id);
 
     if (!deleted) {
       return NextResponse.json(
@@ -119,15 +61,6 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
 
     return NextResponse.json({ data: { success: true } }, { status: 200 });
   } catch (err: unknown) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: err instanceof Error ? err.message : "Failed to delete workflow",
-          details: null,
-        },
-      },
-      { status: 500 }
-    );
+    return workflowErrorResponse(err, "Failed to delete workflow");
   }
 }

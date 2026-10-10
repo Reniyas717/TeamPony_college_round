@@ -39,6 +39,7 @@ export async function GET(_request: Request, { params }: Context) {
   });
 
   if (error) return mapRpcError(error.message);
+
   return NextResponse.json({ data });
 }
 
@@ -62,5 +63,6 @@ export async function POST(request: Request, { params }: Context) {
   });
 
   if (error) return mapRpcError(error.message);
+
   return NextResponse.json({ data });
 }

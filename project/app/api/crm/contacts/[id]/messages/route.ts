@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { CrmService, DEFAULT_BUSINESS_ID } from "@/services/crm.service";
+import { CrmService } from "@/services/crm.service";
 import { NotificationService } from "@/services/notification.service";
 import { AuditService } from "@/services/audit.service";
+import { requireOwnerContext } from "@/lib/supabase/owner-context";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -21,6 +22,7 @@ const SendMessageSchema = z.object({
  */
 export async function POST(request: Request, { params }: RouteParams) {
   try {
+    const context = await requireOwnerContext();
     const resolvedParams = await params;
     const id = resolvedParams?.id;
     const json = await request.json().catch(() => ({}));
@@ -39,14 +41,14 @@ export async function POST(request: Request, { params }: RouteParams) {
       );
     }
 
-    const contact = await CrmService.getContactById(id);
+    const contact = await CrmService.getContactById(id, context);
     if (!contact) {
       return NextResponse.json(
         {
           error: {
             code: "NOT_FOUND",
             message: `Contact with ID '${id}' not found`,
-            details: { id, resolvedParams, typeOfId: typeof id },
+          details: null,
           },
         },
         { status: 404 }
@@ -104,19 +106,11 @@ export async function POST(request: Request, { params }: RouteParams) {
         contactId: contact.id,
       });
 
-      await AuditService.recordEvent(
-        {
-          business_id: DEFAULT_BUSINESS_ID,
-          action: "marketing.campaign.dispatched",
-          actor: { id: "owner", type: "user" },
-          resource: { type: "crm_contact", id: contact.id },
-          outcome: "success",
-          metadata: { channel: "email", to: contact.email, subject: emailSubject, yesUrl, noUrl },
-        },
-        { critical: false }
-      );
     } else if (channel === "whatsapp") {
-      const recipientPhone = contact.phone || "+919082565845";
+      const recipientPhone = contact.phone;
+      if (!recipientPhone) {
+        return NextResponse.json({ error: { code: "VALIDATION_ERROR", message: "This contact has no phone number.", details: null } }, { status: 422 });
+      }
       const yesUrl = `http://localhost:3000/response?id=${contact.id}&decision=yes`;
       const noUrl = `http://localhost:3000/response?id=${contact.id}&decision=no`;
 
@@ -140,19 +134,11 @@ Please select an option below:
         contactId: contact.id,
       });
 
-      await AuditService.recordEvent(
-        {
-          business_id: DEFAULT_BUSINESS_ID,
-          action: "marketing.campaign.dispatched",
-          actor: { id: "owner", type: "user" },
-          resource: { type: "crm_contact", id: contact.id },
-          outcome: "success",
-          metadata: { channel: "whatsapp", to: recipientPhone },
-        },
-        { critical: false }
-      );
     } else {
-      const recipientPhone = contact.phone || "+919082565845";
+      const recipientPhone = contact.phone;
+      if (!recipientPhone) {
+        return NextResponse.json({ error: { code: "VALIDATION_ERROR", message: "This contact has no phone number.", details: null } }, { status: 422 });
+      }
       const smsMessage = message || `Hi ${contact.first_name}, thank you for your project inquiry!`;
 
       result = await NotificationService.sendSms({
@@ -162,6 +148,26 @@ Please select an option below:
       });
     }
 
+    await CrmService.logActivity(
+      contact.id,
+      "email_sent",
+      `${channel.toUpperCase()} sent`,
+      `A ${channel} message was sent to this contact.`,
+      "owner",
+      { channel },
+      context
+    );
+    await AuditService.recordEvent(
+      {
+        business_id: context.businessId,
+        action: "marketing.campaign.dispatched",
+        actor: { id: context.user.id, type: "user" },
+        resource: { type: "crm_contact", id: contact.id },
+        outcome: "success",
+        metadata: { channel, contact_id: contact.id },
+      },
+      { client: context.client, critical: true }
+    );
     return NextResponse.json({ data: result }, { status: 200 });
   } catch (err: unknown) {
     return NextResponse.json(

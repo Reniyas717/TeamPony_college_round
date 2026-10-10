@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { CrmService, DEFAULT_BUSINESS_ID } from "@/services/crm.service";
-import { AuditService } from "@/services/audit.service";
+import { CrmService } from "@/services/crm.service";
+import { requireOwnerContext } from "@/lib/supabase/owner-context";
 import { LeadSentimentService } from "@/services/lead-sentiment.service";
 
 interface RouteParams {
@@ -21,6 +21,7 @@ const ProcessResponseSchema = z.object({
  */
 export async function POST(request: Request, { params }: RouteParams) {
   try {
+    const context = await requireOwnerContext();
     const { id } = await params;
     const json = await request.json().catch(() => ({}));
     const parsed = ProcessResponseSchema.safeParse(json);
@@ -38,7 +39,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       );
     }
 
-    const contact = await CrmService.getContactById(id);
+    const contact = await CrmService.getContactById(id, context);
     if (!contact) {
       return NextResponse.json(
         {
@@ -67,7 +68,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       stage: targetStage,
       tags: cleanTags,
       next_action_text: `Inbound ${channel.toUpperCase()}: "${responseText.slice(0, 80)}"`,
-    });
+    }, context);
 
     // Record activity on the contact's timeline
     await CrmService.logActivity(
@@ -87,29 +88,8 @@ export async function POST(request: Request, { params }: RouteParams) {
         confidence,
         previous_stage: contact.stage,
         new_stage: targetStage,
-      }
-    );
-
-    // Central Audit Logging
-    await AuditService.recordEvent(
-      {
-        business_id: DEFAULT_BUSINESS_ID,
-        action: "crm.contact.stage_changed",
-        actor: { id: "ai_agent", type: "ai_agent" },
-        resource: { type: "crm_contact", id: contact.id },
-        outcome: "success",
-        metadata: {
-          decision,
-          isChurned,
-          engine,
-          confidence,
-          channel,
-          responseText,
-          previous_stage: contact.stage,
-          new_stage: targetStage,
-        },
       },
-      { critical: false }
+      context
     );
 
     return NextResponse.json(

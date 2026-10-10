@@ -1,8 +1,10 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
+import { requireOwnerContext } from "@/lib/supabase/owner-context";
 import type { AttendanceReviewInput } from "@/lib/validations/webinar-attendance";
 import { getGoogleAccessTokenForBusiness, getGoogleConnectionStatus } from "./google-token-vault.service";
+import { recordWebinarAudit } from "./audit";
 
 type DatabaseClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -191,17 +193,17 @@ function normalizedEmail(value: string | null | undefined) {
 }
 
 async function ownerContext() {
-  const supabase = await createClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) throw new MeetAttendanceServiceError("UNAUTHORIZED", "Sign in to manage attendance.");
-
-  const { data: business, error } = await supabase
-    .from("businesses")
-    .select("id")
-    .eq("owner_id", user.id)
-    .maybeSingle();
-  if (error || !business) throw new MeetAttendanceServiceError("NOT_FOUND", "Business workspace not found.");
-  return { supabase, businessId: business.id, userId: user.id };
+  try {
+    const context = await requireOwnerContext();
+    return { supabase: context.client, businessId: context.businessId, userId: context.user.id, user: context.user };
+  } catch (error) {
+    if (error instanceof Error && "status" in error) {
+      const status = (error as { status?: number }).status;
+      if (status === 401) throw new MeetAttendanceServiceError("UNAUTHORIZED", error.message);
+      if (status === 404) throw new MeetAttendanceServiceError("NOT_FOUND", error.message);
+    }
+    throw new MeetAttendanceServiceError("DATABASE_ERROR", "Business data is temporarily unavailable.");
+  }
 }
 
 async function getOwnedWebinar(supabase: DatabaseClient, businessId: string, webinarId: string) {
@@ -573,9 +575,14 @@ export async function importWebinarAttendance(
   maxPages: number,
   providerOverride?: MeetAttendanceProvider | null,
 ) {
-  const { supabase, businessId } = await ownerContext();
+  const context = await ownerContext();
+  const { supabase, businessId } = context;
   const webinar = await getOwnedWebinar(supabase, businessId, webinarId);
   const importState = await getOrCreateImport(supabase, businessId, webinarId);
+  await recordWebinarAudit(context, {
+    action: "webinar.attendance.import_started", resourceType: "webinar", resourceId: webinarId,
+    metadata: { webinar_id: webinarId, import_id: importState.id, page_count: Math.max(1, Math.min(Math.trunc(maxPages), 50)) },
+  });
   const provider = providerOverride ?? getMeetAttendanceProvider(businessId);
   const googleStatus = await getGoogleConnectionStatus(businessId);
   if (!provider || !webinar.meet_space_name || !googleStatus.connected || !googleStatus.scope_granted) {
@@ -583,6 +590,11 @@ export async function importWebinarAttendance(
       status: "integration_unavailable",
       last_error: "Google Meet attendance integration is unavailable; no provider credentials were supplied.",
       completed_at: null,
+    });
+    await recordWebinarAudit(context, {
+      action: "webinar.attendance.import_completed", resourceType: "webinar", resourceId: webinarId, outcome: "failure",
+      metadata: { webinar_id: webinarId, import_id: importState.id, participant_count: 0, unresolved_count: unavailable.unresolved_count ?? 0, reason_code: "INTEGRATION_UNAVAILABLE" },
+      error: { code: "INTEGRATION_UNAVAILABLE", message: "Google Meet attendance integration is unavailable." },
     });
     return { status: "integration_unavailable" as const, import: unavailable, pages_processed: 0 };
   }
@@ -623,6 +635,11 @@ export async function importWebinarAttendance(
 
     if (!checkpoint.conferencesComplete) {
       const incomplete = await updateImport(supabase, businessId, importState.id, { status: "incomplete", checkpoint });
+      await recordWebinarAudit(context, {
+        action: "webinar.attendance.import_completed", resourceType: "webinar", resourceId: webinarId, outcome: "failure",
+        metadata: { webinar_id: webinarId, import_id: importState.id, participant_count: incomplete.participant_count ?? 0, unresolved_count: incomplete.unresolved_count ?? 0, reason_code: "PAGE_LIMIT_REACHED" },
+        error: { code: "PAGE_LIMIT_REACHED", message: "Attendance import is incomplete." },
+      });
       return { status: "incomplete" as const, import: incomplete, pages_processed: Math.max(0, maxPages - pagesLeft.value) };
     }
 
@@ -654,6 +671,12 @@ export async function importWebinarAttendance(
       completed_at: fullyImported ? new Date().toISOString() : null,
       last_error: fullyImported ? null : "Attendance import is incomplete; resume paging before finalizing no-shows.",
     });
+    await recordWebinarAudit(context, {
+      action: "webinar.attendance.import_completed", resourceType: "webinar", resourceId: webinarId,
+      outcome: finalState.status === "complete" ? "success" : "failure",
+      metadata: { webinar_id: webinarId, import_id: importState.id, participant_count: finalState.participant_count ?? 0, unresolved_count: finalState.unresolved_count ?? 0, reason_code: finalState.status === "complete" ? "COMPLETE" : "INCOMPLETE" },
+      ...(finalState.status === "complete" ? {} : { error: { code: "INCOMPLETE", message: "Attendance import is incomplete." } }),
+    });
     return { status: finalState.status, import: finalState, pages_processed: Math.max(0, maxPages - pagesLeft.value) };
   } catch (error) {
     const recordCounts = await counts(supabase, businessId, webinarId);
@@ -663,12 +686,18 @@ export async function importWebinarAttendance(
       ...recordCounts,
       last_error: error instanceof MeetAttendanceServiceError ? error.message : "Attendance provider request failed; retry is required.",
     });
+    await recordWebinarAudit(context, {
+      action: "webinar.attendance.import_completed", resourceType: "webinar", resourceId: webinarId, outcome: "failure",
+      metadata: { webinar_id: webinarId, import_id: importState.id, participant_count: failedState.participant_count ?? 0, unresolved_count: failedState.unresolved_count ?? 0, reason_code: "PROVIDER_ERROR" },
+      error: { code: "PROVIDER_ERROR", message: "Attendance provider request failed." },
+    });
     return { status: "incomplete" as const, import: failedState, pages_processed: Math.max(0, maxPages - pagesLeft.value) };
   }
 }
 
 export async function reviewWebinarParticipant(webinarId: string, participantId: string, input: AttendanceReviewInput) {
-  const { supabase, businessId, userId } = await ownerContext();
+  const context = await ownerContext();
+  const { supabase, businessId, userId } = context;
   await getOwnedWebinar(supabase, businessId, webinarId);
   const { data: participant, error: participantError } = await supabase
     .from("webinar_participants")
@@ -724,5 +753,9 @@ export async function reviewWebinarParticipant(webinarId: string, participantId:
       unresolved_count: unresolvedCount ?? 0,
     });
   }
+  await recordWebinarAudit(context, {
+    action: "webinar.participant.reviewed", resourceType: "webinar_participant", resourceId: participantId,
+    metadata: { webinar_id: webinarId, participant_id: participantId, review_disposition: input.disposition },
+  });
   return updated;
 }

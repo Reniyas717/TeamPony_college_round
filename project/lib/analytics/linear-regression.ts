@@ -1,6 +1,6 @@
 /**
  * Ordinary Least Squares (OLS) Linear Regression & Predictive Forecasting Engine
- * 
+ *
  * Computes:
  * - Slope (m) & Y-intercept (c) for y = mx + c
  * - Coefficient of Determination (R²)

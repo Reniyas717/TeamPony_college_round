@@ -2,10 +2,12 @@ import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
 
-import { createAdminClient, createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
+import { requireOwnerContext } from "@/lib/supabase/owner-context";
 import type { WebinarInput } from "@/lib/validations/webinar";
 import { createGoogleMeetSpace, MeetApiError } from "./google-meet.service";
 import { queueCancellationNotifications, queueRescheduleNotifications } from "./event-notification.service";
+import { recordWebinarAudit } from "./audit";
 
 export class WebinarServiceError extends Error {
   constructor(public code: "UNAUTHORIZED" | "NOT_FOUND" | "DATABASE_ERROR" | "INTEGRATION_REQUIRED" | "CONFLICT", message: string) {
@@ -14,14 +16,17 @@ export class WebinarServiceError extends Error {
 }
 
 async function ownerContext() {
-  const supabase = await createClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) throw new WebinarServiceError("UNAUTHORIZED", "Sign in to manage webinars.");
-
-  const { data: business, error } = await supabase
-    .from("businesses").select("id").eq("owner_id", user.id).maybeSingle();
-  if (error || !business) throw new WebinarServiceError("NOT_FOUND", "Business workspace not found.");
-  return { supabase, businessId: business.id };
+  try {
+    const context = await requireOwnerContext();
+    return { supabase: context.client, businessId: context.businessId, user: context.user };
+  } catch (error) {
+    if (error instanceof Error && "status" in error) {
+      const status = (error as { status?: number }).status;
+      if (status === 401) throw new WebinarServiceError("UNAUTHORIZED", error.message);
+      if (status === 404) throw new WebinarServiceError("NOT_FOUND", error.message);
+    }
+    throw new WebinarServiceError("DATABASE_ERROR", "Business data is temporarily unavailable.");
+  }
 }
 
 async function webinarRegistrationSnapshot(supabase: Awaited<ReturnType<typeof createClient>>, businessId: string, webinarId: string) {
@@ -35,6 +40,14 @@ async function webinarRegistrationSnapshot(supabase: Awaited<ReturnType<typeof c
     if (!data || data.length < 1000) break;
   }
   return [...new Set(ids)].sort();
+}
+
+async function ensureOwnedSeries(supabase: Awaited<ReturnType<typeof createClient>>, businessId: string, seriesId: string | null | undefined) {
+  if (!seriesId) return;
+  const { data, error } = await supabase.from("webinar_series").select("id")
+    .eq("business_id", businessId).eq("id", seriesId).maybeSingle();
+  if (error) throw new WebinarServiceError("DATABASE_ERROR", "Could not verify the webinar series.");
+  if (!data) throw new WebinarServiceError("NOT_FOUND", "Webinar series not found.");
 }
 
 export async function listWebinars() {
@@ -130,7 +143,9 @@ export async function getWebinar(id: string) {
 
 export async function createWebinar(input: WebinarInput) {
   if (input.status === "scheduled") throw new WebinarServiceError("INTEGRATION_REQUIRED", "Connect the existing Google Meet integration before scheduling.");
-  const { supabase, businessId } = await ownerContext();
+  const context = await ownerContext();
+  const { supabase, businessId } = context;
+  await ensureOwnedSeries(supabase, businessId, input.series_id);
   const { data, error } = await supabase.from("webinars").insert({
     business_id: businessId, title: input.title, description: input.description ?? null,
     public_slug: randomUUID(),
@@ -141,11 +156,17 @@ export async function createWebinar(input: WebinarInput) {
     series_id: input.series_id ?? null, status: input.status ?? "draft",
   }).select("*").single();
   if (error || !data) throw new WebinarServiceError("DATABASE_ERROR", "Could not create webinar.");
+  await recordWebinarAudit(context, {
+    action: "webinar.created", resourceType: "webinar", resourceId: data.id,
+    metadata: { webinar_id: data.id, session_count: 1, status: data.status },
+  });
   return data;
 }
 
 export async function updateWebinar(id: string, input: WebinarInput) {
-  const { supabase, businessId } = await ownerContext();
+  const context = await ownerContext();
+  const { supabase, businessId } = context;
+  await ensureOwnedSeries(supabase, businessId, input.series_id);
   const { data: current, error: readError } = await supabase.from("webinars").select("*")
     .eq("business_id", businessId).eq("id", id).maybeSingle();
   if (readError) throw new WebinarServiceError("DATABASE_ERROR", "Could not load webinar.");
@@ -166,12 +187,17 @@ export async function updateWebinar(id: string, input: WebinarInput) {
   const { data, error } = await update.select("*").maybeSingle();
   if (error) throw new WebinarServiceError("DATABASE_ERROR", "Could not update webinar.");
   if (!data) throw new WebinarServiceError(input.expected_version !== undefined ? "CONFLICT" : "NOT_FOUND", input.expected_version !== undefined ? "This webinar changed. Reload it before saving." : "Webinar not found.");
+  await recordWebinarAudit(context, {
+    action: "webinar.updated", resourceType: "webinar", resourceId: data.id,
+    metadata: { webinar_id: data.id, changed_fields: ["title", "description", "presenter", "scheduled_start", "timezone", "duration_minutes", "capacity", "registration_closes_at", "followup_enabled", "product_url", "series_id", "status"], version: data.version },
+  });
   return data;
 }
 
 export async function deleteWebinar(id: string, confirmed: boolean, expectedVersion?: number) {
   if (!confirmed) throw new WebinarServiceError("CONFLICT", "Explicit deletion confirmation is required.");
-  const { supabase, businessId } = await ownerContext();
+  const context = await ownerContext();
+  const { supabase, businessId } = context;
   const preview = await getWebinarDeletePreview(id);
   if (expectedVersion !== undefined && preview.version !== expectedVersion) throw new WebinarServiceError("CONFLICT", "This webinar changed. Review deletion details again.");
   if (preview.active_delivery_count > 0 || preview.unknown_delivery_count > 0 || preview.meet_operation_count > 0) throw new WebinarServiceError("CONFLICT", "Meet or email work is in progress or has an unknown provider outcome. Reconcile it before deletion.");
@@ -181,6 +207,10 @@ export async function deleteWebinar(id: string, confirmed: boolean, expectedVers
   if (error?.code === "40001") throw new WebinarServiceError("CONFLICT", "Email delivery started while deletion was being confirmed. Reconcile it before retrying.");
   if (error) throw new WebinarServiceError("DATABASE_ERROR", "Could not delete webinar.");
   if (!data) throw new WebinarServiceError(expectedVersion !== undefined ? "CONFLICT" : "NOT_FOUND", expectedVersion !== undefined ? "This webinar changed. Reload it before deleting." : "Webinar not found.");
+  await recordWebinarAudit(context, {
+    action: "webinar.deleted", resourceType: "webinar", resourceId: id,
+    metadata: { webinar_id: id, result: "deleted" },
+  });
 }
 
 export async function getWebinarDeletePreview(id: string) {
@@ -206,7 +236,8 @@ export async function getWebinarDeletePreview(id: string) {
 }
 
 export async function scheduleWebinar(id: string, expectedVersion: number) {
-  const { supabase, businessId } = await ownerContext();
+  const context = await ownerContext();
+  const { supabase, businessId } = context;
   const { data: current, error: readError } = await supabase.from("webinars").select("*")
     .eq("business_id", businessId).eq("id", id).maybeSingle();
   if (readError) throw new WebinarServiceError("DATABASE_ERROR", "Could not load webinar.");
@@ -230,6 +261,12 @@ export async function scheduleWebinar(id: string, expectedVersion: number) {
     .maybeSingle();
   if (reserveError || !reserved) throw new WebinarServiceError("CONFLICT", "This webinar changed. Reload it before scheduling.");
 
+  const operationId = randomUUID();
+  await recordWebinarAudit(context, {
+    action: "webinar.meet.provisioning_started", resourceType: "webinar", resourceId: id,
+    metadata: { webinar_id: id, operation_id: operationId },
+  });
+
   let space: Awaited<ReturnType<typeof createGoogleMeetSpace>>;
   try {
     space = await createGoogleMeetSpace(businessId);
@@ -238,8 +275,19 @@ export async function scheduleWebinar(id: string, expectedVersion: number) {
     await supabase.from("webinars").update({
       provisioning_status: apiError.outcome === "unknown" ? "unknown" : apiError.outcome === "reconnect" ? "reconnect_required" : "failed",
     }).eq("business_id", businessId).eq("id", id).eq("version", reserved.version);
+    await recordWebinarAudit(context, {
+      action: apiError.outcome === "unknown" ? "webinar.meet.provisioning_unknown" : "webinar.meet.provisioning_started",
+      resourceType: "webinar", resourceId: id, outcome: "failure",
+      metadata: { webinar_id: id, operation_id: operationId, provider: "google_meet", reason_code: apiError.outcome },
+      error: { code: "MEET_PROVISIONING_FAILED", message: apiError.message },
+    });
     throw new WebinarServiceError(apiError.outcome === "reconnect" ? "INTEGRATION_REQUIRED" : apiError.outcome === "unknown" ? "CONFLICT" : "DATABASE_ERROR", apiError.message);
   }
+
+  await recordWebinarAudit(context, {
+    action: "webinar.meet.provisioned", resourceType: "webinar", resourceId: id,
+    metadata: { webinar_id: id, operation_id: operationId, provider: "google_meet" },
+  });
 
   const { data, error } = await supabase.from("webinars").update({
     meet_space_name: space.name,
@@ -250,8 +298,17 @@ export async function scheduleWebinar(id: string, expectedVersion: number) {
   if (error || !data) {
     await supabase.from("webinars").update({ provisioning_status: "unknown" })
       .eq("business_id", businessId).eq("id", id);
+    await recordWebinarAudit(context, {
+      action: "webinar.meet.provisioning_unknown", resourceType: "webinar", resourceId: id, outcome: "failure",
+      metadata: { webinar_id: id, operation_id: operationId, provider: "google_meet", reason_code: "LOCAL_FINALIZATION_FAILED" },
+      error: { code: "LOCAL_FINALIZATION_FAILED", message: "Meet was created but could not be linked safely." },
+    });
     throw new WebinarServiceError("CONFLICT", "Meet was created but could not be safely linked. Review the existing space before retrying.");
   }
+  await recordWebinarAudit(context, {
+    action: "webinar.scheduled", resourceType: "webinar", resourceId: id,
+    metadata: { webinar_id: id, version: data.version, recipient_count: 0 },
+  });
   return data;
 }
 
@@ -284,7 +341,9 @@ export async function getWebinarReschedulePreview(id: string) {
 }
 
 export async function rescheduleWebinar(id: string, input: WebinarInput, expectedRecipientCount: number, expectedRecipientSnapshotHash: string) {
-  const { supabase, businessId } = await ownerContext();
+  const context = await ownerContext();
+  const { supabase, businessId } = context;
+  await ensureOwnedSeries(supabase, businessId, input.series_id);
   const { data: current, error: readError } = await supabase.from("webinars").select("*")
     .eq("business_id", businessId).eq("id", id).maybeSingle();
   if (readError) throw new WebinarServiceError("DATABASE_ERROR", "Could not load webinar.");
@@ -309,17 +368,16 @@ export async function rescheduleWebinar(id: string, input: WebinarInput, expecte
   if (error) throw new WebinarServiceError("DATABASE_ERROR", "Could not reschedule webinar.");
   if (!updated) throw new WebinarServiceError("CONFLICT", "This webinar changed. Review the reschedule again.");
 
-  const admin = createAdminClient();
-  const { data: followup } = await admin.from("webinar_followups").select("approval_version")
+  const { data: followup } = await supabase.from("webinar_followups").select("approval_version")
     .eq("business_id", businessId).eq("webinar_id", id).maybeSingle();
   if (followup) {
-    await admin.from("webinar_followups").update({
+    await supabase.from("webinar_followups").update({
       status: updated.followup_enabled ? "draft" : "disabled", scheduled_for: null,
       approval_version: followup.approval_version + 1, eligibility_version: null,
       recipient_snapshot: [], snapshot_hash: null, approved_at: null,
       last_error: "The session was rescheduled; review attendance and schedule follow-up again.",
     }).eq("business_id", businessId).eq("webinar_id", id);
-    await admin.from("webinar_email_outbox").update({ status: "cancelled", lease_owner: null, lease_expires_at: null,
+    await supabase.from("webinar_email_outbox").update({ status: "cancelled", lease_owner: null, lease_expires_at: null,
       last_error: "The session was rescheduled before follow-up delivery." })
       .eq("business_id", businessId).eq("webinar_id", id)
       .in("kind", ["followup_attendee", "followup_no_show"]).in("status", ["queued", "processing"]);
@@ -328,11 +386,21 @@ export async function rescheduleWebinar(id: string, input: WebinarInput, expecte
     businessId, webinarId: id, version: updated.version, title: updated.title,
     start: updated.scheduled_start, timezone: updated.timezone,
   });
+  await recordWebinarAudit(context, {
+    action: "webinar.rescheduled", resourceType: "webinar", resourceId: id,
+    metadata: { webinar_id: id, version: updated.version, recipient_count: expectedRecipientCount },
+  });
+  await recordWebinarAudit(context, {
+    action: "webinar.notification.queued", resourceType: "webinar", resourceId: id,
+    outcome: notifications.status === "not_queued" || notifications.status === "not_configured" ? "failure" : "success",
+    metadata: { webinar_id: id, operation_id: randomUUID(), recipient_count: notifications.recipients, notification_type: "reschedule" },
+  });
   return { webinar: updated, notifications };
 }
 
 export async function cancelWebinar(id: string, expectedVersion: number, expectedRecipientCount: number) {
-  const { supabase, businessId } = await ownerContext();
+  const context = await ownerContext();
+  const { supabase, businessId } = context;
   const { data: current, error: readError } = await supabase.from("webinars").select("*")
     .eq("business_id", businessId).eq("id", id).maybeSingle();
   if (readError) throw new WebinarServiceError("DATABASE_ERROR", "Could not load webinar.");
@@ -362,6 +430,15 @@ export async function cancelWebinar(id: string, expectedVersion: number, expecte
     title: cancelled.title,
     start: cancelled.scheduled_start,
     timezone: cancelled.timezone,
+  });
+  await recordWebinarAudit(context, {
+    action: "webinar.cancelled", resourceType: "webinar", resourceId: id,
+    metadata: { webinar_id: id, version: cancelled.version, recipient_count: expectedRecipientCount },
+  });
+  await recordWebinarAudit(context, {
+    action: "webinar.notification.queued", resourceType: "webinar", resourceId: id,
+    outcome: notifications.status === "not_queued" || notifications.status === "not_configured" ? "failure" : "success",
+    metadata: { webinar_id: id, operation_id: randomUUID(), recipient_count: notifications.recipients, notification_type: "cancellation" },
   });
   return { webinar: cancelled, notifications };
 }

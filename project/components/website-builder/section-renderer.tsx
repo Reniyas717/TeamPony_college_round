@@ -371,6 +371,10 @@ export function SectionRenderer({
   onDelete,
   onToggleHide,
 }: SectionRendererProps) {
+  const [checkoutPlanId, setCheckoutPlanId] = React.useState<string | null>(null);
+  const [successPlanId, setSuccessPlanId] = React.useState<string | null>(null);
+  const [paymentError, setPaymentError] = React.useState<string | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState<boolean>(false);
   const isMobile = deviceMode === "mobile";
   const isTablet = deviceMode === "tablet";
 
@@ -480,11 +484,6 @@ export function SectionRenderer({
   };
 
   // State for interactive Razorpay payments directly within published site & preview
-  const [checkoutPlanId, setCheckoutPlanId] = React.useState<string | null>(null);
-  const [successPlanId, setSuccessPlanId] = React.useState<string | null>(null);
-  const [paymentError, setPaymentError] = React.useState<string | null>(null);
-  const [mobileMenuOpen, setMobileMenuOpen] = React.useState<boolean>(false);
-
   // Smooth scroll and routing helper for in-page anchors & routes
   const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
     if (!href) return;
@@ -623,7 +622,7 @@ export function SectionRenderer({
         rzp.open();
       } else {
         // Fast sandbox verification mode when Razorpay modal blocked or offline
-        const simPayId = `pay_test_${Math.random().toString(36).substring(2, 9)}`;
+        const simPayId = `pay_test_${crypto.randomUUID()}`;
         await fetch("/api/billing/change-plan", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -642,7 +641,7 @@ export function SectionRenderer({
           body: JSON.stringify({
             first_name: "Customer",
             last_name: `(${plan.title})`,
-            email: `checkout_${Date.now()}@customer.com`,
+            email: `checkout_${crypto.randomUUID()}@customer.com`,
             source: "website_checkout",
             stage: "customer",
             next_action_text: `Completed sandbox checkout for ${plan.title} (${plan.price}).`,

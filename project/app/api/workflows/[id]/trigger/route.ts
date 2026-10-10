@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { WorkflowEngineService } from "@/services/workflow-engine.service";
 import { TriggerWorkflowInputSchema } from "@/lib/validations/workflow";
+import { requireOwnerContext } from "@/lib/supabase/owner-context";
+import { workflowErrorResponse } from "../../_errors";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -13,6 +15,7 @@ interface RouteParams {
 export async function POST(request: Request, { params }: RouteParams) {
   try {
     const { id } = await params;
+    const context = await requireOwnerContext();
     const json = await request.json().catch(() => ({}));
     const parsed = TriggerWorkflowInputSchema.safeParse(json);
 
@@ -29,19 +32,10 @@ export async function POST(request: Request, { params }: RouteParams) {
       );
     }
 
-    const execution = await WorkflowEngineService.triggerWorkflow(id, parsed.data.payload);
+    const execution = await WorkflowEngineService.triggerWorkflow(context, id, parsed.data.payload);
 
     return NextResponse.json({ data: execution }, { status: 200 });
   } catch (err: unknown) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: err instanceof Error ? err.message : "Failed to execute workflow run",
-          details: null,
-        },
-      },
-      { status: 500 }
-    );
+    return workflowErrorResponse(err, "Failed to execute workflow run");
   }
 }

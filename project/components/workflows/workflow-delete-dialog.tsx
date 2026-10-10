@@ -38,7 +38,7 @@ export function WorkflowDeleteDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div 
+      <div
         className="bg-card w-full max-w-md rounded-xl shadow-2xl border border-border flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >

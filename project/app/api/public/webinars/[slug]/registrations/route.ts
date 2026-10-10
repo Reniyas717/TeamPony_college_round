@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { queueRegistrationConfirmations } from "@/services/webinar/registration-confirmation.service";
 import {
   PublicWebinarRegistrationSchema,
   PublicWebinarSlugSchema,
 } from "@/lib/validations/webinar-registration";
+import { recordWebinarAudit } from "@/services/webinar/audit";
 
 type Context = { params: Promise<{ slug: string }> };
 
@@ -75,6 +76,24 @@ export async function POST(request: Request, { params }: Context) {
   const notifications = registrationId
     ? await queueRegistrationConfirmations(registrationId)
     : { status: "not_queued" as const };
+
+  if (registrationId) {
+    const admin = createAdminClient();
+    const [{ data: registration }, { data: selection }] = await Promise.all([
+      admin.from("webinar_registrations").select("business_id").eq("id", registrationId).maybeSingle(),
+      admin.from("webinar_registration_sessions").select("webinar_id").eq("registration_id", registrationId).order("webinar_id").limit(1).maybeSingle(),
+    ]);
+    if (registration?.business_id) {
+      const context = { businessId: registration.business_id };
+      await recordWebinarAudit(context, {
+        action: "webinar.notification.queued", resourceType: "webinar_registration", resourceId: registrationId,
+        actorId: "webinar_public", actorType: "integration",
+        client: admin,
+        outcome: notifications.status === "queued" || notifications.status === "partially_queued" ? "success" : "failure",
+        metadata: { webinar_id: selection?.webinar_id ?? registrationId, operation_id: `${registrationId}/confirmation`, recipient_count: notifications.count ?? 0, notification_type: "registration_confirmation" },
+      });
+    }
+  }
 
   return NextResponse.json({ data: { ...data, notifications } }, { status: 201 });
 }

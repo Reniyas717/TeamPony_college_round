@@ -1,48 +1,40 @@
 import { NextResponse } from "next/server";
+import { requireOwnerContext } from "@/lib/supabase/owner-context";
 import { JourneyMapService } from "@/services/journey-map.service";
+import { journeyMapErrorResponse } from "../route-utils";
 
-export async function GET(
-  _request: Request,
-  props: { params: Promise<{ id: string }> }
-) {
+type RouteProps = { params: Promise<{ id: string }> };
+
+export async function GET(_request: Request, props: RouteProps) {
   try {
     const { id } = await props.params;
-    const map = await JourneyMapService.getJourneyMapById(id);
+    const context = await requireOwnerContext();
+    const map = await JourneyMapService.getJourneyMapById(context, id);
     if (!map) {
       return NextResponse.json(
-        { error: { code: "NOT_FOUND", message: "Journey map not found" } },
+        { error: { code: "NOT_FOUND", message: "Journey map not found", details: null } },
         { status: 404 }
       );
     }
-    return NextResponse.json({ data: map }, { status: 200 });
+    return NextResponse.json({ data: map });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to fetch journey map";
-    return NextResponse.json(
-      { error: { code: "INTERNAL_ERROR", message } },
-      { status: 500 }
-    );
+    return journeyMapErrorResponse(error);
   }
 }
 
-export async function DELETE(
-  _request: Request,
-  props: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_request: Request, props: RouteProps) {
   try {
     const { id } = await props.params;
-    const success = await JourneyMapService.deleteMap(id);
-    if (!success) {
+    const context = await requireOwnerContext();
+    const deleted = await JourneyMapService.deleteMap(context, id);
+    if (!deleted) {
       return NextResponse.json(
-        { error: { code: "NOT_FOUND", message: "Journey map not found" } },
+        { error: { code: "NOT_FOUND", message: "Journey map not found", details: null } },
         { status: 404 }
       );
     }
-    return NextResponse.json({ data: { success: true } }, { status: 200 });
+    return NextResponse.json({ data: { success: true } });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to delete journey map";
-    return NextResponse.json(
-      { error: { code: "INTERNAL_ERROR", message } },
-      { status: 500 }
-    );
+    return journeyMapErrorResponse(error);
   }
 }

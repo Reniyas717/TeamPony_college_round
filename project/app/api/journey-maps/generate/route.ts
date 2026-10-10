@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { requireOwnerContext } from "@/lib/supabase/owner-context";
 import { GenerateJourneyMapInputSchema } from "@/lib/validations/journey-map";
 import { JourneyMapService } from "@/services/journey-map.service";
+import { journeyMapErrorResponse } from "../route-utils";
 
 export async function POST(request: Request) {
   try {
+    const context = await requireOwnerContext();
     const body = await request.json().catch(() => ({}));
     const parsed = GenerateJourneyMapInputSchema.safeParse(body);
 
@@ -20,13 +23,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const map = await JourneyMapService.generateJourneyMap(parsed.data);
+    const map = await JourneyMapService.generateJourneyMap(context, parsed.data);
     return NextResponse.json({ data: map }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to generate journey map";
-    return NextResponse.json(
-      { error: { code: "INTERNAL_ERROR", message } },
-      { status: 500 }
-    );
+    return journeyMapErrorResponse(error);
   }
 }

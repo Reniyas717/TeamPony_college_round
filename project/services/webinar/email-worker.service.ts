@@ -5,9 +5,12 @@ import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/server";
 
 import { EmailProviderError, sendResendEmail } from "./email-provider";
+import { recordWebinarAudit } from "./audit";
 
 type EmailOutboxJob = {
   id: string;
+  business_id: string;
+  webinar_id: string;
   to_email: string;
   from_email: string;
   reply_to_email: string | null;
@@ -85,6 +88,21 @@ export async function processWebinarEmailOutbox(batchSize: number, businessId?: 
     blocked: 0,
   };
 
+  const jobsByWebinar = new Map<string, EmailOutboxJob[]>();
+  for (const job of jobs) {
+    const key = `${job.business_id}:${job.webinar_id}`;
+    jobsByWebinar.set(key, [...(jobsByWebinar.get(key) ?? []), job]);
+  }
+  for (const groupedJobs of jobsByWebinar.values()) {
+    const first = groupedJobs[0];
+    await recordWebinarAudit({ businessId: first.business_id }, {
+      action: "webinar.email.processing_started", resourceType: "webinar", resourceId: first.webinar_id,
+      actorId: "webinar.manual-worker", actorType: "system",
+      client: admin,
+      metadata: { webinar_id: first.webinar_id, operation_id: workerId, job_count: groupedJobs.length },
+    });
+  }
+
   for (const job of jobs) {
     try {
       if (job.kind === "followup_attendee" || job.kind === "followup_no_show") {
@@ -117,9 +135,22 @@ export async function processWebinarEmailOutbox(batchSize: number, businessId?: 
       );
       if (databaseError || accepted !== true) {
         summary.finalization_failed += 1;
+        await recordWebinarAudit({ businessId: job.business_id }, {
+          action: "webinar.email.needs_review", resourceType: "webinar_email", resourceId: job.id,
+          actorId: "webinar.manual-worker", actorType: "system", outcome: "failure",
+          client: admin,
+          metadata: { webinar_id: job.webinar_id, operation_id: workerId, job_id: job.id, provider: "resend", reason_code: "LOCAL_FINALIZATION_FAILED" },
+          error: { code: "LOCAL_FINALIZATION_FAILED", message: "Provider accepted the email but local finalization failed." },
+        });
         continue;
       }
       summary.provider_accepted += 1;
+      await recordWebinarAudit({ businessId: job.business_id }, {
+        action: "webinar.email.provider_accepted", resourceType: "webinar_email", resourceId: job.id,
+        actorId: "webinar.manual-worker", actorType: "system",
+        client: admin,
+        metadata: { webinar_id: job.webinar_id, operation_id: workerId, job_id: job.id, provider: "resend" },
+      });
     } catch (error) {
       const providerError = error instanceof EmailProviderError
         ? error
@@ -129,9 +160,23 @@ export async function processWebinarEmailOutbox(batchSize: number, businessId?: 
         if (providerError.outcome === "unknown") {
           await markUnknown(admin, job, workerId, providerError);
           summary.unknown += 1;
+          await recordWebinarAudit({ businessId: job.business_id }, {
+            action: "webinar.email.needs_review", resourceType: "webinar_email", resourceId: job.id,
+            actorId: "webinar.manual-worker", actorType: "system", outcome: "failure",
+            client: admin,
+            metadata: { webinar_id: job.webinar_id, operation_id: workerId, job_id: job.id, provider: "resend", reason_code: "PROVIDER_OUTCOME_UNKNOWN" },
+            error: { code: "PROVIDER_OUTCOME_UNKNOWN", message: providerError.message },
+          });
         } else {
           await markFailed(admin, job, workerId, providerError);
           summary.failed += 1;
+          await recordWebinarAudit({ businessId: job.business_id }, {
+            action: "webinar.email.failed", resourceType: "webinar_email", resourceId: job.id,
+            actorId: "webinar.manual-worker", actorType: "system", outcome: "failure",
+            client: admin,
+            metadata: { webinar_id: job.webinar_id, operation_id: workerId, job_id: job.id, provider: "resend", reason_code: providerError.outcome },
+            error: { code: "PROVIDER_SEND_FAILED", message: providerError.message },
+          });
         }
       } catch {
         summary.finalization_failed += 1;

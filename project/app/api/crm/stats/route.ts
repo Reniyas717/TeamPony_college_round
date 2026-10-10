@@ -1,24 +1,21 @@
+import { ownerContextErrorResponse, requireOwnerContext } from "@/lib/supabase/owner-context";
+import { CrmService, CrmServiceError } from "@/services/crm.service";
 import { NextResponse } from "next/server";
-import { CrmService } from "@/services/crm.service";
-
-/**
- * /api/crm/stats
- * Computes live conversion metrics, funnel counts, and total pipeline deal values.
- */
 
 export async function GET() {
   try {
-    const stats = await CrmService.getStats();
+    const context = await requireOwnerContext();
+    const stats = await CrmService.getStats(context);
     return NextResponse.json({ data: stats }, { status: 200 });
-  } catch {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "Failed to compute CRM stats",
-          details: null,
-        },
-      },
+  } catch (error) {
+    if (error instanceof CrmServiceError) {
+      return NextResponse.json(
+        { error: { code: error.code, message: error.message, details: null } },
+        { status: error.status }
+      );
+    }
+    return ownerContextErrorResponse(error) ?? NextResponse.json(
+      { error: { code: "INTERNAL_ERROR", message: "Failed to compute CRM stats", details: null } },
       { status: 500 }
     );
   }

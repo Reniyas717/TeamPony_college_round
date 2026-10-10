@@ -7,7 +7,7 @@ import {
   useAddActivity,
   useSendMessage,
 } from "@/hooks/use-crm";
-import { Contact } from "@/lib/validations/crm";
+import { Contact, ContactStageSchema } from "@/lib/validations/crm";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
@@ -26,8 +26,9 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
   if (!contactId) return null;
 
   const handleStageChange = async (newStage: Contact['stage']) => {
-    if (!contact) return;
-    await updateContact({ id: contact.id, data: { stage: newStage } });
+    const parsedStage = ContactStageSchema.safeParse(newStage);
+    if (!contact || !parsedStage.success) return;
+    await updateContact({ id: contact.id, data: { stage: parsedStage.data } });
   };
 
   const handleAddNote = async (e: React.FormEvent) => {
@@ -47,8 +48,8 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
     try {
       setOutreachStatus(`Dispatching ${channel === 'email' ? 'Email via Resend' : 'WhatsApp'}...`);
       const defaultSubject = `Welcome to Nexus — Regarding your inquiry`;
-      const defaultText = customMsg.trim() || (channel === "email" 
-        ? `Hi ${contact.first_name}, thank you for reaching out via our website! We reviewed your submission and are excited to assist you.` 
+      const defaultText = customMsg.trim() || (channel === "email"
+        ? `Hi ${contact.first_name}, thank you for reaching out via our website! We reviewed your submission and are excited to assist you.`
         : `Hello ${contact.first_name}! We received your inquiry on Nexus. When is a good time to connect?`);
 
       await sendMessage({
@@ -73,7 +74,7 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
     <>
       <div className="fixed inset-0 bg-foreground/20 backdrop-blur-sm z-40 transition-opacity" onClick={onClose} />
       <div className="fixed inset-y-0 right-0 w-full md:w-[600px] xl:w-[800px] bg-card border-l border-border shadow-xl z-50 flex flex-col animate-in slide-in-from-right duration-300 ease-out">
-        
+
         {/* Header */}
         <div className="flex items-start justify-between p-6 border-b border-border bg-muted/20">
           {isLoadingContact ? (
@@ -87,7 +88,7 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                 <h2 className="text-2xl font-display font-semibold text-foreground">
                   {contact.first_name} {contact.last_name}
                 </h2>
-                <select 
+                <select
                   className="h-8 px-2 py-1 text-sm rounded-sm border border-input bg-background font-semibold"
                   value={contact.stage}
                   onChange={(e) => handleStageChange(e.target.value as Contact['stage'])}
@@ -113,13 +114,13 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
 
         {/* Tabs */}
         <div className="flex px-6 border-b border-border bg-card">
-          <button 
+          <button
             className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
             onClick={() => setActiveTab('overview')}
           >
             Overview
           </button>
-          <button 
+          <button
             className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'timeline' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
             onClick={() => setActiveTab('timeline')}
           >
@@ -131,7 +132,7 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
         <div className="flex-1 overflow-y-auto p-6 bg-background">
           {activeTab === 'overview' && contact && (
             <div className="flex flex-col gap-6">
-              
+
               {/* Engagement Status Banner */}
               <div className={`p-4 rounded-lg border flex items-center justify-between ${
                 contact.stage === 'churned'
@@ -221,8 +222,8 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
-                  <Button 
-                    variant="primary" 
+                  <Button
+                    variant="primary"
                     size="sm"
                     disabled={isSendingMessage}
                     onClick={() => handleSendOutreach("email")}
@@ -231,8 +232,8 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                     ✉️ {isSendingMessage ? "Dispatching..." : "Send Email via Resend"}
                   </Button>
 
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     size="sm"
                     disabled={isSendingMessage}
                     onClick={() => handleSendOutreach("whatsapp")}
@@ -260,7 +261,7 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                       The customer receives the email or WhatsApp on their device. When they reply or click Yes/No, the decision engine updates their status here automatically.
                     </p>
                   </div>
-                  <Badge variant={contact.stage === 'churned' ? 'danger' : ['qualified', 'proposal', 'customer'].includes(contact.stage) ? 'success' : 'secondary'} className="text-xs">
+                  <Badge variant={contact.stage === 'churned' ? 'danger' : ['qualified', 'proposal', 'customer'].includes(contact.stage) ? 'success' : 'neutral'} className="text-xs">
                     {contact.stage === 'churned' ? 'Declined / Churned' : ['qualified', 'proposal', 'customer'].includes(contact.stage) ? 'Interested / Qualified' : 'Awaiting Reply'}
                   </Badge>
                 </div>
@@ -325,7 +326,7 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
               {/* Note composer */}
               <div className="bg-card p-4 rounded-lg border border-border">
                 <form onSubmit={handleAddNote} className="flex flex-col gap-3">
-                  <textarea 
+                  <textarea
                     className="w-full min-h-[80px] p-3 text-sm rounded-sm border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none"
                     placeholder="Write a note..."
                     value={noteText}
@@ -352,7 +353,7 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                       <div key={activity.id} className="relative">
                         {/* Timeline dot */}
                         <div className="absolute -left-[25px] mt-1.5 w-2.5 h-2.5 rounded-full bg-border ring-4 ring-background" />
-                        
+
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-sm">{activity.title}</span>

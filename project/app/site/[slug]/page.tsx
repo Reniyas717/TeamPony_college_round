@@ -1,6 +1,7 @@
 import * as React from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { connection } from "next/server";
 import { WebsiteService } from "@/services/website.service";
 import { SectionRenderer } from "@/components/website-builder/section-renderer";
@@ -103,12 +104,12 @@ export default async function PublicWebsitePage({ params }: PublicSitePageProps)
 
         <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
           <span>Powered by</span>
-          <a
+          <Link
             href="/"
             className="font-bold text-foreground hover:underline inline-flex items-center gap-1.5"
           >
             <span>Nexus Studio</span>
-          </a>
+          </Link>
           <span>•</span>
           <a href="/login" className="hover:underline">
             Owner Sign In

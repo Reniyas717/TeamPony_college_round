@@ -1,5 +1,4 @@
 import * as React from "react";
-import Link from "next/link";
 import { requireWebinarOwner } from "./owner-page";
 import { WebinarList } from "./webinar-list";
 import { getGoogleConnectionStatus } from "@/services/webinar/google-token-vault.service";

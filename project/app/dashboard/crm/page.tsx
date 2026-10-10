@@ -284,7 +284,7 @@ export default function CrmPage() {
                     </td>
                     <td className="py-3 px-4">
                       <span className="inline-block px-2 py-0.5 rounded-sm bg-muted text-foreground text-[11px] font-medium">
-                        {STAGE_LABELS[contact.stage] || contact.stage}
+                        {contact.stage === "unknown" ? "Unknown" : STAGE_LABELS[contact.stage]}
                       </span>
                     </td>
                     <td className="py-3 px-4">
