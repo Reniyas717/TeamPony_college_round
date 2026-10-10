@@ -388,6 +388,7 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
           {/* Top Editor Header */}
           <EditorHeader
             title={currentWebsite?.title || "My Website"}
+            slug={currentWebsite?.slug}
             isPublished={currentWebsite?.is_published || false}
             isDirty={isDirty}
             isSaving={isSaving}
