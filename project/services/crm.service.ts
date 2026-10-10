@@ -10,13 +10,6 @@ import {
   ContactStage,
 } from "../lib/validations/crm";
 
-async function getSupabaseServerClient(useAdmin = false) {
-  const { createClient, createAdminClient } = await import("../lib/supabase/server");
-  const client = useAdmin ? createAdminClient() : await createClient();
-  if (!client) throw new Error("Supabase client unavailable");
-  return client;
-}
-
 /**
  * CRM Service Layer
  * Enforces business domain invariants, tenant scoping, and timeline logging.
