@@ -213,6 +213,7 @@ export class AuthService {
     let targetEmail = input.identifier.trim().toLowerCase();
     const identifierType: "email" | "username" = targetEmail.includes("@") ? "email" : "username";
 
+    // Only lookup profile if the user entered a username instead of an email
     if (identifierType === "username") {
       const admin = createAdminClient();
       const { data: profile, error: profileError } = await admin

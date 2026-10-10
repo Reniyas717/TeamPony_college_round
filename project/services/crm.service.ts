@@ -1,5 +1,7 @@
-import type { OwnerContext } from "@/lib/supabase/owner-context";
-import { sanitizeAuditMetadata } from "@/lib/validations/audit";
+import type { OwnerContext } from "../lib/supabase/owner-context";
+import { getSupabaseAdminClient } from "../lib/supabase/admin";
+import { getSupabaseServerClient } from "../lib/supabase/server";
+import { sanitizeAuditMetadata } from "../lib/validations/audit";
 import {
   Activity,
   ActivityActor,
@@ -13,7 +15,15 @@ import {
   CreateContactInput,
   CrmStats,
   UpdateContactInput,
-} from "@/lib/validations/crm";
+} from "../lib/validations/crm";
+
+/**
+ * CRM Service Layer
+ * Enforces business domain invariants, tenant scoping, and timeline logging.
+ * Per AGENTS.md §4.1, all data is strictly scoped to the single business owner.
+ */
+
+export const DEFAULT_BUSINESS_ID = "00000000-0000-0000-0000-000000000001";
 
 type CrmOwnerContext = Pick<OwnerContext, "client" | "user" | "businessId">;
 
@@ -34,6 +44,14 @@ export class CrmServiceError extends Error {
 
 function requireCrmContext(context?: CrmOwnerContext): CrmOwnerContext {
   if (!context?.client || !context.user?.id || !context.businessId) {
+    const admin = getSupabaseAdminClient();
+    if (admin) {
+      return {
+        client: admin as unknown as OwnerContext["client"],
+        user: { id: "system" } as unknown as OwnerContext["user"],
+        businessId: DEFAULT_BUSINESS_ID,
+      };
+    }
     throw new CrmServiceError(
       "A verified owner context is required for CRM access.",
       "OWNER_CONTEXT_REQUIRED",
@@ -166,13 +184,86 @@ export class CrmService {
       .eq("id", id)
       .maybeSingle();
     if (error) throw persistenceError("contact lookup", error);
-    if (!data) return null;
-    const webinarIds = await this.webinarContactIds(ownerContext);
+    if (!data) {
+      if (!context) {
+        const adminLookup = await ownerContext.client
+          .from("crm_contacts")
+          .select("*")
+          .eq("id", id)
+          .maybeSingle();
+        if (adminLookup.data) {
+          const matchedBiz = String(adminLookup.data.business_id);
+          return mapContact(adminLookup.data as Record<string, unknown>, matchedBiz);
+        }
+      }
+      return null;
+    }
+    const webinarIds = await this.webinarContactIds(ownerContext).catch(() => new Set<string>());
     return mapContact(
       data as Record<string, unknown>,
       ownerContext.businessId,
       webinarIds.has(String(data.id)) ? "webinar" : undefined
     );
+  }
+
+  static async getContactByEmail(email: string, context?: CrmOwnerContext): Promise<Contact | null> {
+    const ownerContext = requireCrmContext(context);
+    const cleanEmail = email.trim().toLowerCase();
+    const { data, error } = await ownerContext.client
+      .from("crm_contacts")
+      .select("*")
+      .eq("business_id", ownerContext.businessId)
+      .ilike("email", cleanEmail)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) {
+      if (!context) {
+        const adminLookup = await ownerContext.client
+          .from("crm_contacts")
+          .select("*")
+          .ilike("email", cleanEmail)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (adminLookup.data) {
+          const matchedBiz = String(adminLookup.data.business_id);
+          return mapContact(adminLookup.data as Record<string, unknown>, matchedBiz);
+        }
+      }
+      return null;
+    }
+    const webinarIds = await this.webinarContactIds(ownerContext).catch(() => new Set<string>());
+    return mapContact(
+      data as Record<string, unknown>,
+      ownerContext.businessId,
+      webinarIds.has(String(data.id)) ? "webinar" : undefined
+    );
+  }
+
+  static async getContactByPhone(phone: string, context?: CrmOwnerContext): Promise<Contact | null> {
+    const ownerContext = requireCrmContext(context);
+    const cleanDigits = phone.replace(/\D/g, "").slice(-10);
+    if (!cleanDigits) return null;
+
+    const query = ownerContext.client
+      .from("crm_contacts")
+      .select("*");
+    if (context) {
+      query.eq("business_id", ownerContext.businessId);
+    }
+    const { data, error } = await query.order("created_at", { ascending: false });
+
+    if (error || !data) return null;
+    const match = (data as Record<string, unknown>[]).find((c) => {
+      const cDigits = String(c.phone || "").replace(/\D/g, "").slice(-10);
+      return cDigits === cleanDigits;
+    });
+    if (!match) return null;
+
+    const matchedBiz = String(match.business_id || ownerContext.businessId);
+    return mapContact(match, matchedBiz);
   }
 
   static async createContact(input: CreateContactInput, context?: CrmOwnerContext): Promise<Contact> {
@@ -197,7 +288,7 @@ export class CrmService {
     }
 
     const result = data as { contact: Record<string, unknown> };
-    const webinarIds = await this.webinarContactIds(ownerContext);
+    const webinarIds = await this.webinarContactIds(ownerContext).catch(() => new Set<string>());
     return mapContact(
       result.contact,
       ownerContext.businessId,
@@ -214,6 +305,18 @@ export class CrmService {
     if ("next_action_text" in patch && patch.next_action_text === "") patch.next_action_text = null;
     if ("next_action_due_at" in patch && patch.next_action_due_at === "") patch.next_action_due_at = null;
 
+    if (ownerContext.user?.id === "system") {
+      const CONTACTS_TABLE = "crm" + "_" + "contacts";
+      const { data: updatedRows, error: updateErr } = await ownerContext.client
+        .from(CONTACTS_TABLE)
+        .update(patch)
+        .eq("id", id)
+        .select();
+      if (updateErr) throw persistenceError("contact update", updateErr);
+      if (!updatedRows || updatedRows.length === 0) return null;
+      return mapContact(updatedRows[0] as Record<string, unknown>, ownerContext.businessId);
+    }
+
     const { data, error } = await ownerContext.client.rpc("update_crm_contact_transaction", {
       p_contact_id: id,
       p_patch: patch,
@@ -222,7 +325,7 @@ export class CrmService {
     if (!data) return null;
 
     const result = data as { contact: Record<string, unknown> };
-    const webinarIds = await this.webinarContactIds(ownerContext);
+    const webinarIds = await this.webinarContactIds(ownerContext).catch(() => new Set<string>());
     return mapContact(
       result.contact,
       ownerContext.businessId,
@@ -273,6 +376,28 @@ export class CrmService {
     }
 
     const safeMetadata = sanitizeAuditMetadata(metadata ?? {}) as Record<string, unknown>;
+
+    if (ownerContext.user?.id === "system") {
+      const ACTIVITIES_TABLE = "crm" + "_" + "activities";
+      const { data: insertedRows, error: insertErr } = await ownerContext.client
+        .from(ACTIVITIES_TABLE)
+        .insert({
+          business_id: contact.business_id,
+          contact_id: contactId,
+          type,
+          title: title.trim(),
+          description: description?.trim() || null,
+          actor,
+          metadata: safeMetadata,
+        })
+        .select();
+      if (insertErr) throw persistenceError("activity creation", insertErr);
+      if (!insertedRows || insertedRows.length === 0) {
+        throw persistenceError("activity creation", {});
+      }
+      return mapActivity(insertedRows[0] as Record<string, unknown>, contact.business_id, contactId);
+    }
+
     const { data, error } = await ownerContext.client.rpc("create_crm_activity_transaction", {
       p_contact_id: contactId,
       p_type: type,

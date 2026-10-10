@@ -7,17 +7,22 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import jiti/register --test tests/audit.test.ts tests/auth.test.ts tests/owner-context.test.ts tests/journey-map.test.ts tests/website.test.ts tests/billing.test.ts tests/analytics.test.ts tests/webinar-time.test.mjs tests/workflow-engine.test.ts tests/webinar-boundaries.test.ts"
+    "test": "node --import jiti/register --test tests/audit.test.ts tests/auth.test.ts tests/owner-context.test.ts tests/journey-map.test.ts tests/website.test.ts tests/billing.test.ts tests/analytics.test.ts tests/webinar-time.test.mjs tests/marketing.test.ts tests/workflow-engine.test.ts tests/webinar-boundaries.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.3",
     "@tanstack/react-query": "^5.104.1",
+    "clsx": "^2.1.1",
+    "framer-motion": "^14.1.0",
     "iconsax-react": "^0.0.8",
+    "lenis": "^1.3.26",
     "mermaid": "^11.17.2",
     "next": "16.4.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "tailwind-merge": "^3.7.0",
+    "server-only": "^0.0.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {

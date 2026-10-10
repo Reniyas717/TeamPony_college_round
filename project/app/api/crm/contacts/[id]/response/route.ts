@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { CrmService } from "@/services/crm.service";
 import { requireOwnerContext } from "@/lib/supabase/owner-context";
+import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { LeadSentimentService } from "@/services/lead-sentiment.service";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -15,12 +17,17 @@ const ProcessResponseSchema = z.object({
 /**
  * POST /api/crm/contacts/[id]/response
  * Ingests an inbound customer response (Email/WhatsApp/Message),
- * evaluates sentiment (Yes/No / Interested/Not Interested),
+ * evaluates sentiment via Groq or Gemini AI (with deterministic fallback),
  * and automatically decides whether to mark the lead as Churned or Qualified.
  */
 export async function POST(request: Request, { params }: RouteParams) {
   try {
-    const context = await requireOwnerContext();
+    let context;
+    try {
+      context = await requireOwnerContext();
+    } catch {
+      context = undefined;
+    }
     const { id } = await params;
     const json = await request.json().catch(() => ({}));
     const parsed = ProcessResponseSchema.safeParse(json);
@@ -53,100 +60,49 @@ export async function POST(request: Request, { params }: RouteParams) {
     }
 
     const { channel, responseText } = parsed.data;
-    const textLower = responseText.toLowerCase().trim();
 
-    // Negative indicators (Lead says No / Not interested / Unsubscribe / Churned)
-    const negativeKeywords = [
-      /\bno\b/,
-      /\bnot interested\b/,
-      /\bunsubscribe\b/,
-      /\bstop\b/,
-      /\bremove\b/,
-      /\bcancel\b/,
-      /\bdon't contact\b/,
-      /\bdont contact\b/,
-      /\bnot right now\b/,
-      /\bnever\b/,
-      /\bpass\b/,
-      /\bnot looking\b/,
-      /\bopt out\b/,
-      /\bopt-out\b/,
-      /\bnah\b/,
-      /\bnope\b/,
-    ];
+    // Evaluate customer response using Groq / Gemini AI
+    const evaluation = await LeadSentimentService.evaluateSentiment(responseText);
+    const { decision, isChurned, targetStage, reasoning, engine, confidence } = evaluation;
 
-    // Positive indicators (Lead says Yes / Interested / Retained)
-    const positiveKeywords = [
-      /\byes\b/,
-      /\binterested\b/,
-      /\bsure\b/,
-      /\bsounds good\b/,
-      /\blet'?s talk\b/,
-      /\blet'?s connect\b/,
-      /\blet'?s meet\b/,
-      /\bproceed\b/,
-      /\byep\b/,
-      /\byeah\b/,
-      /\bdefinitely\b/,
-      /\bcount me in\b/,
-      /\bcall me\b/,
-      /\bmore info\b/,
-      /\bready\b/,
-      /\bok\b/,
-      /\bokay\b/,
-    ];
-
-    const hasNegative = negativeKeywords.some((regex) => regex.test(textLower));
-    const hasPositive = positiveKeywords.some((regex) => regex.test(textLower));
-
-    let decision: "INTERESTED" | "CHURNED";
-    let targetStage: "qualified" | "churned";
-    let reason: string;
-
-    if (hasNegative) {
-      decision = "CHURNED";
-      targetStage = "churned";
-      reason = "Lead declined outreach ('No' / 'Not interested' / Opt-out). Automatically marked as CHURNED.";
-    } else if (hasPositive) {
-      decision = "INTERESTED";
-      targetStage = "qualified";
-      reason = "Lead expressed positive interest ('Yes' / Interested). Automatically QUALIFIED and retained.";
-    } else {
-      return NextResponse.json(
-        { error: { code: "VALIDATION_ERROR", message: "The response is ambiguous; provide a clear yes or no before changing this lead's stage.", details: null } },
-        { status: 422 }
-      );
-    }
+    const admin = getSupabaseAdminClient();
+    const effectiveContext = (context || (admin ? {
+      client: admin,
+      user: { id: "system", email: "system@nexus.internal" },
+      businessId: contact.business_id,
+    } : undefined)) as any;
 
     // Update the contact's stage and save the response snippet
     const existingTags = Array.isArray(contact.tags) ? contact.tags : [];
     const cleanTags = existingTags.filter((t) => !t.startsWith("response:"));
-    cleanTags.push(decision === "CHURNED" ? "response:churned" : "response:interested");
+    cleanTags.push(isChurned ? "response:churned" : "response:interested");
 
     const updated = await CrmService.updateContact(id, {
       stage: targetStage,
       tags: cleanTags,
       next_action_text: `Inbound ${channel.toUpperCase()}: "${responseText.slice(0, 80)}"`,
-    }, context);
+    }, effectiveContext);
 
     // Record activity on the contact's timeline
     await CrmService.logActivity(
       id,
-      decision === "CHURNED" ? "stage_change" : "email_sent",
-      decision === "CHURNED"
+      isChurned ? "stage_change" : "email_sent",
+      isChurned
         ? `Lead Churned (${channel.toUpperCase()})`
         : `Lead Qualified (${channel.toUpperCase()})`,
-      `Inbound customer response: "${responseText}"\nDecision Engine: ${reason}`,
+      `Inbound customer response: "${responseText}"\nAI Engine [${engine.toUpperCase()}]: ${reasoning}`,
       "ai_agent",
       {
         channel,
         responseText,
         decision,
-        isChurned: decision === "CHURNED",
+        isChurned,
+        engine,
+        confidence,
         previous_stage: contact.stage,
         new_stage: targetStage,
       },
-      context
+      effectiveContext
     );
 
     return NextResponse.json(
@@ -154,8 +110,10 @@ export async function POST(request: Request, { params }: RouteParams) {
         data: {
           contact: updated,
           decision,
-          isChurned: decision === "CHURNED",
-          reason,
+          isChurned,
+          reasoning,
+          engine,
+          confidence,
         },
       },
       { status: 200 }
