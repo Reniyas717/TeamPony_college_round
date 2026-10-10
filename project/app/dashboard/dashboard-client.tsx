@@ -13,6 +13,7 @@ import {
   ArrowRight,
   TickCircle,
   ShieldSecurity,
+  TrendUp
 } from "iconsax-react";
 
 interface DashboardClientProps {
@@ -27,8 +28,17 @@ interface DashboardClientProps {
 export default function DashboardClient({ user }: DashboardClientProps) {
   const modules = [
     {
+      id: "intelligence",
+      title: "Customer Journey Studio",
+      description: "AI-synthesized stages, drop-off friction diagnostics, visual Mermaid diagrams, and executable module actions.",
+      icon: TrendUp,
+      meta: "Predictive Funnel Active",
+      action: "Open Studio",
+      href: "/dashboard/intelligence",
+    },
+    {
       id: "crm",
-      href: "/dashboard/crm",
+      href: "/crm",
       title: "Intelligent CRM",
       description: "Manage customer lifecycles, track touchpoints, and sync contacts with billing records.",
       icon: SecurityUser,
@@ -92,7 +102,7 @@ export default function DashboardClient({ user }: DashboardClientProps) {
   ];
 
   return (
-    <main className="p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-8">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-8">
       {/* Welcome Action Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2">
         <div>
@@ -101,7 +111,9 @@ export default function DashboardClient({ user }: DashboardClientProps) {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             Nexus Unified Operating Platform • Account:{" "}
-            <span className="text-foreground font-medium">{user.email || user.username}</span>
+            <span className="text-foreground font-medium">
+              {user.email || user.username}
+            </span>
           </p>
         </div>
 
@@ -118,25 +130,33 @@ export default function DashboardClient({ user }: DashboardClientProps) {
       {/* Architectural Metric Strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-5 flex flex-col gap-1 bg-card/60 rounded-sm">
-          <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">Revenue (MRR)</p>
+          <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">
+            Revenue (MRR)
+          </p>
           <p className="font-display text-2xl font-bold tabular-nums">₹0.00</p>
           <p className="text-xs text-muted-foreground mt-0.5">Synced with Stripe</p>
         </div>
 
         <div className="p-5 flex flex-col gap-1 bg-card/60 rounded-sm">
-          <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">CRM Contacts</p>
+          <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">
+            CRM Contacts
+          </p>
           <p className="font-display text-2xl font-bold tabular-nums">0 Leads</p>
           <p className="text-xs text-muted-foreground mt-0.5">Ready for capture</p>
         </div>
 
         <div className="p-5 flex flex-col gap-1 bg-card/60 rounded-sm">
-          <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">AI Approval Queue</p>
+          <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">
+            AI Approval Queue
+          </p>
           <p className="font-display text-2xl font-bold tabular-nums">0 Pending</p>
           <p className="text-xs text-muted-foreground mt-0.5">Queue is clear</p>
         </div>
 
         <div className="p-5 flex flex-col gap-1 bg-card/60 rounded-sm">
-          <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">Tenant Isolation</p>
+          <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">
+            Tenant Isolation
+          </p>
           <p className="font-display text-2xl font-bold">Single-Owner</p>
           <p className="text-xs text-muted-foreground mt-0.5">PostgreSQL RLS scope</p>
         </div>
@@ -147,35 +167,68 @@ export default function DashboardClient({ user }: DashboardClientProps) {
         {/* Left 8/12: Core Business Modules */}
         <div className="lg:col-span-8 space-y-4">
           <div>
-            <h2 className="font-display text-lg font-bold tracking-tight">Core Business Modules</h2>
-            <p className="text-xs text-muted-foreground">Select an operational domain to manage your business graph.</p>
+            <h2 className="font-display text-lg font-bold tracking-tight">
+              Core Business Modules
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Select an operational domain to manage your business graph.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {modules.map((mod) => {
               const IconComp = mod.icon;
               return (
-                <Link
+                <div
                   key={mod.id}
-                  href={mod.href}
-                  className="bg-card/60 p-5 rounded-sm hover:bg-card transition-all duration-200 flex flex-col justify-between group cursor-pointer"
+                  className="bg-card/60 p-5 rounded-sm hover:bg-card transition-all duration-200 flex flex-col justify-between group"
                 >
                   <div>
                     <div className="w-9 h-9 rounded-sm bg-muted/40 flex items-center justify-center text-foreground group-hover:text-brand-text transition-colors mb-3">
                       <IconComp size="18" />
                     </div>
-                    <h3 className="font-display font-bold text-base tracking-tight mb-1">{mod.title}</h3>
-                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">{mod.description}</p>
+                    <h3 className="font-display font-bold text-base tracking-tight mb-1">
+                      {mod.title}
+                    </h3>
+                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                      {mod.description}
+                    </p>
                   </div>
 
-                  <div className="pt-4 mt-4 flex items-center justify-between border-t border-border/20">
-                    <span className="text-[11px] font-mono text-muted-foreground">{mod.meta}</span>
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground group-hover:text-foreground">
-                      <span>{mod.action}</span>
-                      <ArrowRight size="12" className="group-hover:translate-x-0.5 transition-transform" />
+                  <div className="pt-4 mt-4 border-t border-border/40 flex items-center justify-between">
+                    <span className="text-[11px] font-mono text-muted-foreground">
+                      {mod.meta}
                     </span>
+                    {mod.href ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        asChild
+                        className="h-7 text-xs gap-1 group-hover:text-foreground cursor-pointer px-2 bg-muted/30 hover:bg-muted/60"
+                      >
+                        <Link href={mod.href}>
+                          <span>{mod.action}</span>
+                          <ArrowRight
+                            size="12"
+                            className="group-hover:translate-x-0.5 transition-transform"
+                          />
+                        </Link>
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs gap-1 group-hover:text-foreground cursor-pointer px-2 bg-muted/30 hover:bg-muted/60"
+                      >
+                        <span>{mod.action}</span>
+                        <ArrowRight
+                          size="12"
+                          className="group-hover:translate-x-0.5 transition-transform"
+                        />
+                      </Button>
+                    )}
                   </div>
-                </Link>
+                </div>
               );
             })}
           </div>
@@ -188,7 +241,9 @@ export default function DashboardClient({ user }: DashboardClientProps) {
               <Magicpen size="18" className="text-brand-text" />
               <span>Agent Action Guard</span>
             </h2>
-            <p className="text-xs text-muted-foreground">Autonomous workflows protected by human verification.</p>
+            <p className="text-xs text-muted-foreground">
+              Autonomous workflows protected by human verification.
+            </p>
           </div>
 
           <div className="bg-card/60 p-5 rounded-sm space-y-4">
@@ -198,14 +253,17 @@ export default function DashboardClient({ user }: DashboardClientProps) {
             </div>
 
             <p className="text-xs text-muted-foreground leading-relaxed">
-              The Nexus AI Agent continuously inspects your CRM touchpoints, billing events, and marketing funnels.
-              Consequential side effects pause automatically for review.
+              The Nexus AI Agent continuously inspects your CRM touchpoints, billing
+              events, and marketing funnels. Consequential side effects pause automatically
+              for review.
             </p>
 
             {/* Clear Queue State */}
             <div className="p-4 bg-muted/30 rounded-sm text-center space-y-2">
               <TickCircle size="24" className="mx-auto text-status-success-fg" />
-              <p className="text-xs font-semibold text-foreground">All Clear: 0 Pending Approvals</p>
+              <p className="text-xs font-semibold text-foreground">
+                All Clear: 0 Pending Approvals
+              </p>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
                 No mass updates, invoice refunds, or email dispatches waiting for signature.
               </p>
@@ -231,16 +289,18 @@ export default function DashboardClient({ user }: DashboardClientProps) {
           {/* Tenant Isolation Info */}
           <div className="bg-sidebar/60 p-4 rounded-sm text-xs space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground font-semibold uppercase text-[10px] tracking-wider">Tenant Scope</span>
+              <span className="text-muted-foreground font-semibold uppercase text-[10px] tracking-wider">
+                Tenant Scope
+              </span>
               <span className="text-foreground font-mono text-[10px]">1:1 Bound</span>
             </div>
             <p className="text-muted-foreground text-[11px] leading-relaxed">
-              Single-owner account strictly isolated via PostgreSQL Row Level Security. Cross-tenant leakage is
-              cryptographically prevented.
+              Single-owner account strictly isolated via PostgreSQL Row Level Security.
+              Cross-tenant leakage is cryptographically prevented.
             </p>
           </div>
         </div>
       </div>
-    </main>
+    </div>
   );
 }

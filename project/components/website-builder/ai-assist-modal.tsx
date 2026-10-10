@@ -24,6 +24,7 @@ export function AiAssistModal({
   >("refine_heading");
   const [industryTopic, setIndustryTopic] = React.useState("");
   const [loading, setLoading] = React.useState(false);
+  const [activeModel, setActiveModel] = React.useState<string | null>(null);
   const [suggestions, setSuggestions] = React.useState<
     { title?: string; subtitle?: string; body?: string; ctaPrimary?: string; ctaSecondary?: string }[]
   >([]);
@@ -33,12 +34,21 @@ export function AiAssistModal({
   const handleGenerate = async () => {
     setLoading(true);
     try {
+      const textForAction =
+        selectedAction === "shorten_subtitle"
+          ? (section.subtitle || section.title)
+          : selectedAction === "refine_heading"
+          ? section.title
+          : selectedAction === "generate_section_copy"
+          ? [section.title, section.subtitle, section.body].filter(Boolean).join(" — ")
+          : section.title;
+
       const res = await fetch("/api/website/ai-assist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: selectedAction,
-          currentText: section.title,
+          currentText: textForAction,
           sectionType: section.type,
           vibe: theme.colorVibe || "editorial",
           topic: industryTopic.trim() || undefined,
@@ -48,6 +58,9 @@ export function AiAssistModal({
       const json = await res.json();
       if (json.data?.suggestions) {
         setSuggestions(json.data.suggestions);
+        if (json.data.model) {
+          setActiveModel(json.data.model);
+        }
       }
     } catch {
       // Graceful fallback
@@ -90,7 +103,13 @@ export function AiAssistModal({
               <Magicpen size="16" />
             </div>
             <div>
-              <h3 className="font-display text-sm font-bold text-foreground">AI Copywriting Assistant</h3>
+              <div className="flex items-center gap-1.5">
+                <h3 className="font-display text-sm font-bold text-foreground">AI Copywriting Assistant</h3>
+                <span className="inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-medium">
+                  <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                  Groq LPU
+                </span>
+              </div>
               <p className="text-[11px] text-muted-foreground">Targeted copywriting for: {section.name}</p>
             </div>
           </div>
@@ -174,9 +193,16 @@ export function AiAssistModal({
           {/* Suggestions List */}
           {suggestions.length > 0 && (
             <div className="space-y-2 pt-2 border-t border-border/40">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
-                Generated Options (Click to Apply)
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
+                  Generated Options (Click to Apply)
+                </span>
+                {activeModel && (
+                  <span className="text-[9px] font-mono text-muted-foreground bg-muted/40 px-1.5 py-0.5 rounded-xs border border-border/30">
+                    {activeModel}
+                  </span>
+                )}
+              </div>
 
               <div className="space-y-2 max-h-56 overflow-y-auto">
                 {suggestions.map((s, idx) => (

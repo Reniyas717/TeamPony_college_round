@@ -7,13 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import jiti/register --test tests/audit.test.ts tests/website.test.ts"
+    "test": "node --import jiti/register --test tests/audit.test.ts tests/website.test.ts tests/webinar-time.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.3",
     "@tanstack/react-query": "^5.104.1",
     "iconsax-react": "^0.0.8",
+    "mermaid": "^11.17.2",
     "next": "16.4.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",

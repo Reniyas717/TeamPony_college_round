@@ -57,6 +57,12 @@ function LoginForm() {
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
+          scopes: "https://www.googleapis.com/auth/meetings.space.created",
+          queryParams: {
+            access_type: "offline",
+            include_granted_scopes: "true",
+            prompt: "consent",
+          },
           redirectTo: redirectUrl,
         },
       });
