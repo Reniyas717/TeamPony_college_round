@@ -98,6 +98,61 @@ export class CrmService {
   }
 
   /**
+   * Finds a contact by email address.
+   */
+  static async getContactByEmail(email: string): Promise<Contact | null> {
+    const cleanEmail = email.trim().toLowerCase();
+    const supabase = getSupabaseAdminClient();
+    if (supabase) {
+      try {
+        const { data } = await supabase
+          .from("crm_contacts")
+          .select("*")
+          .eq("business_id", DEFAULT_BUSINESS_ID)
+          .ilike("email", cleanEmail)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (data) return data as Contact;
+      } catch {}
+    }
+    return memoryContacts.find((c) => c.email.toLowerCase() === cleanEmail) || null;
+  }
+
+  /**
+   * Finds a contact by phone number (matching normalized digits).
+   */
+  static async getContactByPhone(phone: string): Promise<Contact | null> {
+    const cleanDigits = phone.replace(/\D/g, "").slice(-10);
+    if (!cleanDigits) return null;
+    const supabase = getSupabaseAdminClient();
+    if (supabase) {
+      try {
+        const { data } = await supabase
+          .from("crm_contacts")
+          .select("*")
+          .eq("business_id", DEFAULT_BUSINESS_ID)
+          .order("created_at", { ascending: false });
+
+        if (data) {
+          const match = (data as Contact[]).find((c) => {
+            const cDigits = (c.phone || "").replace(/\D/g, "").slice(-10);
+            return cDigits === cleanDigits;
+          });
+          if (match) return match;
+        }
+      } catch {}
+    }
+    return (
+      memoryContacts.find((c) => {
+        const cDigits = (c.phone || "").replace(/\D/g, "").slice(-10);
+        return cDigits === cleanDigits;
+      }) || null
+    );
+  }
+
+  /**
    * Creates a new contact and records initial activity.
    */
   static async createContact(input: CreateContactInput): Promise<Contact> {

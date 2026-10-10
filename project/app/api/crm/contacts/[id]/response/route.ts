@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { CrmService, DEFAULT_BUSINESS_ID } from "@/services/crm.service";
 import { AuditService } from "@/services/audit.service";
+import { LeadSentimentService } from "@/services/lead-sentiment.service";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -15,7 +16,7 @@ const ProcessResponseSchema = z.object({
 /**
  * POST /api/crm/contacts/[id]/response
  * Ingests an inbound customer response (Email/WhatsApp/Message),
- * evaluates sentiment (Yes/No / Interested/Not Interested),
+ * evaluates sentiment via Groq or Gemini AI (with deterministic fallback),
  * and automatically decides whether to mark the lead as Churned or Qualified.
  */
 export async function POST(request: Request, { params }: RouteParams) {
@@ -52,74 +53,15 @@ export async function POST(request: Request, { params }: RouteParams) {
     }
 
     const { channel, responseText } = parsed.data;
-    const textLower = responseText.toLowerCase().trim();
 
-    // Negative indicators (Lead says No / Not interested / Unsubscribe / Churned)
-    const negativeKeywords = [
-      /\bno\b/,
-      /\bnot interested\b/,
-      /\bunsubscribe\b/,
-      /\bstop\b/,
-      /\bremove\b/,
-      /\bcancel\b/,
-      /\bdon't contact\b/,
-      /\bdont contact\b/,
-      /\bnot right now\b/,
-      /\bnever\b/,
-      /\bpass\b/,
-      /\bnot looking\b/,
-      /\bopt out\b/,
-      /\bopt-out\b/,
-      /\bnah\b/,
-      /\bnope\b/,
-    ];
-
-    // Positive indicators (Lead says Yes / Interested / Retained)
-    const positiveKeywords = [
-      /\byes\b/,
-      /\binterested\b/,
-      /\bsure\b/,
-      /\bsounds good\b/,
-      /\blet'?s talk\b/,
-      /\blet'?s connect\b/,
-      /\blet'?s meet\b/,
-      /\bproceed\b/,
-      /\byep\b/,
-      /\byeah\b/,
-      /\bdefinitely\b/,
-      /\bcount me in\b/,
-      /\bcall me\b/,
-      /\bmore info\b/,
-      /\bready\b/,
-      /\bok\b/,
-      /\bokay\b/,
-    ];
-
-    const hasNegative = negativeKeywords.some((regex) => regex.test(textLower));
-    const hasPositive = positiveKeywords.some((regex) => regex.test(textLower));
-
-    let decision: "INTERESTED" | "CHURNED";
-    let targetStage: "qualified" | "churned";
-    let reason: string;
-
-    if (hasNegative) {
-      decision = "CHURNED";
-      targetStage = "churned";
-      reason = "Lead declined outreach ('No' / 'Not interested' / Opt-out). Automatically marked as CHURNED.";
-    } else if (hasPositive) {
-      decision = "INTERESTED";
-      targetStage = "qualified";
-      reason = "Lead expressed positive interest ('Yes' / Interested). Automatically QUALIFIED and retained.";
-    } else {
-      decision = "INTERESTED";
-      targetStage = "qualified";
-      reason = "Customer responded with general message. Automatically advanced to Qualified.";
-    }
+    // Evaluate customer response using Groq / Gemini AI
+    const evaluation = await LeadSentimentService.evaluateSentiment(responseText);
+    const { decision, isChurned, targetStage, reasoning, engine, confidence } = evaluation;
 
     // Update the contact's stage and save the response snippet
     const existingTags = Array.isArray(contact.tags) ? contact.tags : [];
     const cleanTags = existingTags.filter((t) => !t.startsWith("response:"));
-    cleanTags.push(decision === "CHURNED" ? "response:churned" : "response:interested");
+    cleanTags.push(isChurned ? "response:churned" : "response:interested");
 
     const updated = await CrmService.updateContact(id, {
       stage: targetStage,
@@ -130,17 +72,19 @@ export async function POST(request: Request, { params }: RouteParams) {
     // Record activity on the contact's timeline
     await CrmService.logActivity(
       id,
-      decision === "CHURNED" ? "stage_change" : "email_sent",
-      decision === "CHURNED"
+      isChurned ? "stage_change" : "email_sent",
+      isChurned
         ? `Lead Churned (${channel.toUpperCase()})`
         : `Lead Qualified (${channel.toUpperCase()})`,
-      `Inbound customer response: "${responseText}"\nDecision Engine: ${reason}`,
+      `Inbound customer response: "${responseText}"\nAI Engine [${engine.toUpperCase()}]: ${reasoning}`,
       "ai_agent",
       {
         channel,
         responseText,
         decision,
-        isChurned: decision === "CHURNED",
+        isChurned,
+        engine,
+        confidence,
         previous_stage: contact.stage,
         new_stage: targetStage,
       }
@@ -156,7 +100,9 @@ export async function POST(request: Request, { params }: RouteParams) {
         outcome: "success",
         metadata: {
           decision,
-          isChurned: decision === "CHURNED",
+          isChurned,
+          engine,
+          confidence,
           channel,
           responseText,
           previous_stage: contact.stage,
@@ -171,8 +117,10 @@ export async function POST(request: Request, { params }: RouteParams) {
         data: {
           contact: updated,
           decision,
-          isChurned: decision === "CHURNED",
-          reason,
+          isChurned,
+          reasoning,
+          engine,
+          confidence,
         },
       },
       { status: 200 }
