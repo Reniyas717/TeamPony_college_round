@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { SecurityUser, UserAdd, Filter, SearchNormal1, DirectSend, Call, More, CloseCircle, Refresh } from "iconsax-react";
 import { useContacts, useCreateContact } from "@/hooks/use-crm";
 import { ContactStage } from "@/lib/validations/crm";
+import { ContactDetailDrawer } from "@/components/crm/contact-detail-drawer";
 
 function formatRelativeTime(isoString: string): string {
   try {
@@ -46,6 +47,7 @@ export default function CrmPage() {
   const [searchQuery, setSearchQuery] = React.useState("");
   const [selectedStageFilter, setSelectedStageFilter] = React.useState<string | null>(null);
   const [isAddOpen, setIsAddOpen] = React.useState(false);
+  const [selectedContactId, setSelectedContactId] = React.useState<string | null>(null);
 
   // Form states for manual Add Contact modal
   const [newFirstName, setNewFirstName] = React.useState("");
@@ -274,9 +276,13 @@ export default function CrmPage() {
                 </tr>
               ) : (
                 filteredContacts.map((contact) => (
-                  <tr key={contact.id} className="hover:bg-accent/40 transition-colors">
+                  <tr
+                    key={contact.id}
+                    onClick={() => setSelectedContactId(contact.id)}
+                    className="hover:bg-accent/40 transition-colors cursor-pointer group"
+                  >
                     <td className="py-3 px-4">
-                      <p className="font-semibold text-foreground">
+                      <p className="font-semibold text-foreground group-hover:text-primary transition-colors">
                         {contact.first_name} {contact.last_name}
                       </p>
                       <p className="text-[11px] text-muted-foreground font-mono">{contact.email}</p>
@@ -315,22 +321,34 @@ export default function CrmPage() {
                       <div className="inline-flex items-center gap-1.5">
                         <button
                           type="button"
-                          className="p-1 rounded-sm text-muted-foreground hover:text-foreground cursor-pointer"
-                          title="Send email"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedContactId(contact.id);
+                          }}
+                          className="p-1 rounded-sm text-muted-foreground hover:text-foreground cursor-pointer hover:bg-muted"
+                          title="Open contact & send message"
                         >
                           <DirectSend size="14" />
                         </button>
                         <button
                           type="button"
-                          className="p-1 rounded-sm text-muted-foreground hover:text-foreground cursor-pointer"
-                          title="Log call"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedContactId(contact.id);
+                          }}
+                          className="p-1 rounded-sm text-muted-foreground hover:text-foreground cursor-pointer hover:bg-muted"
+                          title="Log call & view timeline"
                         >
                           <Call size="14" />
                         </button>
                         <button
                           type="button"
-                          className="p-1 rounded-sm text-muted-foreground hover:text-foreground cursor-pointer"
-                          title="Options"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedContactId(contact.id);
+                          }}
+                          className="p-1 rounded-sm text-muted-foreground hover:text-foreground cursor-pointer hover:bg-muted"
+                          title="Contact details & actions"
                         >
                           <More size="14" />
                         </button>
@@ -474,6 +492,14 @@ export default function CrmPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Contact Detail & Messaging Drawer */}
+      {selectedContactId && (
+        <ContactDetailDrawer
+          contactId={selectedContactId}
+          onClose={() => setSelectedContactId(null)}
+        />
       )}
     </main>
   );

@@ -233,3 +233,43 @@ export function useAddActivity() {
     },
   });
 }
+
+/**
+ * Mutation: Dispatch message (Email / WhatsApp) to contact
+ */
+export function useSendMessage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      contactId,
+      channel,
+      subject,
+      message,
+    }: {
+      contactId: string;
+      channel: "email" | "whatsapp" | "sms";
+      subject?: string;
+      message?: string;
+    }) => {
+      const res = await fetch(`/api/crm/contacts/${contactId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel, subject, message }),
+      });
+
+      if (!res.ok) {
+        const errorJson = await res.json().catch(() => ({}));
+        throw new Error(errorJson?.error?.message || "Failed to dispatch message");
+      }
+
+      const json = await res.json();
+      return json.data;
+    },
+    onSuccess: (_data, { contactId }) => {
+      queryClient.invalidateQueries({ queryKey: contactKeys.activities(contactId) });
+      queryClient.invalidateQueries({ queryKey: contactKeys.detail(contactId) });
+      queryClient.invalidateQueries({ queryKey: contactKeys.lists() });
+    },
+  });
+}

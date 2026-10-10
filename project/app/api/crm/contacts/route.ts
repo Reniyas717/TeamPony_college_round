@@ -37,12 +37,12 @@ export async function GET(request: Request) {
     const contacts = await CrmService.listContacts(parsedFilters.data);
 
     return NextResponse.json({ data: contacts }, { status: 200 });
-  } catch {
+  } catch (err: unknown) {
     return NextResponse.json(
       {
         error: {
           code: "INTERNAL_ERROR",
-          message: "Failed to retrieve contacts",
+          message: err instanceof Error ? err.message : "Failed to retrieve contacts",
           details: null,
         },
       },

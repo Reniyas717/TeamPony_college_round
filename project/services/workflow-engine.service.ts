@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { createHash, randomUUID } from "node:crypto";
+import { getSupabaseAdminClient } from "../lib/supabase/admin";
 import { AuditService } from "./audit.service";
 import { NotificationService } from "./notification.service";
 import { CrmService, DEFAULT_BUSINESS_ID } from "./crm.service";
@@ -8,151 +8,17 @@ import {
   WorkflowRun,
   WorkflowStepLog,
   CreateWorkflowInput,
+  UpdateWorkflowInput,
   WorkflowNode,
   WorkflowDAG,
-} from "@/lib/validations/workflow";
+} from "../lib/validations/workflow";
 
 if (typeof window !== "undefined") {
   throw new Error("Security Violation: WorkflowEngineService must never be imported into browser bundles.");
 }
 
-// In-Memory Dev Store for offline/fallback execution
-let memoryWorkflows: AutomationWorkflow[] = [
-  {
-    id: "wf-webinar-conversion",
-    business_id: DEFAULT_BUSINESS_ID,
-    title: "Webinar Attendee Conversion Sequence",
-    description: "Waits 24h post-webinar, checks subscription status, and sends targeted email & WhatsApp follow-ups.",
-    natural_language_prompt: "When a customer attends our webinar, wait 24h, check if subscribed, and send 20% discount offer",
-    status: "ACTIVE",
-    dag_definition: {
-      title: "Webinar Attendee Conversion Sequence",
-      description: "Waits 24h post-webinar, checks subscription status, and sends targeted email & WhatsApp follow-ups.",
-      naturalLanguagePrompt: "When a customer attends our webinar, wait 24h, check if subscribed, and send 20% discount offer",
-      nodes: [
-        {
-          id: "node-trigger-1",
-          type: "TRIGGER",
-          capability: "webinar.attendee.checked_in",
-          label: "Webinar Attendee Checked In",
-          description: "Fires when lead attends live session",
-          config: {},
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-delay-1",
-          type: "DELAY",
-          capability: "delay.wait",
-          label: "Wait 24 Hours",
-          description: "Gives lead time to review materials",
-          config: { durationHours: 24 },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-action-1",
-          type: "ACTION",
-          capability: "marketing.email.send",
-          label: "Send 20% Discount Email",
-          description: "Personalized follow-up offer",
-          config: { subject: "20% Discount for Webinar Attendees" },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-action-2",
-          type: "ACTION",
-          capability: "marketing.whatsapp.send",
-          label: "Send WhatsApp Demo Link",
-          description: "Instant message with product walkthrough",
-          config: { message: "Thanks for attending our webinar! Access your private demo at nexus.biz/demo" },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-      ],
-      edges: [
-        { id: "e1", sourceNodeId: "node-trigger-1", targetNodeId: "node-delay-1", sourceHandle: "default" },
-        { id: "e2", sourceNodeId: "node-delay-1", targetNodeId: "node-action-1", sourceHandle: "default" },
-        { id: "e3", sourceNodeId: "node-action-1", targetNodeId: "node-action-2", sourceHandle: "default" },
-      ],
-      isHighImpact: false,
-      estimatedAudienceCount: 150,
-    },
-    is_high_impact: false,
-    execution_count: 14,
-    last_executed_at: new Date(Date.now() - 3600000).toISOString(),
-    created_at: new Date(Date.now() - 86400000).toISOString(),
-    updated_at: new Date(Date.now() - 3600000).toISOString(),
-  },
-  {
-    id: "wf-qualified-vip",
-    business_id: DEFAULT_BUSINESS_ID,
-    title: "Qualified Lead VIP Acceleration Workflow",
-    description: "Enforces human sign-off before dispatching VIP WhatsApp messages and generating enterprise deals.",
-    natural_language_prompt: "When a lead is marked qualified, pause for owner approval, then send VIP WhatsApp and create deal",
-    status: "ACTIVE",
-    dag_definition: {
-      title: "Qualified Lead VIP Acceleration Workflow",
-      description: "Enforces human sign-off before dispatching VIP WhatsApp messages and generating enterprise deals.",
-      naturalLanguagePrompt: "When a lead is marked qualified, pause for owner approval, then send VIP WhatsApp and create deal",
-      nodes: [
-        {
-          id: "node-trigger-1",
-          type: "TRIGGER",
-          capability: "crm.contact.stage_changed",
-          label: "Lead Moved to Qualified",
-          description: "Fires when stage changes",
-          config: { stage: "qualified" },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-gate-1",
-          type: "APPROVAL_GATE",
-          capability: "approval.manual_gate",
-          label: "Owner Approval Checkpoint",
-          description: "Requires explicit owner signature before outreach",
-          config: {},
-          requiresApproval: true,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-action-1",
-          type: "ACTION",
-          capability: "crm.lead.create_deal",
-          label: "Create Enterprise Deal",
-          description: "Adds deal to CRM with ₹50,000 value",
-          config: { value: 50000 },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-        {
-          id: "node-action-2",
-          type: "ACTION",
-          capability: "marketing.whatsapp.send",
-          label: "Send VIP Executive WhatsApp",
-          description: "Personal account manager outreach",
-          config: { message: "Hello! Our executive team is excited to schedule your VIP onboarding call." },
-          requiresApproval: false,
-          retryPolicy: { maxRetries: 3, backoffSeconds: 30 },
-        },
-      ],
-      edges: [
-        { id: "e1", sourceNodeId: "node-trigger-1", targetNodeId: "node-gate-1", sourceHandle: "default" },
-        { id: "e2", sourceNodeId: "node-gate-1", targetNodeId: "node-action-1", sourceHandle: "default" },
-        { id: "e3", sourceNodeId: "node-action-1", targetNodeId: "node-action-2", sourceHandle: "default" },
-      ],
-      isHighImpact: true,
-      estimatedAudienceCount: 25,
-    },
-    is_high_impact: true,
-    execution_count: 5,
-    last_executed_at: new Date(Date.now() - 7200000).toISOString(),
-    created_at: new Date(Date.now() - 172800000).toISOString(),
-    updated_at: new Date(Date.now() - 7200000).toISOString(),
-  },
-];
+// In-Memory Dev Store for offline/fallback execution (Zero seeded values)
+let memoryWorkflows: AutomationWorkflow[] = [];
 
 const memoryRuns: WorkflowRun[] = [];
 const memoryStepLogs: WorkflowStepLog[] = [];
@@ -166,7 +32,7 @@ export class WorkflowEngineService {
    * Lists all workflows for the business
    */
   static async listWorkflows(businessId = DEFAULT_BUSINESS_ID): Promise<AutomationWorkflow[]> {
-    const supabase = getSupabaseServerClient();
+    const supabase = getSupabaseAdminClient();
     if (supabase) {
       try {
         const { data, error } = await supabase
@@ -175,7 +41,7 @@ export class WorkflowEngineService {
           .eq("business_id", businessId)
           .order("created_at", { ascending: false });
 
-        if (!error && data && data.length > 0) {
+        if (!error && Array.isArray(data)) {
           return data as AutomationWorkflow[];
         }
       } catch {
@@ -190,7 +56,7 @@ export class WorkflowEngineService {
    * Retrieves single workflow by ID
    */
   static async getWorkflowById(id: string, businessId = DEFAULT_BUSINESS_ID): Promise<AutomationWorkflow | null> {
-    const supabase = getSupabaseServerClient();
+    const supabase = getSupabaseAdminClient();
     if (supabase) {
       try {
         const { data, error } = await supabase
@@ -219,30 +85,24 @@ export class WorkflowEngineService {
     businessId = DEFAULT_BUSINESS_ID
   ): Promise<AutomationWorkflow> {
     const now = new Date().toISOString();
-    const newWorkflow: AutomationWorkflow = {
-      id: `wf-${Date.now()}`,
-      business_id: businessId,
-      title: input.title,
-      description: input.description || null,
-      natural_language_prompt: input.naturalLanguagePrompt,
-      status: input.status,
-      dag_definition: input.dag,
-      is_high_impact: input.dag.isHighImpact ?? false,
-      execution_count: 0,
-      last_executed_at: null,
-      created_at: now,
-      updated_at: now,
-    };
-
-    const supabase = getSupabaseServerClient();
+    const supabase = getSupabaseAdminClient();
     if (supabase) {
       try {
+        const insertPayload = {
+          business_id: businessId,
+          title: input.title,
+          description: input.description || null,
+          natural_language_prompt: input.naturalLanguagePrompt,
+          status: input.status,
+          dag_definition: input.dag,
+          is_high_impact: input.dag.isHighImpact ?? false,
+          execution_count: 0,
+          last_executed_at: null,
+        };
+
         const { data, error } = await supabase
           .from("automation_workflows")
-          .insert({
-            ...newWorkflow,
-            id: undefined, // Let PostgreSQL generate UUID
-          })
+          .insert(insertPayload)
           .select()
           .single();
 
@@ -260,11 +120,28 @@ export class WorkflowEngineService {
             { critical: false }
           );
           return created;
+        } else if (error) {
+          console.warn("[WorkflowEngineService] DB insert error:", error);
         }
-      } catch {
-        // Fallback
+      } catch (err) {
+        console.warn("[WorkflowEngineService] DB exception:", err);
       }
     }
+
+    const newWorkflow: AutomationWorkflow = {
+      id: randomUUID(),
+      business_id: businessId,
+      title: input.title,
+      description: input.description || null,
+      natural_language_prompt: input.naturalLanguagePrompt,
+      status: input.status,
+      dag_definition: input.dag,
+      is_high_impact: input.dag.isHighImpact ?? false,
+      execution_count: 0,
+      last_executed_at: null,
+      created_at: now,
+      updated_at: now,
+    };
 
     memoryWorkflows.unshift(newWorkflow);
 
@@ -284,10 +161,98 @@ export class WorkflowEngineService {
   }
 
   /**
+   * Updates an existing automation workflow
+   */
+  static async updateWorkflow(
+    id: string,
+    input: UpdateWorkflowInput,
+    businessId = DEFAULT_BUSINESS_ID
+  ): Promise<AutomationWorkflow | null> {
+    const supabase = getSupabaseAdminClient();
+    const now = new Date().toISOString();
+
+    const updatePayload: Record<string, unknown> = {
+      updated_at: now,
+    };
+    if (input.title !== undefined) updatePayload.title = input.title;
+    if (input.description !== undefined) updatePayload.description = input.description;
+    if (input.status !== undefined) updatePayload.status = input.status;
+    if (input.naturalLanguagePrompt !== undefined) updatePayload.natural_language_prompt = input.naturalLanguagePrompt;
+    if (input.dag !== undefined) {
+      updatePayload.dag_definition = input.dag;
+      updatePayload.is_high_impact = input.dag.isHighImpact ?? false;
+    }
+
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from("automation_workflows")
+          .update(updatePayload)
+          .eq("business_id", businessId)
+          .eq("id", id)
+          .select()
+          .single();
+
+        if (!error && data) {
+          const updated = data as AutomationWorkflow;
+          await AuditService.recordEvent(
+            {
+              business_id: businessId,
+              action: "ai.workflow.updated",
+              actor: { id: "owner", type: "user" },
+              resource: { type: "workflow", id: updated.id },
+              outcome: "success",
+              metadata: { title: updated.title, status: updated.status },
+            },
+            { critical: false }
+          );
+          return updated;
+        } else if (error) {
+          console.warn("[WorkflowEngineService] DB update warning:", error);
+        }
+      } catch (err) {
+        console.warn("[WorkflowEngineService] DB update exception:", err);
+      }
+    }
+
+    // Memory fallback
+    const idx = memoryWorkflows.findIndex((w) => w.id === id && w.business_id === businessId);
+    if (idx !== -1) {
+      memoryWorkflows[idx] = {
+        ...memoryWorkflows[idx],
+        ...updatePayload,
+        title: input.title ?? memoryWorkflows[idx].title,
+        description: input.description !== undefined ? input.description : memoryWorkflows[idx].description,
+        status: input.status ?? memoryWorkflows[idx].status,
+        natural_language_prompt: input.naturalLanguagePrompt ?? memoryWorkflows[idx].natural_language_prompt,
+        dag_definition: input.dag ?? memoryWorkflows[idx].dag_definition,
+        is_high_impact: input.dag?.isHighImpact ?? memoryWorkflows[idx].is_high_impact,
+        updated_at: now,
+      };
+
+      await AuditService.recordEvent(
+        {
+          business_id: businessId,
+          action: "ai.workflow.updated",
+          actor: { id: "owner", type: "user" },
+          resource: { type: "workflow", id: memoryWorkflows[idx].id },
+          outcome: "success",
+          metadata: { title: memoryWorkflows[idx].title, status: memoryWorkflows[idx].status },
+        },
+        { critical: false }
+      );
+
+      return memoryWorkflows[idx];
+    }
+
+    return null;
+  }
+
+  /**
    * Deletes a workflow
    */
   static async deleteWorkflow(id: string, businessId = DEFAULT_BUSINESS_ID): Promise<boolean> {
-    const supabase = getSupabaseServerClient();
+    const supabase = getSupabaseAdminClient();
     if (supabase) {
       try {
         const { error } = await supabase
@@ -321,7 +286,7 @@ export class WorkflowEngineService {
     }
 
     const now = new Date().toISOString();
-    const runId = `run-${Date.now()}`;
+    const runId = randomUUID();
 
     const run: WorkflowRun = {
       id: runId,
@@ -338,6 +303,27 @@ export class WorkflowEngineService {
 
     memoryRuns.unshift(run);
 
+    const supabase = getSupabaseAdminClient();
+    const isDbWorkflow = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(workflow.id);
+    if (supabase && isDbWorkflow) {
+      try {
+        await supabase.from("workflow_runs").insert({
+          id: run.id,
+          workflow_id: workflow.id,
+          business_id: businessId,
+          trigger_event_id: run.trigger_event_id,
+          status: run.status,
+          current_node_id: run.current_node_id,
+          context_data: run.context_data,
+          error_details: run.error_details,
+          started_at: run.started_at,
+          completed_at: run.completed_at,
+        });
+      } catch (err) {
+        console.warn("[WorkflowEngineService] DB run insert warning:", err);
+      }
+    }
+
     const stepLogs: WorkflowStepLog[] = [];
     const dag: WorkflowDAG = workflow.dag_definition;
 
@@ -353,8 +339,9 @@ export class WorkflowEngineService {
         .digest("hex");
 
       const startTime = Date.now();
+      const stepLogId = randomUUID();
       const stepLog: WorkflowStepLog = {
-        id: `step-${Date.now()}-${node.id}`,
+        id: stepLogId,
         run_id: run.id,
         workflow_id: workflow.id,
         node_id: node.id,
@@ -378,6 +365,32 @@ export class WorkflowEngineService {
 
           run.status = "AWAITING_APPROVAL";
           pausedForApproval = true;
+
+          if (supabase && isDbWorkflow) {
+            try {
+              await supabase.from("workflow_step_logs").insert({
+                id: stepLog.id,
+                run_id: run.id,
+                workflow_id: workflow.id,
+                node_id: node.id,
+                node_type: node.type,
+                capability: node.capability,
+                status: stepLog.status,
+                idempotency_key: idempotencyKey,
+                input_payload: stepLog.input_payload,
+                output_payload: stepLog.output_payload,
+                retry_count: 0,
+                execution_duration_ms: stepLog.execution_duration_ms,
+                executed_at: stepLog.executed_at,
+              });
+              await supabase
+                .from("workflow_runs")
+                .update({ status: "AWAITING_APPROVAL", current_node_id: node.id })
+                .eq("id", run.id);
+            } catch (err) {
+              console.warn("[WorkflowEngineService] DB step log insert warning:", err);
+            }
+          }
           break; // Stop execution until approved
         }
 
@@ -399,6 +412,28 @@ export class WorkflowEngineService {
       stepLogs.push(stepLog);
       memoryStepLogs.push(stepLog);
 
+      if (supabase && isDbWorkflow) {
+        try {
+          await supabase.from("workflow_step_logs").insert({
+            id: stepLog.id,
+            run_id: run.id,
+            workflow_id: workflow.id,
+            node_id: node.id,
+            node_type: node.type,
+            capability: node.capability,
+            status: stepLog.status,
+            idempotency_key: idempotencyKey,
+            input_payload: stepLog.input_payload,
+            output_payload: stepLog.output_payload,
+            retry_count: 0,
+            execution_duration_ms: stepLog.execution_duration_ms,
+            executed_at: stepLog.executed_at,
+          });
+        } catch (err) {
+          console.warn("[WorkflowEngineService] DB step log insert warning:", err);
+        }
+      }
+
       if (stepLog.status === "FAILED") {
         run.status = "FAILED";
         break;
@@ -410,6 +445,21 @@ export class WorkflowEngineService {
       run.completed_at = new Date().toISOString();
       workflow.execution_count += 1;
       workflow.last_executed_at = run.completed_at;
+
+      if (supabase && isDbWorkflow) {
+        try {
+          await supabase
+            .from("workflow_runs")
+            .update({ status: "COMPLETED", completed_at: run.completed_at })
+            .eq("id", run.id);
+          await supabase
+            .from("automation_workflows")
+            .update({ execution_count: workflow.execution_count, last_executed_at: run.completed_at })
+            .eq("id", workflow.id);
+        } catch (err) {
+          console.warn("[WorkflowEngineService] DB update run completion warning:", err);
+        }
+      }
 
       await AuditService.recordEvent(
         {
@@ -516,7 +566,23 @@ export class WorkflowEngineService {
     reason?: string,
     businessId = DEFAULT_BUSINESS_ID
   ): Promise<WorkflowRun> {
-    const run = memoryRuns.find((r) => r.id === runId && r.business_id === businessId);
+    const supabase = getSupabaseAdminClient();
+    let run = memoryRuns.find((r) => r.id === runId && r.business_id === businessId);
+
+    if (!run && supabase) {
+      try {
+        const { data } = await supabase
+          .from("workflow_runs")
+          .select("*")
+          .eq("id", runId)
+          .eq("business_id", businessId)
+          .single();
+        if (data) run = data as WorkflowRun;
+      } catch {
+        // Fallback
+      }
+    }
+
     if (!run) {
       throw new Error(`Workflow run with ID '${runId}' not found`);
     }
@@ -529,6 +595,17 @@ export class WorkflowEngineService {
       run.status = "CANCELLED";
       run.completed_at = new Date().toISOString();
       run.error_details = { rejectionReason: reason || "Rejected by business owner" };
+
+      if (supabase) {
+        try {
+          await supabase
+            .from("workflow_runs")
+            .update({ status: "CANCELLED", completed_at: run.completed_at, error_details: run.error_details })
+            .eq("id", run.id);
+        } catch {
+          // ignore
+        }
+      }
 
       await AuditService.recordEvent(
         {
@@ -553,33 +630,81 @@ export class WorkflowEngineService {
       const remainingNodes = gateIndex !== -1 ? dag.nodes.slice(gateIndex + 1) : [];
 
       for (const node of remainingNodes) {
+        const stepLogId = randomUUID();
+        const output = await this.executeNode(node, run.context_data);
+        const idempotencyKey = createHash("sha256")
+          .update(`${businessId}:${workflow.id}:${run.id}:${node.id}:resume`)
+          .digest("hex");
+
         const stepLog: WorkflowStepLog = {
-          id: `step-${Date.now()}-${node.id}`,
+          id: stepLogId,
           run_id: run.id,
           workflow_id: workflow.id,
           node_id: node.id,
           node_type: node.type,
           capability: node.capability,
           status: "SUCCESS",
-          idempotency_key: createHash("sha256")
-            .update(`${businessId}:${workflow.id}:${run.id}:${node.id}:resume`)
-            .digest("hex"),
+          idempotency_key: idempotencyKey,
           input_payload: { ...run.context_data },
-          output_payload: await this.executeNode(node, run.context_data),
+          output_payload: output,
           retry_count: 0,
           execution_duration_ms: 12,
           executed_at: new Date().toISOString(),
         };
 
         memoryStepLogs.push(stepLog);
+
+        if (supabase) {
+          try {
+            await supabase.from("workflow_step_logs").insert({
+              id: stepLog.id,
+              run_id: run.id,
+              workflow_id: workflow.id,
+              node_id: node.id,
+              node_type: node.type,
+              capability: node.capability,
+              status: stepLog.status,
+              idempotency_key: idempotencyKey,
+              input_payload: stepLog.input_payload,
+              output_payload: stepLog.output_payload,
+              retry_count: 0,
+              execution_duration_ms: stepLog.execution_duration_ms,
+              executed_at: stepLog.executed_at,
+            });
+          } catch {
+            // ignore
+          }
+        }
       }
 
       workflow.execution_count += 1;
       workflow.last_executed_at = new Date().toISOString();
+
+      if (supabase) {
+        try {
+          await supabase
+            .from("automation_workflows")
+            .update({ execution_count: workflow.execution_count, last_executed_at: workflow.last_executed_at })
+            .eq("id", workflow.id);
+        } catch {
+          // ignore
+        }
+      }
     }
 
     run.status = "COMPLETED";
     run.completed_at = new Date().toISOString();
+
+    if (supabase) {
+      try {
+        await supabase
+          .from("workflow_runs")
+          .update({ status: "COMPLETED", completed_at: run.completed_at })
+          .eq("id", run.id);
+      } catch {
+        // ignore
+      }
+    }
 
     await AuditService.recordEvent(
       {
@@ -600,6 +725,23 @@ export class WorkflowEngineService {
    * Retrieves step logs for a run
    */
   static async getRunStepLogs(runId: string): Promise<WorkflowStepLog[]> {
+    const supabase = getSupabaseAdminClient();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from("workflow_step_logs")
+          .select("*")
+          .eq("run_id", runId)
+          .order("executed_at", { ascending: true });
+
+        if (!error && Array.isArray(data) && data.length > 0) {
+          return data as WorkflowStepLog[];
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
     return memoryStepLogs.filter((s) => s.run_id === runId);
   }
 }

@@ -9,12 +9,7 @@ import {
   ContactStage,
 } from "../lib/validations/crm";
 
-async function getSupabaseServerClient(useAdmin = false) {
-  const { createClient, createAdminClient } = await import("../lib/supabase/server");
-  const client = useAdmin ? createAdminClient() : await createClient();
-  if (!client) throw new Error("Supabase client unavailable");
-  return client;
-}
+import { getSupabaseAdminClient } from "../lib/supabase/admin";
 
 /**
  * CRM Service Layer
@@ -24,63 +19,8 @@ async function getSupabaseServerClient(useAdmin = false) {
 
 export const DEFAULT_BUSINESS_ID = "00000000-0000-0000-0000-000000000001";
 
-// In-Memory Store populated with baseline contacts matching CRM pipeline
-let memoryContacts: Contact[] = [
-  {
-    id: "00000000-0000-0000-0000-000000000101",
-    business_id: DEFAULT_BUSINESS_ID,
-    first_name: "Rohan",
-    last_name: "Sharma",
-    email: "rohan@enterprise.in",
-    phone: "+91 98201 12345",
-    company: "Apex Tech Solutions",
-    stage: "qualified",
-    value: 60000,
-    source: "website_form",
-    tags: ["enterprise", "website-lead"],
-    next_action_text: "Schedule solution architecture review",
-    next_action_due_at: null,
-    last_activity_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-    created_at: new Date(Date.now() - 86400000).toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "00000000-0000-0000-0000-000000000102",
-    business_id: DEFAULT_BUSINESS_ID,
-    first_name: "Priya",
-    last_name: "Nair",
-    email: "priya@nairlogistics.com",
-    phone: "+91 98450 67890",
-    company: "Nair Logistics",
-    stage: "lead",
-    value: 24000,
-    source: "webinar",
-    tags: ["logistics", "webinar-attendee"],
-    next_action_text: "Send follow-up deck",
-    next_action_due_at: null,
-    last_activity_at: new Date(Date.now() - 86400000).toISOString(),
-    created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "00000000-0000-0000-0000-000000000103",
-    business_id: DEFAULT_BUSINESS_ID,
-    first_name: "Anand",
-    last_name: "Verma",
-    email: "anand@zenithretail.in",
-    phone: "+91 97110 54321",
-    company: "Zenith Retail Corp",
-    stage: "customer",
-    value: 110000,
-    source: "referral",
-    tags: ["retail", "closed-won"],
-    next_action_text: "Quarterly review",
-    next_action_due_at: null,
-    last_activity_at: new Date(Date.now() - 86400000 * 3).toISOString(),
-    created_at: new Date(Date.now() - 86400000 * 5).toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
+// In-Memory Store (Clean initial state; populated via forms, API, or live actions)
+let memoryContacts: Contact[] = [];
 let memoryActivities: Activity[] = [];
 
 
@@ -89,76 +29,49 @@ export class CrmService {
    * Retrieves filtered contacts for the verified business.
    */
   static async listContacts(filters?: ContactFilters): Promise<Contact[]> {
-    const supabase = await getSupabaseServerClient();
-    if (supabase) {
-      try {
-        let query = supabase
-          .from("crm_contacts")
-          .select("*")
-          .eq("business_id", DEFAULT_BUSINESS_ID)
-          .order("last_activity_at", { ascending: false });
+    const supabase = getSupabaseAdminClient();
 
-        if (filters?.stage) {
-          query = query.eq("stage", filters.stage);
-        }
-        if (filters?.source) {
-          query = query.eq("source", filters.source);
-        }
-
-        const { data, error } = await query;
-        if (!error && data && data.length > 0) {
-          let results = data as Contact[];
-          if (filters?.search) {
-            const s = filters.search.toLowerCase();
-            results = results.filter(
-              (c) =>
-                c.first_name.toLowerCase().includes(s) ||
-                c.last_name.toLowerCase().includes(s) ||
-                c.email.toLowerCase().includes(s) ||
-                (c.company && c.company.toLowerCase().includes(s))
-            );
-          }
-          return results;
-        }
-      } catch {
-        // Fallback to in-memory store
-      }
-    }
-
-    // In-memory fallback
-    let results = [...memoryContacts];
+    let query = supabase
+      .from("crm_contacts")
+      .select("*")
+      .eq("business_id", DEFAULT_BUSINESS_ID)
+      .order("last_activity_at", { ascending: false });
 
     if (filters?.stage) {
-      results = results.filter((c) => c.stage === filters.stage);
+      query = query.eq("stage", filters.stage);
     }
     if (filters?.source) {
-      results = results.filter((c) => c.source === filters.source);
-    }
-    if (filters?.tag) {
-      results = results.filter((c) => c.tags.includes(filters.tag!));
-    }
-    if (filters?.search) {
-      const s = filters.search.toLowerCase();
-      results = results.filter(
-        (c) =>
-          c.first_name.toLowerCase().includes(s) ||
-          c.last_name.toLowerCase().includes(s) ||
-          c.email.toLowerCase().includes(s) ||
-          (c.company && c.company.toLowerCase().includes(s))
-      );
+      query = query.eq("source", filters.source);
     }
 
-    return results.sort(
-      (a, b) =>
-        new Date(b.last_activity_at).getTime() - new Date(a.last_activity_at).getTime()
-    );
+    const { data, error } = await query;
+    if (error) {
+      throw new Error("Supabase query error: " + error.message);
+    }
+
+    if (data && data.length > 0) {
+      let results = data as Contact[];
+      if (filters?.search) {
+        const s = filters.search.toLowerCase();
+        results = results.filter(
+          (c) =>
+            c.first_name.toLowerCase().includes(s) ||
+            c.last_name.toLowerCase().includes(s) ||
+            c.email.toLowerCase().includes(s) ||
+            (c.company && c.company.toLowerCase().includes(s))
+        );
+      }
+      return results;
+    }
+
+    return [];
   }
 
   /**
    * Finds a specific contact by ID.
    */
   static async getContactById(id: string): Promise<Contact | null> {
-    const supabase = await getSupabaseServerClient();
+    const supabase = getSupabaseAdminClient();
     if (supabase) {
       try {
         const { data, error } = await supabase
@@ -168,12 +81,17 @@ export class CrmService {
           .eq("id", id)
           .single();
 
+        if (error) {
+          console.error("[CrmService.getContactById] supabase error:", error);
+        }
         if (!error && data) {
           return data as Contact;
         }
-      } catch {
-        // Fallback
+      } catch (err) {
+        console.error("[CrmService.getContactById] catch error:", err);
       }
+    } else {
+      console.warn("[CrmService.getContactById] supabase client is null!");
     }
 
     return memoryContacts.find((c) => c.id === id) || null;
@@ -204,7 +122,7 @@ export class CrmService {
     };
 
     let created: Contact = newContact;
-    const supabase = await getSupabaseServerClient();
+    const supabase = getSupabaseAdminClient();
     if (supabase) {
       try {
         const { data, error } = await supabase
@@ -278,7 +196,7 @@ export class CrmService {
     const stageChanged = Boolean(input.stage && input.stage !== existing.stage);
 
     let updated: Contact | null = null;
-    const supabase = await getSupabaseServerClient();
+    const supabase = getSupabaseAdminClient();
     if (supabase) {
       try {
         const { data, error } = await supabase
@@ -359,7 +277,7 @@ export class CrmService {
    */
   static async deleteContact(id: string): Promise<boolean> {
     let deleted = false;
-    const supabase = await getSupabaseServerClient();
+    const supabase = getSupabaseAdminClient();
     if (supabase) {
       try {
         const { error } = await supabase
@@ -410,7 +328,7 @@ export class CrmService {
    * Retrieves timeline activities for a given contact.
    */
   static async getContactActivities(contactId: string): Promise<Activity[]> {
-    const supabase = await getSupabaseServerClient();
+    const supabase = getSupabaseAdminClient();
     if (supabase) {
       try {
         const { data, error } = await supabase
@@ -458,7 +376,7 @@ export class CrmService {
       created_at: new Date().toISOString(),
     };
 
-    const supabase = await getSupabaseServerClient();
+    const supabase = getSupabaseAdminClient();
     if (supabase) {
       try {
         await supabase.from("crm_activities").insert({

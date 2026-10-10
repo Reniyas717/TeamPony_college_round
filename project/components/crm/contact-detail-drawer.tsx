@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useState } from "react";
-import { useContact, useContactActivities, useUpdateContact, useAddActivity } from "@/hooks/use-crm";
+import { useContact, useContactActivities, useUpdateContact, useAddActivity, useSendMessage } from "@/hooks/use-crm";
 import { Contact } from "@/lib/validations/crm";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,9 +10,13 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
   const { data: activities, isLoading: isLoadingActivities } = useContactActivities(contactId);
   const { mutateAsync: updateContact } = useUpdateContact();
   const { mutateAsync: addActivity, isPending: isAddingActivity } = useAddActivity();
+  const { mutateAsync: sendMessage, isPending: isSendingMessage } = useSendMessage();
 
   const [noteText, setNoteText] = useState("");
   const [activeTab, setActiveTab] = useState<"overview" | "timeline">("overview");
+  const [outreachStatus, setOutreachStatus] = useState<string | null>(null);
+  const [customMsg, setCustomMsg] = useState("");
+  const [activeChannel, setActiveChannel] = useState<"email" | "whatsapp">("email");
 
   if (!contactId) return null;
 
@@ -31,6 +35,30 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
       type: "note"
     });
     setNoteText("");
+  };
+
+  const handleSendOutreach = async (channel: "email" | "whatsapp") => {
+    if (!contact) return;
+    try {
+      setOutreachStatus(`Dispatching ${channel === 'email' ? 'Email via Resend' : 'WhatsApp'}...`);
+      const defaultSubject = `Welcome to Nexus — Regarding your inquiry`;
+      const defaultText = customMsg.trim() || (channel === "email" 
+        ? `Hi ${contact.first_name}, thank you for reaching out via our website! We reviewed your submission and are excited to assist you.` 
+        : `Hello ${contact.first_name}! We received your inquiry on Nexus. When is a good time to connect?`);
+
+      await sendMessage({
+        contactId: contact.id,
+        channel,
+        subject: defaultSubject,
+        message: defaultText,
+      });
+
+      setOutreachStatus(`Dispatched ${channel.toUpperCase()}! Recorded to Activity Timeline.`);
+      setCustomMsg("");
+      setTimeout(() => setOutreachStatus(null), 5000);
+    } catch (err: unknown) {
+      setOutreachStatus(`Failed to send: ${err instanceof Error ? err.message : String(err)}`);
+    }
   };
 
   return (
@@ -130,6 +158,68 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">No next action scheduled.</p>
+                )}
+              </div>
+
+              {/* Direct Outreach & Customer Communication */}
+              <div className="bg-card p-5 rounded-lg border border-border flex flex-col gap-4 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-base text-foreground">Outreach & Communications</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Send transactional email (via Resend) or WhatsApp messages directly to {contact.first_name}.
+                    </p>
+                  </div>
+                  <Badge variant="brand" className="text-xs">Live Channel</Badge>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <textarea
+                    className="w-full min-h-[70px] p-3 text-sm rounded-sm border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                    placeholder={`Write custom message to ${contact.first_name} (optional)...`}
+                    value={customMsg}
+                    onChange={(e) => setCustomMsg(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button 
+                    variant="primary" 
+                    size="sm"
+                    disabled={isSendingMessage}
+                    onClick={() => handleSendOutreach("email")}
+                    className="cursor-pointer"
+                  >
+                    ✉️ {isSendingMessage ? "Dispatching..." : "Send Email via Resend"}
+                  </Button>
+
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    disabled={isSendingMessage}
+                    onClick={() => handleSendOutreach("whatsapp")}
+                    className="cursor-pointer"
+                  >
+                    💬 {isSendingMessage ? "Dispatching..." : "Send WhatsApp"}
+                  </Button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("timeline")}
+                    className="text-xs text-primary hover:underline ml-auto font-semibold"
+                  >
+                    View Timeline &rarr;
+                  </button>
+                </div>
+
+                {outreachStatus && (
+                  <div className={`p-2.5 rounded-sm text-xs font-semibold ${
+                    outreachStatus.startsWith("Failed") 
+                      ? "bg-status-danger-bg text-status-danger-fg border border-status-danger-border"
+                      : "bg-status-success-bg text-status-success-fg border border-status-success-border"
+                  }`}>
+                    {outreachStatus}
+                  </div>
                 )}
               </div>
             </div>

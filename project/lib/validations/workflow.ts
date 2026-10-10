@@ -164,14 +164,29 @@ export const GenerateWorkflowInputSchema = z.object({
 });
 export type GenerateWorkflowInput = z.infer<typeof GenerateWorkflowInputSchema>;
 
-export const CreateWorkflowSchema = z.object({
-  title: z.string().min(3),
-  description: z.string().optional(),
-  naturalLanguagePrompt: z.string().min(1),
-  dag: WorkflowDAGSchema,
-  status: WorkflowStatusSchema.default("DRAFT"),
-});
+export const CreateWorkflowSchema = z
+  .object({
+    title: z.string().min(3),
+    description: z.string().optional(),
+    naturalLanguagePrompt: z.string().optional(),
+    dag: WorkflowDAGSchema,
+    status: WorkflowStatusSchema.default("DRAFT"),
+  })
+  .transform((data) => ({
+    ...data,
+    naturalLanguagePrompt:
+      data.naturalLanguagePrompt || data.dag.naturalLanguagePrompt || data.title,
+  }));
 export type CreateWorkflowInput = z.infer<typeof CreateWorkflowSchema>;
+
+export const UpdateWorkflowSchema = z.object({
+  title: z.string().min(3).optional(),
+  description: z.string().optional().nullable(),
+  status: WorkflowStatusSchema.optional(),
+  naturalLanguagePrompt: z.string().min(1).optional(),
+  dag: WorkflowDAGSchema.optional(),
+});
+export type UpdateWorkflowInput = z.infer<typeof UpdateWorkflowSchema>;
 
 export const TriggerWorkflowInputSchema = z.object({
   payload: z.record(z.string(), z.any()).default({}),

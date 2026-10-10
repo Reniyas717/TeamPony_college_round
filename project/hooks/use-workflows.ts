@@ -7,6 +7,7 @@ import {
   WorkflowRun,
   WorkflowStepLog,
   CreateWorkflowInput,
+  UpdateWorkflowInput,
   GenerateWorkflowInput,
   TriggerWorkflowInput,
   ApproveWorkflowInput,
@@ -126,6 +127,41 @@ export function useCreateWorkflow() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: workflowKeys.lists() });
+    },
+  });
+}
+
+/**
+ * Mutation: Update a workflow
+ */
+export function useUpdateWorkflow() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: UpdateWorkflowInput;
+    }): Promise<AutomationWorkflow> => {
+      const res = await fetch(`/api/workflows/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+
+      if (!res.ok) {
+        const errorJson = await res.json().catch(() => ({}));
+        throw new Error(errorJson?.error?.message || "Failed to update workflow");
+      }
+
+      const json = await res.json();
+      return json.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: workflowKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: workflowKeys.detail(data.id) });
     },
   });
 }
