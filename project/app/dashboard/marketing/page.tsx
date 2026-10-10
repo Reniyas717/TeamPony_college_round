@@ -1,4 +1,5 @@
 import * as React from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { DirectSend, Add } from "iconsax-react";
 
@@ -51,10 +52,12 @@ export default function MarketingPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="primary" size="md" className="gap-2 cursor-pointer shadow-sm">
-            <Add size="16" className="text-brand-foreground" />
-            <span>Create Campaign</span>
-          </Button>
+          <Link href="/dashboard/workflows">
+            <Button variant="primary" size="md" className="gap-2 cursor-pointer shadow-sm">
+              <Add size="16" className="text-brand-foreground" />
+              <span>Create Campaign (AI Workflow)</span>
+            </Button>
+          </Link>
         </div>
       </div>
 

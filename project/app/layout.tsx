@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Manrope, Bricolage_Grotesque } from "next/font/google";
+import { QueryProvider } from "@/components/providers/query-provider";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -14,8 +15,6 @@ const bricolage = Bricolage_Grotesque({
   display: "swap",
   axes: ["opsz"],
 });
-
-import { QueryProvider } from "@/components/providers/query-provider";
 
 export const metadata: Metadata = {
   title: "Nexus — AI-Powered Business Operating Platform",
