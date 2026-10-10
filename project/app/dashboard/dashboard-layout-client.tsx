@@ -69,6 +69,8 @@ export default function DashboardLayoutClient({
 
   const navItems = [
     { href: "/dashboard", label: "Overview", icon: Activity },
+    { href: "/dashboard/intelligence", label: "Customer Journey", icon: TrendUp },
+    { href: "/dashboard/workflows", label: "AI Workflows", icon: Routing },
     { href: "/dashboard/crm", label: "Intelligent CRM", icon: SecurityUser },
     { href: "/dashboard/billing", label: "Billing & Plans", icon: CardIcon },
     { href: "/dashboard/website", label: "Website Builder", icon: Global },
