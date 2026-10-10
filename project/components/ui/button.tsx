@@ -17,7 +17,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     // If asChild is true, we normally use Slot, but to keep it dependency free without Radix:
     // If asChild is true, it expects a single child and clones it.
     
-    const baseClasses = "inline-flex items-center justify-center whitespace-nowrap font-sans font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 active:scale-[0.97] active:transition-transform active:duration-100 ease-out";
+    const baseClasses = "inline-flex items-center justify-center whitespace-nowrap font-sans font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 active:scale-[0.97] active:transition-transform active:duration-100 ease-out cursor-pointer";
     
     const variantClasses = {
       primary: "bg-primary text-primary-foreground hover:bg-primary/90",
