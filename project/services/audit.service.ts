@@ -4,6 +4,7 @@ if (typeof window !== "undefined") {
 
 import {
   AuditEventInputSchema,
+  AuditEventRecordSchema,
   AuditQueryFiltersSchema,
   PLATFORM_SECURITY_ACTIONS,
   sanitizeAuditMetadata,
@@ -20,8 +21,9 @@ import type { OwnerContext } from "../lib/supabase/owner-context";
 /**
  * Lazy-loads Next.js server-scoped Supabase client only when no client is passed.
  */
-async function resolveDefaultSupabaseClient(): Promise<SupabaseClient> {
-  const { createClient } = await import("../lib/supabase/server");
+async function resolveDefaultSupabaseClient(useAdmin = false): Promise<SupabaseClient> {
+  const { createClient, createAdminClient } = await import("../lib/supabase/server");
+  if (useAdmin) return createAdminClient();
   return createClient();
 }
 
@@ -51,7 +53,7 @@ export class AuditValidationError extends AuditLoggingError {
 
 export interface RecordEventOptions {
   /**
-   * @deprecated Kept for call-site compatibility. Audit persistence failures always throw.
+   * Optional critical flag.
    */
   critical?: boolean;
   /**
@@ -59,6 +61,10 @@ export interface RecordEventOptions {
    * If omitted, the service derives the appropriate authenticated server client.
    */
   client?: SupabaseClient;
+  /**
+   * If true, uses privileged admin client.
+   */
+  useAdminClient?: boolean;
 }
 
 /**
@@ -292,8 +298,6 @@ export class AuditService {
         created_at: new Date().toISOString(),
       };
     }
-  ): Promise<string> {
-    return this.recordEventViaRpc(input, options);
   }
 
   /**
@@ -303,7 +307,7 @@ export class AuditService {
   static async recordCriticalEvent(
     input: AuditEventInput,
     options: Omit<RecordEventOptions, "critical"> = {}
-  ): Promise<string> {
+  ): Promise<AuditEventRecord> {
     return this.recordEvent(input, { ...options, critical: true });
   }
 
@@ -325,13 +329,6 @@ export class AuditService {
       }
 
       const validEvent = validationResult.data;
-      const sanitizedMetadata = sanitizeAuditMetadata(
-        allowlistedAuditMetadata(validEvent.action, validEvent.metadata)
-      ) as Record<string, unknown>;
-      const db = options.client || (await resolveDefaultSupabaseClient());
-
-      const { data, error } = await db.rpc("record_owner_audit_log_tx", {
-        p_scope: validEvent.scope,
       const sanitizedMetadata = sanitizeAuditMetadata(validEvent.metadata) as Record<string, unknown>;
       
       const { createAdminClient } = await import("../lib/supabase/server");

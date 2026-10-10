@@ -249,21 +249,6 @@ export class AuthService {
       outcome: "success",
       metadata: { method: "password" },
     });
-    const userId = authData.user.id;
-    const finalUsername = authData.user.user_metadata?.username || resolvedUsername;
-
-    // Non-blocking audit log execution
-    void AuditService.recordEvent(
-      {
-        business_id: SYSTEM_BUSINESS_ID,
-        action: "auth.login",
-        actor: { id: userId, type: "user" },
-        resource: { type: "auth_session", id: userId },
-        outcome: "success",
-        metadata: { auth_method: "password", username: finalUsername },
-      },
-      { critical: false, useAdminClient: true }
-    ).catch(() => undefined);
 
     return {
       user: {

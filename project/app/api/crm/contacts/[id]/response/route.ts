@@ -66,11 +66,11 @@ export async function POST(request: Request, { params }: RouteParams) {
     const { decision, isChurned, targetStage, reasoning, engine, confidence } = evaluation;
 
     const admin = getSupabaseAdminClient();
-    const effectiveContext = context || (admin ? {
-      client: admin as unknown as Parameters<typeof CrmService.updateContact>[2] extends infer C ? NonNullable<C>["client"] : never,
-      user: { id: "system" } as unknown as Parameters<typeof CrmService.updateContact>[2] extends infer C ? NonNullable<C>["user"] : never,
+    const effectiveContext = (context || (admin ? {
+      client: admin,
+      user: { id: "system", email: "system@nexus.internal" },
       businessId: contact.business_id,
-    } : undefined);
+    } : undefined)) as any;
 
     // Update the contact's stage and save the response snippet
     const existingTags = Array.isArray(contact.tags) ? contact.tags : [];

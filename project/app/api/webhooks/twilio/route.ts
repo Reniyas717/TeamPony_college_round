@@ -66,15 +66,15 @@ export async function POST(request: Request) {
     // Record activity on timeline
     await CrmService.logActivity(
       contact.id,
-      decision === "CHURNED" ? "stage_change" : "email_sent",
-      decision === "CHURNED" ? "Lead Churned (WhatsApp Reply)" : "Lead Qualified (WhatsApp Reply)",
-      `Customer replied via WhatsApp: "${body}"\nOutcome: ${decision === "CHURNED" ? "Churned" : "Qualified"}`,
+      isChurned ? "stage_change" : "email_sent",
+      isChurned ? "Lead Churned (WhatsApp Reply)" : "Lead Qualified (WhatsApp Reply)",
+      `Customer replied via WhatsApp: "${body}"\nOutcome: ${isChurned ? "Churned" : "Qualified"}`,
       "ai_agent",
       {
         channel: "whatsapp",
         body,
         decision,
-        isChurned: decision === "CHURNED",
+        isChurned,
       }
     );
 

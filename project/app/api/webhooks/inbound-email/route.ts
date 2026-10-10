@@ -48,15 +48,15 @@ export async function POST(request: Request) {
 
     await CrmService.logActivity(
       contact.id,
-      decision === "CHURNED" ? "stage_change" : "email_sent",
-      decision === "CHURNED" ? "Lead Churned (Email Reply)" : "Lead Qualified (Email Reply)",
-      `Customer replied to email: "${body}"\nOutcome: ${decision === "CHURNED" ? "Churned" : "Qualified"}`,
+      isChurned ? "stage_change" : "email_sent",
+      isChurned ? "Lead Churned (Email Reply)" : "Lead Qualified (Email Reply)",
+      `Customer replied to email: "${body}"\nOutcome: ${isChurned ? "Churned" : "Qualified"}`,
       "ai_agent",
       {
         channel: "email",
         body,
         decision,
-        isChurned: decision === "CHURNED",
+        isChurned,
       }
     );
 
