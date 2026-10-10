@@ -13,6 +13,8 @@ import { ImageUploader } from "./image-uploader";
 interface EditorInspectorProps {
   document: WebsiteDocument;
   selectedSection: WebsiteSection | null;
+  websiteSlug?: string;
+  onUpdateSlug?: (slug: string) => void;
   onUpdateSectionField: (field: keyof WebsiteSection, value: unknown) => void;
   onUpdateSectionStyle: (stylePatch: Partial<WebsiteSection["style"]>) => void;
   onUpdateItem: (itemId: string, patch: Partial<SectionItem>) => void;
@@ -28,6 +30,8 @@ interface EditorInspectorProps {
 export function EditorInspector({
   document,
   selectedSection,
+  websiteSlug,
+  onUpdateSlug,
   onUpdateSectionField,
   onUpdateSectionStyle,
   onUpdateItem,
@@ -55,6 +59,31 @@ export function EditorInspector({
         </div>
 
         <div className="space-y-4">
+          {onUpdateSlug && (
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
+                Public URL Slug
+              </label>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-mono text-muted-foreground shrink-0">/site/</span>
+                <input
+                  type="text"
+                  value={websiteSlug || ""}
+                  onChange={(e) =>
+                    onUpdateSlug(
+                      e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "").substring(0, 48)
+                    )
+                  }
+                  placeholder="custom-slug"
+                  className="w-full px-3 py-1.5 rounded-sm border border-border/60 bg-card text-foreground text-xs font-mono focus:outline-hidden focus:ring-1 focus:ring-brand-text"
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground font-mono">
+                Accessible to live visitors once published.
+              </p>
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
               SEO Document Title
@@ -222,38 +251,40 @@ export function EditorInspector({
           )}
 
           {/* Media fields */}
-          <div className="pt-3 border-t border-border/40 space-y-4">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
-              Imagery & Media (Supabase Storage)
-            </span>
+          {(selectedSection.type === "hero" || selectedSection.type === "manifesto" || selectedSection.imageUrl !== undefined) && (
+            <div className="pt-3 border-t border-border/40 space-y-4">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
+                Imagery & Media (Supabase Storage)
+              </span>
 
-            <ImageUploader
-              label="Primary Section Image"
-              value={selectedSection.imageUrl || ""}
-              onChange={(url) => onUpdateSectionField("imageUrl", url)}
-              helperText="Upload to Supabase Storage or replace image"
-            />
-
-            {selectedSection.secondaryImageUrl !== undefined && (
               <ImageUploader
-                label="Secondary Accent Image"
-                value={selectedSection.secondaryImageUrl || ""}
-                onChange={(url) => onUpdateSectionField("secondaryImageUrl", url)}
-                helperText="Upload secondary image to Supabase Storage"
+                label="Primary Section Image"
+                value={selectedSection.imageUrl || ""}
+                onChange={(url) => onUpdateSectionField("imageUrl", url)}
+                helperText="Upload to Supabase Storage or replace image"
               />
-            )}
 
-            <div className="space-y-1.5">
-              <label className="text-[11px] text-muted-foreground block">Image Alt Text (Accessibility)</label>
-              <input
-                type="text"
-                value={selectedSection.imageAlt || ""}
-                onChange={(e) => onUpdateSectionField("imageAlt", e.target.value)}
-                placeholder="Describe image content..."
-                className="w-full px-3 py-1.5 rounded-sm border border-border/60 bg-card text-foreground text-xs focus:ring-1 focus:ring-brand-text"
-              />
+              {(selectedSection.type === "hero" || selectedSection.secondaryImageUrl !== undefined) && (
+                <ImageUploader
+                  label="Secondary Accent Image"
+                  value={selectedSection.secondaryImageUrl || ""}
+                  onChange={(url) => onUpdateSectionField("secondaryImageUrl", url)}
+                  helperText="Upload secondary image to Supabase Storage"
+                />
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] text-muted-foreground block">Image Alt Text (Accessibility)</label>
+                <input
+                  type="text"
+                  value={selectedSection.imageAlt || ""}
+                  onChange={(e) => onUpdateSectionField("imageAlt", e.target.value)}
+                  placeholder="Describe image content..."
+                  className="w-full px-3 py-1.5 rounded-sm border border-border/60 bg-card text-foreground text-xs focus:ring-1 focus:ring-brand-text"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Actions & Buttons */}
           <div className="pt-3 border-t border-border/40 space-y-3">
@@ -488,13 +519,31 @@ export function EditorInspector({
                       className="w-full px-2 py-1 rounded-xs border border-border/60 bg-background text-xs resize-none"
                     />
                   )}
-                  {item.imageUrl !== undefined && (
+                  {(selectedSection.type === "gallery" || selectedSection.type === "case-studies" || item.imageUrl !== undefined) && (
                     <div className="pt-1">
                       <ImageUploader
                         label="Card Item Image"
                         value={item.imageUrl || ""}
                         onChange={(url) => onUpdateItem(item.id, { imageUrl: url })}
                         helperText="Upload item image to Supabase Storage"
+                      />
+                    </div>
+                  )}
+                  {selectedSection.type === "pricing" && (
+                    <div className="space-y-1 pt-1">
+                      <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
+                        Plan Features (One per line)
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={(item.features || []).join("\n")}
+                        onChange={(e) =>
+                          onUpdateItem(item.id, {
+                            features: e.target.value.split("\n").filter((f) => f.trim().length > 0),
+                          })
+                        }
+                        placeholder="1 Verified Business&#10;Up to 500 CRM Contacts&#10;Priority 24/7 SLA Support"
+                        className="w-full px-2 py-1 rounded-xs border border-border/60 bg-background text-xs font-mono text-[11px] resize-none"
                       />
                     </div>
                   )}
