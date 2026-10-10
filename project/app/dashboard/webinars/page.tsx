@@ -1,4 +1,5 @@
 import * as React from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { VideoPlay, Add, Calendar, User, ArrowRight } from "iconsax-react";
 
@@ -40,10 +41,12 @@ export default function WebinarsPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="primary" size="md" className="gap-2 cursor-pointer shadow-sm">
-            <Add size="16" className="text-brand-foreground" />
-            <span>Schedule Webinar</span>
-          </Button>
+          <Link href="/dashboard/workflows">
+            <Button variant="primary" size="md" className="gap-2 cursor-pointer shadow-sm">
+              <Add size="16" className="text-brand-foreground" />
+              <span>Schedule Webinar Automation</span>
+            </Button>
+          </Link>
         </div>
       </div>
 
@@ -73,10 +76,12 @@ export default function WebinarsPage() {
 
             <div className="pt-3 border-t border-border/20 flex items-center justify-between text-xs">
               <span className="font-mono text-muted-foreground">{w.attendees}</span>
-              <Button variant="outline" size="sm" className="h-7 text-xs gap-1 cursor-pointer bg-card">
-                <span>Manage Event</span>
-                <ArrowRight size="12" />
-              </Button>
+              <Link href="/dashboard/crm">
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1 cursor-pointer bg-card">
+                  <span>View Leads in CRM</span>
+                  <ArrowRight size="12" />
+                </Button>
+              </Link>
             </div>
           </div>
         ))}
