@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { AuditService } from "@/services/audit.service";
 import { SYSTEM_BUSINESS_ID } from "@/lib/validations/audit";
+import { storeGoogleTokensFromLogin } from "@/services/webinar/google-token-vault.service";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -104,6 +105,24 @@ export async function GET(request: Request) {
         }
       } catch (profileErr) {
         console.error("Non-fatal profile setup error on OAuth callback:", profileErr);
+      }
+
+      try {
+        await storeGoogleTokensFromLogin(user.id, data.session);
+      } catch {
+        // Keep sign-in available if Google API credentials have not been configured.
+        console.error("Google Meet token storage is unavailable for this sign-in.");
+      }
+
+      if (data.session?.provider_token || data.session?.provider_refresh_token) {
+        const { error: sanitizedSessionError } = await supabase.auth.setSession({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+        });
+        if (sanitizedSessionError) {
+          await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+          return NextResponse.redirect(origin + "/login?error=" + encodeURIComponent("Could not secure the Google session. Please sign in again."));
+        }
       }
 
       // Record successful OAuth login audit event
