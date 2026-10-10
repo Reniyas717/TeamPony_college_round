@@ -176,6 +176,26 @@ export default function MarketingClient({
   const [suppressed, setSuppressed] = useState<SuppressionRecord[]>(initialSuppressed || []);
   const [activeTab, setActiveTab] = useState<"campaigns" | "segment_builder" | "suppression">("campaigns");
 
+  // Load cached campaigns on mount if initial is empty
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem("nexus_marketing_campaigns");
+      if (cached) {
+        const parsed: MarketingCampaign[] = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCampaigns((prev) => {
+            const map = new Map<string, MarketingCampaign>();
+            for (const c of parsed) map.set(c.id, c);
+            for (const c of prev) map.set(c.id, c);
+            return Array.from(map.values()).sort(
+              (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+            );
+          });
+        }
+      }
+    } catch {}
+  }, []);
+
   // Modal States
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -313,13 +333,27 @@ export default function MarketingClient({
       const res = await fetch("/api/marketing/campaigns");
       if (res.ok) {
         const json = await res.json();
-        setCampaigns(json.data.campaigns || []);
-        setOverview(json.data.overview || json.data.analytics || initialOverview || DEFAULT_OVERVIEW);
+        const serverCampaigns: MarketingCampaign[] = json.data?.campaigns || [];
+        setCampaigns((prev) => {
+          const map = new Map<string, MarketingCampaign>();
+          for (const c of prev) map.set(c.id, c);
+          for (const c of serverCampaigns) map.set(c.id, c);
+          const merged = Array.from(map.values()).sort(
+            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+          try {
+            localStorage.setItem("nexus_marketing_campaigns", JSON.stringify(merged));
+          } catch {}
+          return merged;
+        });
+        if (json.data?.overview) {
+          setOverview(json.data.overview);
+        }
       }
       const suppRes = await fetch("/api/marketing/suppression");
       if (suppRes.ok) {
         const suppJson = await suppRes.json();
-        setSuppressed(suppJson.data.suppressed || []);
+        setSuppressed(suppJson.data?.suppressed || []);
       }
     } catch {
       // Ignored
@@ -613,7 +647,7 @@ export default function MarketingClient({
           throw new Error(json.error?.message || "Failed to create campaign");
         }
 
-        const newCampaign: MarketingCampaign = json.data;
+        let newCampaign: MarketingCampaign = json.data;
 
         if (dispatchNow) {
           const dispatchRes = await fetch(`/api/marketing/campaigns/${newCampaign.id}/dispatch`, {
@@ -626,9 +660,20 @@ export default function MarketingClient({
             throw new Error(dispatchJson.error?.message || "Campaign created but dispatch failed");
           }
 
+          if (dispatchJson.data?.campaign) {
+            newCampaign = dispatchJson.data.campaign;
+          } else {
+            newCampaign = {
+              ...newCampaign,
+              status: "COMPLETED",
+              delivered_count: dispatchJson.data?.sentCount || 1,
+              sent_at: new Date().toISOString(),
+            };
+          }
+
           setFeedbackMessage({
             type: "success",
-            text: `Campaign "${newCampaign.title}" created and dispatched to ${dispatchJson.data.sentCount} recipients.`,
+            text: `Campaign "${newCampaign.title}" created and dispatched to ${dispatchJson.data?.sentCount ?? 1} recipients.`,
           });
         } else {
           setFeedbackMessage({
@@ -636,6 +681,16 @@ export default function MarketingClient({
             text: `Campaign "${newCampaign.title}" saved as draft.`,
           });
         }
+
+        // Optimistically update React state immediately
+        setCampaigns((prev) => {
+          const filtered = prev.filter((c) => c.id !== newCampaign.id);
+          const next = [newCampaign, ...filtered];
+          try {
+            localStorage.setItem("nexus_marketing_campaigns", JSON.stringify(next));
+          } catch {}
+          return next;
+        });
 
         setIsCreateModalOpen(false);
         resetWizardForm();
@@ -664,9 +719,24 @@ export default function MarketingClient({
           throw new Error(json.error?.message || "Failed to dispatch campaign");
         }
 
+        const dispatchedCampaign = json.data?.campaign || {
+          ...campaign,
+          status: "COMPLETED",
+          delivered_count: json.data?.sentCount || 1,
+          sent_at: new Date().toISOString(),
+        };
+
         setFeedbackMessage({
           type: "success",
           text: `Campaign "${campaign.title}" dispatched successfully to ${json.data.sentCount} recipients.`,
+        });
+
+        setCampaigns((prev) => {
+          const next = prev.map((c) => (c.id === campaign.id ? dispatchedCampaign : c));
+          try {
+            localStorage.setItem("nexus_marketing_campaigns", JSON.stringify(next));
+          } catch {}
+          return next;
         });
 
         setIsDispatchConfirmOpen(false);
@@ -699,6 +769,14 @@ export default function MarketingClient({
         setFeedbackMessage({
           type: "success",
           text: `Campaign "${name}" removed.`,
+        });
+
+        setCampaigns((prev) => {
+          const next = prev.filter((c) => c.id !== id);
+          try {
+            localStorage.setItem("nexus_marketing_campaigns", JSON.stringify(next));
+          } catch {}
+          return next;
         });
 
         await refreshData();

@@ -66,6 +66,8 @@ export class MarketingService {
   static async listCampaigns(context?: OwnerContext): Promise<MarketingCampaign[]> {
     const ctx = await resolveMarketingContext(context);
     const store = getGlobalStore();
+    let dbCampaigns: MarketingCampaign[] = [];
+
     if (ctx.client) {
       try {
         const { data, error } = await ctx.client
@@ -74,15 +76,25 @@ export class MarketingService {
           .eq("business_id", ctx.businessId)
           .order("created_at", { ascending: false });
 
-        if (!error && data) {
-          return data as MarketingCampaign[];
+        if (!error && data && Array.isArray(data)) {
+          dbCampaigns = data as MarketingCampaign[];
         }
       } catch {
         // Fallback
       }
     }
 
-    return [...store.campaigns].filter(c => c.business_id === ctx.businessId).sort(
+    const campaignMap = new Map<string, MarketingCampaign>();
+    for (const c of store.campaigns) {
+      if (c.business_id === ctx.businessId) {
+        campaignMap.set(c.id, c);
+      }
+    }
+    for (const c of dbCampaigns) {
+      campaignMap.set(c.id, c);
+    }
+
+    return Array.from(campaignMap.values()).sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
   }
@@ -201,7 +213,6 @@ export class MarketingService {
     const ctx = await resolveMarketingContext(context);
     const store = getGlobalStore();
     const existing = await this.getCampaignById(id, ctx as unknown as OwnerContext);
-    if (!existing) return null;
 
     const now = new Date().toISOString();
     let updated: MarketingCampaign | null = null;
@@ -227,19 +238,23 @@ export class MarketingService {
       }
     }
 
-    if (!updated) {
-      const idx = store.campaigns.findIndex((c) => c.id === id);
-      if (idx !== -1) {
-        updated = {
-          ...store.campaigns[idx],
-          ...input,
-          updated_at: now,
-        };
-        store.campaigns[idx] = updated;
-      }
+    const idx = store.campaigns.findIndex((c) => c.id === id);
+    const base = existing || (idx !== -1 ? store.campaigns[idx] : null);
+    const merged: MarketingCampaign = {
+      ...(base || {}),
+      ...input,
+      id: base?.id || id,
+      business_id: ctx.businessId,
+      updated_at: now,
+    } as MarketingCampaign;
+
+    if (idx !== -1) {
+      store.campaigns[idx] = updated || merged;
+    } else {
+      store.campaigns.unshift(updated || merged);
     }
 
-    return updated;
+    return updated || merged;
   }
 
   /**
