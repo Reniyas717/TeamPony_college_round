@@ -224,6 +224,43 @@
   body {
     @apply bg-background text-foreground transition-colors duration-500 ease-out;
   }
+
+  *,
+  *::before,
+  *::after {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--foreground) 16%, transparent) transparent;
+  }
+
+  /* Universal custom scrollbars matching theme aesthetic */
+  *::-webkit-scrollbar,
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb,
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--foreground) 16%, transparent);
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover,
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--brand-text) 50%, var(--muted-foreground));
+  }
+
+  *::-webkit-scrollbar-corner,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
   /* Mandatory hand cursor on all clickable elements */
   button,
   [role="button"],
@@ -267,3 +304,13 @@
   opacity: 0.045;
   mix-blend-mode: screen;
 }
+
+/* Hide scrollbar for Chrome, Safari, Opera and modern browsers */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+

@@ -16,8 +16,32 @@ if (typeof window !== "undefined") {
  * Features Gemini / OpenAI LLM integration with an intelligent deterministic fallback compiler.
  */
 export class WorkflowAIService {
+  private static keyIndex = 0;
+
+  /**
+   * Retrieves all available Gemini API keys from environment.
+   * Supports comma-separated GEMINI_API_KEYS or single GEMINI_API_KEY.
+   */
+  private static getGeminiApiKeys(): string[] {
+    const rawList = process.env.GEMINI_API_KEYS || "";
+    const single = process.env.GEMINI_API_KEY || "";
+
+    const keys = rawList
+      .split(",")
+      .map((k) => k.trim())
+      .filter((k) => k.length > 0);
+
+    if (single.trim() && !keys.includes(single.trim())) {
+      keys.push(single.trim());
+    }
+
+    return keys;
+  }
+
   /**
    * Compiles an unstructured natural language prompt into an executable WorkflowDAG.
+   * Rotates through available Gemini API keys to mitigate rate limits,
+   * falling back to the deterministic semantic compiler if all keys fail.
    */
   static async compilePromptToDAG(prompt: string): Promise<WorkflowDAG> {
     const trimmed = prompt.trim();
@@ -25,15 +49,26 @@ export class WorkflowAIService {
       throw new Error("Prompt cannot be empty");
     }
 
-    // 1. Try LLM Structured Output if API Key exists
-    const geminiKey = process.env.GEMINI_API_KEY;
-    if (geminiKey) {
-      try {
-        const llmResult = await this.compileWithGemini(trimmed, geminiKey);
-        if (llmResult) return llmResult;
-      } catch (err) {
-        console.warn("[WorkflowAIService] Gemini compiler error, using intelligent fallback:", err);
+    // 1. Try LLM Structured Output with key pool / cycle
+    const apiKeys = this.getGeminiApiKeys();
+    if (apiKeys.length > 0) {
+      const startIndex = this.keyIndex;
+      for (let attempt = 0; attempt < apiKeys.length; attempt++) {
+        const candidateIndex = (startIndex + attempt) % apiKeys.length;
+        const activeKey = apiKeys[candidateIndex];
+
+        try {
+          const llmResult = await this.compileWithGemini(trimmed, activeKey);
+          if (llmResult) {
+            // Success! Advance rotation index for the next call to distribute load
+            this.keyIndex = (candidateIndex + 1) % apiKeys.length;
+            return llmResult;
+          }
+        } catch (err: unknown) {
+          console.warn(`[WorkflowAIService] Gemini Key #${candidateIndex + 1} encountered error, rotating:`, err);
+        }
       }
+      console.warn("[WorkflowAIService] All Gemini API keys failed or were rate-limited. Falling back to deterministic compiler.");
     }
 
     // 2. Deterministic Semantic Fallback Compiler
@@ -69,36 +104,75 @@ Respond ONLY with valid JSON matching:
   "estimatedAudienceCount": number
 }`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [
-          { role: "user", parts: [{ text: `${systemPrompt}\n\nUser Prompt: "${prompt}"` }] },
-        ],
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature: 0.2,
-        },
-      }),
-    });
+    const preferredModel = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+    const modelsToTry = [preferredModel];
+    if (!modelsToTry.includes("gemini-3.5-flash-lite")) modelsToTry.unshift("gemini-3.5-flash-lite");
+    if (!modelsToTry.includes("gemini-2.0-flash")) modelsToTry.push("gemini-2.0-flash");
+    if (!modelsToTry.includes("gemini-1.5-flash")) modelsToTry.push("gemini-1.5-flash");
 
-    if (!res.ok) return null;
-    const json = await res.json();
-    const candidateText = json.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!candidateText) return null;
+    try {
+      let res: Response | null = null;
+      let usedModel = preferredModel;
 
-    const parsed = JSON.parse(candidateText);
-    parsed.naturalLanguagePrompt = prompt;
+      for (const model of modelsToTry) {
+        usedModel = model;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-    const validated = WorkflowDAGSchema.safeParse(parsed);
-    if (!validated.success) return null;
+        res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              { role: "user", parts: [{ text: `${systemPrompt}\n\nUser Prompt: "${prompt}"` }] },
+            ],
+            generationConfig: {
+              responseMimeType: "application/json",
+              temperature: 0.2,
+            },
+          }),
+        });
 
-    const cycleCheck = validateDAGNoCycles(validated.data.nodes, validated.data.edges);
-    if (!cycleCheck.isValid) return null;
+        if (res.status === 404 && model !== modelsToTry[modelsToTry.length - 1]) {
+          console.warn(`[WorkflowAIService] Model "${model}" not found (404), falling back to alternative model...`);
+          continue;
+        }
 
-    return validated.data;
+        break;
+      }
+
+      if (!res || !res.ok) {
+        if (res?.status === 429) {
+          console.warn(`[WorkflowAIService] Gemini Key rate limit hit (HTTP 429). Will rotate.`);
+        } else {
+          console.warn(`[WorkflowAIService] Gemini API (${usedModel}) responded with HTTP ${res?.status}`);
+        }
+        return null;
+      }
+
+      const json = await res.json();
+      const candidateText = json.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!candidateText) return null;
+
+      const parsed = JSON.parse(candidateText);
+      parsed.naturalLanguagePrompt = prompt;
+
+      const validated = WorkflowDAGSchema.safeParse(parsed);
+      if (!validated.success) {
+        console.warn("[WorkflowAIService] Gemini JSON failed schema validation:", validated.error.flatten());
+        return null;
+      }
+
+      const cycleCheck = validateDAGNoCycles(validated.data.nodes, validated.data.edges);
+      if (!cycleCheck.isValid) {
+        console.warn("[WorkflowAIService] Gemini DAG contained cycle validation failure");
+        return null;
+      }
+
+      return validated.data;
+    } catch (fetchErr) {
+      console.warn("[WorkflowAIService] Network or parsing error during Gemini call:", fetchErr);
+      return null;
+    }
   }
 
   /**

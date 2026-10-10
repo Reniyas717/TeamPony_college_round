@@ -36,6 +36,23 @@ export default function DashboardLayoutClient({
   const [loggingOut, setLoggingOut] = React.useState(false);
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const [isNavigating, startTransition] = React.useTransition();
+  const [navTarget, setNavTarget] = React.useState<string | null>(null);
+
+  // Active navigation target is derived purely from transition state and current pathname
+  const activeNavTarget = isNavigating && navTarget !== pathname ? navTarget : null;
+
+  const handleNavigate = (href: string) => {
+    if (pathname === href) {
+      setMobileMenuOpen(false);
+      return;
+    }
+    setNavTarget(href);
+    setMobileMenuOpen(false);
+    startTransition(() => {
+      router.push(href);
+    });
+  };
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -69,7 +86,14 @@ export default function DashboardLayoutClient({
   const sectionLabel = currentItem?.label || "Workspace";
 
   return (
-    <div className="min-h-screen flex bg-background text-foreground overflow-x-hidden">
+    <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">
+      {/* Top Global Navigation Loading Indicator */}
+      {Boolean(activeNavTarget) && (
+        <div className="fixed top-0 left-0 right-0 h-[2px] z-100 bg-brand/20 overflow-hidden">
+          <div className="h-full bg-brand animate-pulse w-full origin-left" />
+        </div>
+      )}
+
       {/* Mobile Drawer Backdrop */}
       {mobileMenuOpen && (
         <div
@@ -78,15 +102,15 @@ export default function DashboardLayoutClient({
         />
       )}
 
-      {/* --- COLLAPSIBLE APP SIDEBAR --- */}
+      {/* --- COLLAPSIBLE APP SIDEBAR (Fixed/Locked, never scrolls up) --- */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-sidebar border-r border-border/40 transition-all duration-300 ease-in-out lg:sticky lg:top-0 lg:h-screen shrink-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-sidebar border-r border-border/40 transition-all duration-300 ease-in-out lg:static lg:h-full shrink-0 ${
           mobileMenuOpen ? "translate-x-0 w-64" : "-translate-x-full lg:translate-x-0"
         } ${sidebarOpen ? "lg:w-64" : "lg:w-16"}`}
       >
         {/* Sidebar Header Brand */}
         <div
-          className={`h-16 flex items-center bg-sidebar shrink-0 px-4 ${
+          className={`h-16 flex items-center bg-sidebar shrink-0 px-4 border-b border-border/40 ${
             sidebarOpen ? "justify-between" : "justify-center px-0"
           }`}
         >
@@ -118,7 +142,7 @@ export default function DashboardLayoutClient({
         </div>
 
 
-        {/* Navigation Items (Distinct routes that persist on page refresh) */}
+        {/* Navigation Items (Distinct routes with instant loading feedback) */}
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
           {navItems.map((item) => {
             const IconComp = item.icon;
@@ -126,31 +150,42 @@ export default function DashboardLayoutClient({
               item.href === "/dashboard"
                 ? pathname === "/dashboard"
                 : pathname.startsWith(item.href);
+            const isTarget = activeNavTarget === item.href;
 
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                onClick={() => setMobileMenuOpen(false)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleNavigate(item.href);
+                }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-sm text-xs font-medium transition-colors cursor-pointer ${
                   isActive
                     ? "bg-accent text-foreground font-semibold shadow-xs"
                     : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                } ${!sidebarOpen ? "justify-center px-0" : ""}`}
+                } ${isTarget ? "bg-accent/70 opacity-80" : ""} ${!sidebarOpen ? "justify-center px-0" : ""}`}
                 title={item.label}
               >
                 <IconComp
                   size="18"
-                  className={isActive ? "text-brand-text" : "text-muted-foreground"}
+                  className={isActive || isTarget ? "text-brand-text" : "text-muted-foreground"}
                 />
-                {sidebarOpen && <span className="truncate flex-1 text-left">{item.label}</span>}
+                {sidebarOpen && (
+                  <div className="flex-1 flex items-center justify-between min-w-0">
+                    <span className="truncate">{item.label}</span>
+                    {isTarget && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-brand-text animate-ping shrink-0" />
+                    )}
+                  </div>
+                )}
               </Link>
             );
           })}
         </nav>
 
-        {/* Sidebar Footer User Info & Sign Out */}
-        <div className="p-3 bg-sidebar border-t border-border/40 shrink-0 flex flex-col gap-2">
+        {/* Sidebar Footer User Info & Sign Out (Permanently pinned at bottom) */}
+        <div className="p-3 bg-sidebar border-t border-border/40 shrink-0 flex flex-col gap-2 mt-auto">
           {sidebarOpen ? (
             <div className="flex items-center justify-between gap-2 p-2 rounded-sm bg-muted/20 border border-border/30">
               <div className="min-w-0 flex-1">
@@ -184,10 +219,10 @@ export default function DashboardLayoutClient({
         </div>
       </aside>
 
-      {/* --- MAIN APPLICATION CANVAS --- */}
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* --- MAIN APPLICATION CANVAS (Independent scroll container) --- */}
+      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
         {/* Top 64px Application Header */}
-        <header className="sticky top-0 z-30 h-16 bg-background/95 backdrop-blur-sm flex items-center justify-between px-4 sm:px-6 lg:px-8 border-b border-border/40">
+        <header className="shrink-0 h-16 bg-background/95 backdrop-blur-sm flex items-center justify-between px-4 sm:px-6 lg:px-8 border-b border-border/40 z-20">
           <div className="flex items-center gap-3">
             {/* Sidebar Collapse / Mobile Toggle */}
             <button
@@ -227,10 +262,10 @@ export default function DashboardLayoutClient({
           </div>
         </header>
 
-        {/* Dynamic Route Canvas */}
-        <div className="flex-1">
+        {/* Dynamic Route Canvas - Smooth internal scrolling */}
+        <main className="flex-1 min-w-0 overflow-y-auto relative">
           {children}
-        </div>
+        </main>
       </div>
     </div>
   );
