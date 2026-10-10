@@ -129,6 +129,7 @@ export function EditorCanvas({
                 <SectionRenderer
                   section={section}
                   theme={theme}
+                  deviceMode={deviceMode}
                   isEditorMode={true}
                   isSelected={selectedSectionId === section.id}
                   onSelect={() => onSelectSection(section.id)}
