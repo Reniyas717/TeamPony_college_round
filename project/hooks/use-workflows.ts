@@ -21,6 +21,7 @@ export const workflowKeys = {
   details: () => [...workflowKeys.all, "detail"] as const,
   detail: (id: string) => [...workflowKeys.details(), id] as const,
   runs: () => [...workflowKeys.all, "runs"] as const,
+  latestRun: (workflowId: string) => [...workflowKeys.runs(), "latest", workflowId] as const,
   runLogs: (runId: string) => [...workflowKeys.runs(), runId, "logs"] as const,
 };
 
@@ -76,6 +77,24 @@ export function useRunStepLogs(runId: string | null) {
       return json.data;
     },
     enabled: Boolean(runId),
+  });
+}
+
+/** Fetches the latest persisted run so approval state survives a page reload. */
+export function useLatestWorkflowRun(workflowId: string | null) {
+  return useQuery({
+    queryKey: workflowId ? workflowKeys.latestRun(workflowId) : ["workflows", "runs", "latest", "empty"],
+    queryFn: async (): Promise<WorkflowRun | null> => {
+      if (!workflowId) throw new Error("Workflow ID is required");
+      const res = await fetch(`/api/workflows/${workflowId}/run`);
+      if (!res.ok) {
+        const errorJson = await res.json().catch(() => ({}));
+        throw new Error(errorJson?.error?.message || "Failed to load latest workflow run");
+      }
+      const json = await res.json();
+      return json.data;
+    },
+    enabled: Boolean(workflowId),
   });
 }
 
@@ -159,6 +178,8 @@ export function useDeleteWorkflow() {
  * Mutation: Trigger a workflow run
  */
 export function useTriggerWorkflow() {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: async ({
       id,
@@ -180,6 +201,10 @@ export function useTriggerWorkflow() {
 
       const json = await res.json();
       return json.data;
+    },
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: workflowKeys.latestRun(id) });
+      queryClient.invalidateQueries({ queryKey: workflowKeys.detail(id) });
     },
   });
 }
@@ -212,9 +237,10 @@ export function useApproveWorkflowRun() {
       const json = await res.json();
       return json.data;
     },
-    onSuccess: (_data, { payload }) => {
-      // Invalidate the run logs to fetch the new steps that executed after approval
+    onSuccess: (_data, { workflowId, payload }) => {
       queryClient.invalidateQueries({ queryKey: workflowKeys.runLogs(payload.runId) });
+      queryClient.invalidateQueries({ queryKey: workflowKeys.latestRun(workflowId) });
+      queryClient.invalidateQueries({ queryKey: workflowKeys.detail(workflowId) });
     },
   });
 }

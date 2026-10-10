@@ -10,6 +10,13 @@ import {
   StageEmotion,
 } from "@/lib/validations/journey-map";
 import {
+  useAddJourneyStage,
+  useDeleteJourneyStage,
+  useGenerateJourneyMap,
+  useJourneyActionDecision,
+  useUpdateJourneyStage,
+} from "@/hooks/use-journey-maps";
+import {
   TrendUp,
   Danger,
   Flash,
@@ -61,6 +68,12 @@ export default function IntelligenceClient({
 
   // Journeys State
   const [maps, setMaps] = React.useState<CustomerJourneyMap[]>(initialJourneyMaps);
+  const generateJourneyMutation = useGenerateJourneyMap();
+  const actionMutation = useJourneyActionDecision();
+  const updateStageMutation = useUpdateJourneyStage();
+  const addStageMutation = useAddJourneyStage();
+  const deleteStageMutation = useDeleteJourneyStage();
+  const [journeyError, setJourneyError] = React.useState<string | null>(null);
   const [selectedMapId, setSelectedMapId] = React.useState<string>(
     initialJourneyMaps[0]?.id || ""
   );
@@ -250,23 +263,19 @@ export default function IntelligenceClient({
     if (!prompt) return;
 
     setGenerating(true);
+    setJourneyError(null);
     try {
-      const res = await fetch("/api/journey-maps/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ objective: prompt }),
-      });
-      const json = await res.json();
-      if (res.ok && json.data) {
-        setMaps((prev) => [json.data, ...prev]);
-        setSelectedMapId(json.data.id);
+      const map = await generateJourneyMutation.mutateAsync({ objective: prompt });
+      if (map) {
+        setMaps((prev) => [map, ...prev]);
+        setSelectedMapId(map.id);
         setShowNewGoalForm(false);
-        setSelectedStageId(json.data.stages[0]?.id || null);
+        setSelectedStageId(map.stages[0]?.id || null);
         setObjectiveInput("");
         setSelectedPlaybookId(null);
       }
-    } catch {
-      // ignore
+    } catch (error) {
+      setJourneyError(error instanceof Error ? error.message : "Failed to generate journey map");
     } finally {
       setGenerating(false);
     }
@@ -279,14 +288,10 @@ export default function IntelligenceClient({
     decision: "approve" | "dismiss"
   ) => {
     setActionProcessingId(actionId);
+    setJourneyError(null);
     try {
-      const res = await fetch(`/api/journey-maps/${mapId}/actions/${actionId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision }),
-      });
-      const json = await res.json();
-      if (res.ok && json.data) {
+      const action = await actionMutation.mutateAsync({ mapId, actionId, decision });
+      if (action) {
         setMaps((prev) =>
           prev.map((m) => {
             if (m.id !== mapId) return m;
@@ -296,12 +301,7 @@ export default function IntelligenceClient({
                 ...stg,
                 actions: stg.actions.map((act) =>
                   act.id === actionId
-                    ? {
-                        ...act,
-                        status: json.data.status,
-                        executed_at: json.data.executed_at,
-                        execution_result: json.data.execution_result,
-                      }
+                    ? action
                     : act
                 ),
               })),
@@ -309,8 +309,8 @@ export default function IntelligenceClient({
           })
         );
       }
-    } catch {
-      // ignore
+    } catch (error) {
+      setJourneyError(error instanceof Error ? error.message : "Failed to update journey action");
     } finally {
       setActionProcessingId(null);
     }
@@ -330,82 +330,66 @@ export default function IntelligenceClient({
   };
 
   // Save Stage Edits
-  const handleSaveStageEdits = () => {
+  const handleSaveStageEdits = async () => {
     if (!currentMap || !selectedStageId) return;
-
-    setMaps((prev) =>
-      prev.map((m) => {
-        if (m.id !== currentMap.id) return m;
-        return {
-          ...m,
-          stages: m.stages.map((stg) => {
-            if (stg.id !== selectedStageId) return stg;
-            return {
-              ...stg,
-              stage_name: editStageName.trim() || stg.stage_name,
-              objective: editObjective.trim() || stg.objective,
-              emotion: editEmotion,
-              friction_points: editFrictions.length > 0 ? editFrictions : stg.friction_points,
-              opportunities: editOpportunities.length > 0 ? editOpportunities : stg.opportunities,
-            };
-          }),
-        };
-      })
-    );
-    setIsEditingStage(false);
+    setJourneyError(null);
+    try {
+      const stage = await updateStageMutation.mutateAsync({
+        mapId: currentMap.id,
+        stageId: selectedStageId,
+        input: {
+          stage_name: editStageName.trim() || undefined,
+          objective: editObjective.trim() || undefined,
+          emotion: editEmotion,
+          friction_points: editFrictions,
+          opportunities: editOpportunities,
+        },
+      });
+      setMaps((prev) => prev.map((map) => map.id === currentMap.id
+        ? { ...map, stages: map.stages.map((stageItem) => stageItem.id === stage.id ? stage : stageItem) }
+        : map));
+      setIsEditingStage(false);
+    } catch (error) {
+      setJourneyError(error instanceof Error ? error.message : "Failed to save stage changes");
+    }
   };
 
   // Delete a Stage
-  const handleDeleteStage = (stageId: string) => {
+  const handleDeleteStage = async (stageId: string) => {
     if (!currentMap) return;
     if (currentMap.stages.length <= 1) return;
-
-    setMaps((prev) =>
-      prev.map((m) => {
-        if (m.id !== currentMap.id) return m;
-        const filtered = m.stages.filter((s) => s.id !== stageId);
-        filtered.forEach((s, idx) => {
-          s.order_index = idx + 1;
-        });
-        return { ...m, stages: filtered };
-      })
-    );
-    if (selectedStageId === stageId) {
-      setSelectedStageId(currentMap.stages[0]?.id || null);
+    setJourneyError(null);
+    try {
+      await deleteStageMutation.mutateAsync({ mapId: currentMap.id, stageId });
+      const remaining = currentMap.stages.filter((stage) => stage.id !== stageId)
+        .map((stage, index) => ({ ...stage, order_index: index + 1 }));
+      setMaps((prev) => prev.map((map) => map.id === currentMap.id ? { ...map, stages: remaining } : map));
+      if (selectedStageId === stageId) {
+        setSelectedStageId(remaining[0]?.id || null);
+      }
+    } catch (error) {
+      setJourneyError(error instanceof Error ? error.message : "Failed to delete stage");
     }
   };
 
   // Add a New Stage
-  const handleAddNewStage = () => {
+  const handleAddNewStage = async () => {
     if (!currentMap) return;
     const newIdx = currentMap.stages.length + 1;
-    const newStageId = `stg-${currentMap.id}-${Date.now()}`;
-    const newStage: JourneyMapStage = {
-      id: newStageId,
-      journey_map_id: currentMap.id,
-      order_index: newIdx,
-      stage_key: `stage_${newIdx}`,
-      stage_name: `0${newIdx}. New Milestone`,
-      objective: "Define core business milestone and expected customer reaction",
-      customer_actions: ["Interacts with platform touchpoint"],
-      touchpoints: ["Website"],
-      customer_needs: ["Fast resolution and transparent expectations"],
-      customer_thoughts: ["Is this tool the fastest way to achieve my desired business outcome?"],
-      emotion: "neutral",
-      friction_points: ["Bottleneck causing drop-off or hesitation"],
-      opportunities: ["Tactical lever to accelerate customer progression"],
-      findings_type: "hypothesis",
-      actions: [],
-    };
-
-    setMaps((prev) =>
-      prev.map((m) => {
-        if (m.id !== currentMap.id) return m;
-        return { ...m, stages: [...m.stages, newStage] };
-      })
-    );
-    setSelectedStageId(newStageId);
-    handleOpenEditStage(newStage);
+    setJourneyError(null);
+    try {
+      const newStage = await addStageMutation.mutateAsync({
+        mapId: currentMap.id,
+        input: { stage_name: `0${newIdx}. New Milestone` },
+      });
+      setMaps((prev) => prev.map((map) => map.id === currentMap.id
+        ? { ...map, stages: [...map.stages, newStage] }
+        : map));
+      setSelectedStageId(newStage.id);
+      handleOpenEditStage(newStage);
+    } catch (error) {
+      setJourneyError(error instanceof Error ? error.message : "Failed to add stage");
+    }
   };
 
   const getModuleBadge = (mod: string) => {
@@ -632,6 +616,12 @@ export default function IntelligenceClient({
             Unit Economics Grounded
           </span>
         </div>
+
+        {journeyError && (
+          <div className="shrink-0 mx-4 sm:mx-6 mt-3 rounded border border-status-error/40 bg-status-error-subtle/30 px-3 py-2 text-xs text-status-error-fg">
+            {journeyError}
+          </div>
+        )}
 
         {/* WORKSPACE DYNAMIC SPLIT LAYOUT */}
         <div className="flex-1 overflow-hidden p-4 sm:p-5">
@@ -1128,6 +1118,7 @@ export default function IntelligenceClient({
                     variant="outline"
                     size="sm"
                     onClick={handleAddNewStage}
+                    disabled={addStageMutation.isPending}
                     className="text-xs h-7 gap-1 cursor-pointer"
                   >
                     <Add size="13" />
@@ -1168,6 +1159,7 @@ export default function IntelligenceClient({
                             variant="ghost"
                             size="sm"
                             onClick={() => handleDeleteStage(activeStage.id)}
+                            disabled={deleteStageMutation.isPending}
                             className="text-xs h-6 p-1 text-destructive hover:bg-destructive/10 cursor-pointer"
                             title="Delete milestone"
                           >
@@ -1184,7 +1176,7 @@ export default function IntelligenceClient({
                         <div className="p-3 bg-muted/20 rounded border border-border space-y-3 text-xs">
                           <div className="flex items-center justify-between font-bold text-foreground">
                             <span>Edit Stage Details</span>
-                            <span className="text-[10px] text-muted-foreground">Changes save to session</span>
+                            <span className="text-[10px] text-muted-foreground">Changes save to journey map</span>
                           </div>
 
                           <div className="space-y-1">
@@ -1349,6 +1341,7 @@ export default function IntelligenceClient({
                               variant="primary"
                               size="sm"
                               onClick={handleSaveStageEdits}
+                              disabled={updateStageMutation.isPending}
                               className="text-xs h-7 cursor-pointer"
                             >
                               Save Changes
@@ -1470,7 +1463,11 @@ export default function IntelligenceClient({
                                     <div className="p-2 rounded bg-status-success-subtle/30 border border-status-success-fg/30 space-y-1.5 text-xs">
                                       <div className="flex items-center gap-1 font-semibold text-status-success-fg">
                                         <TickCircle size="13" />
-                                        <span>Active in {result.target_module.toUpperCase()}</span>
+                                        <span>
+                                          {result.target_module === "proposal"
+                                            ? "Proposal approved"
+                                            : `Active in ${result.target_module.toUpperCase()}`}
+                                        </span>
                                       </div>
                                       <p className="text-[11px] text-foreground leading-snug">
                                         {result.message}

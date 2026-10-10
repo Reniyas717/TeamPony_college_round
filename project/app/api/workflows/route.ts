@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { WorkflowEngineService } from "@/services/workflow-engine.service";
 import { CreateWorkflowSchema } from "@/lib/validations/workflow";
+import { requireOwnerContext } from "@/lib/supabase/owner-context";
+import { workflowErrorResponse } from "./_errors";
 
 /**
  * GET /api/workflows
@@ -8,19 +10,11 @@ import { CreateWorkflowSchema } from "@/lib/validations/workflow";
  */
 export async function GET() {
   try {
-    const workflows = await WorkflowEngineService.listWorkflows();
+    const context = await requireOwnerContext();
+    const workflows = await WorkflowEngineService.listWorkflows(context);
     return NextResponse.json({ data: workflows }, { status: 200 });
   } catch (err: unknown) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: err instanceof Error ? err.message : "Failed to fetch workflows",
-          details: null,
-        },
-      },
-      { status: 500 }
-    );
+    return workflowErrorResponse(err, "Failed to fetch workflows");
   }
 }
 
@@ -30,6 +24,7 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
+    const context = await requireOwnerContext();
     const json = await request.json().catch(() => null);
     const parsed = CreateWorkflowSchema.safeParse(json);
 
@@ -46,18 +41,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const created = await WorkflowEngineService.createWorkflow(parsed.data);
+    const created = await WorkflowEngineService.createWorkflow(context, parsed.data);
     return NextResponse.json({ data: created }, { status: 201 });
   } catch (err: unknown) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: err instanceof Error ? err.message : "Failed to create workflow",
-          details: null,
-        },
-      },
-      { status: 500 }
-    );
+    return workflowErrorResponse(err, "Failed to create workflow");
   }
 }

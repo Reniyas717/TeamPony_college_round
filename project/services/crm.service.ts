@@ -1,424 +1,296 @@
-import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { AuditService } from "./audit.service";
+import type { OwnerContext } from "@/lib/supabase/owner-context";
+import { sanitizeAuditMetadata } from "@/lib/validations/audit";
 import {
-  Contact,
   Activity,
-  CrmStats,
-  CreateContactInput,
-  UpdateContactInput,
+  ActivityActor,
+  ActivityType,
+  Contact,
   ContactFilters,
+  ContactSource,
+  ContactSourceSchema,
   ContactStage,
+  ContactStageSchema,
+  CreateContactInput,
+  CrmStats,
+  UpdateContactInput,
 } from "@/lib/validations/crm";
 
-/**
- * CRM Service Layer
- * Enforces business domain invariants, tenant scoping, and timeline logging.
- * Per AGENTS.md §4.1, all data is strictly scoped to the single business owner.
- */
+type CrmOwnerContext = Pick<OwnerContext, "client" | "user" | "businessId">;
 
-export const DEFAULT_BUSINESS_ID = "00000000-0000-0000-0000-000000000001";
+export class CrmServiceError extends Error {
+  constructor(
+    message: string,
+    public readonly code:
+      | "OWNER_CONTEXT_REQUIRED"
+      | "CRM_PERSISTENCE_UNAVAILABLE"
+      | "CONTACT_ALREADY_EXISTS"
+      | "CONTACT_NOT_FOUND",
+    public readonly status: 404 | 409 | 503
+  ) {
+    super(message);
+    this.name = "CrmServiceError";
+  }
+}
 
-// In-Memory Store (Clean initial state; populated via forms, API, or user actions)
-let memoryContacts: Contact[] = [];
-let memoryActivities: Activity[] = [];
+function requireCrmContext(context?: CrmOwnerContext): CrmOwnerContext {
+  if (!context?.client || !context.user?.id || !context.businessId) {
+    throw new CrmServiceError(
+      "A verified owner context is required for CRM access.",
+      "OWNER_CONTEXT_REQUIRED",
+      503
+    );
+  }
+  return context;
+}
 
+function persistenceError(operation: string, error: { code?: string }): CrmServiceError {
+  if (error.code === "23505") {
+    return new CrmServiceError(
+      "A contact with this email already exists for this business.",
+      "CONTACT_ALREADY_EXISTS",
+      409
+    );
+  }
+  return new CrmServiceError(
+    "CRM " + operation + " could not be saved.",
+    "CRM_PERSISTENCE_UNAVAILABLE",
+    503
+  );
+}
+
+function mapStage(value: unknown): ContactStage | "unknown" {
+  return ContactStageSchema.safeParse(value).success ? (value as ContactStage) : "unknown";
+}
+
+function mapSource(value: unknown): ContactSource | "unknown" {
+  return ContactSourceSchema.safeParse(value).success ? (value as ContactSource) : "unknown";
+}
+
+function mapContact(row: Record<string, unknown>, businessId: string, sourceOverride?: ContactSource): Contact {
+  const createdAt = String(row.created_at ?? new Date().toISOString());
+  const updatedAt = String(row.updated_at ?? createdAt);
+  return {
+    id: String(row.id),
+    business_id: businessId,
+    first_name: String(row.first_name ?? ""),
+    last_name: String(row.last_name ?? ""),
+    email: String(row.email ?? ""),
+    phone: (row.phone as string | null | undefined) ?? null,
+    company: (row.company as string | null | undefined) ?? null,
+    stage: mapStage(row.stage ?? row.status),
+    legacy_stage: mapStage(row.stage ?? row.status) === "unknown"
+      ? String(row.stage ?? row.status ?? "")
+      : undefined,
+    value: typeof row.value === "number" ? row.value : Number(row.value ?? 0),
+    source: sourceOverride ?? mapSource(row.source),
+    legacy_source: mapSource(row.source) === "unknown" ? String(row.source ?? "") : undefined,
+    tags: Array.isArray(row.tags) ? row.tags.filter((tag): tag is string => typeof tag === "string") : [],
+    next_action_text: (row.next_action_text as string | null | undefined) ?? null,
+    next_action_due_at: (row.next_action_due_at as string | null | undefined) ?? null,
+    last_activity_at: String(row.last_activity_at ?? updatedAt),
+    created_at: createdAt,
+    updated_at: updatedAt,
+  };
+}
+
+function mapActivity(row: Record<string, unknown>, businessId: string, contactId: string): Activity {
+  return {
+    id: String(row.id),
+    business_id: businessId,
+    contact_id: contactId,
+    type: row.type as ActivityType,
+    title: String(row.title ?? ""),
+    description: (row.description as string | null | undefined) ?? null,
+    actor: row.actor as ActivityActor,
+    metadata: (row.metadata as Record<string, unknown> | undefined) ?? {},
+    created_at: String(row.created_at ?? new Date().toISOString()),
+  };
+}
 
 export class CrmService {
-  /**
-   * Retrieves filtered contacts for the verified business.
-   */
-  static async listContacts(filters?: ContactFilters): Promise<Contact[]> {
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
-      try {
-        let query = supabase
-          .from("crm_contacts")
-          .select("*")
-          .eq("business_id", DEFAULT_BUSINESS_ID)
-          .order("last_activity_at", { ascending: false });
-
-        if (filters?.stage) {
-          query = query.eq("stage", filters.stage);
-        }
-        if (filters?.source) {
-          query = query.eq("source", filters.source);
-        }
-
-        const { data, error } = await query;
-        if (!error && data && data.length > 0) {
-          let results = data as Contact[];
-          if (filters?.search) {
-            const s = filters.search.toLowerCase();
-            results = results.filter(
-              (c) =>
-                c.first_name.toLowerCase().includes(s) ||
-                c.last_name.toLowerCase().includes(s) ||
-                c.email.toLowerCase().includes(s) ||
-                (c.company && c.company.toLowerCase().includes(s))
-            );
-          }
-          return results;
-        }
-      } catch {
-        // Fallback to in-memory store
-      }
-    }
-
-    // In-memory fallback
-    let results = [...memoryContacts];
-
-    if (filters?.stage) {
-      results = results.filter((c) => c.stage === filters.stage);
-    }
-    if (filters?.source) {
-      results = results.filter((c) => c.source === filters.source);
-    }
-    if (filters?.tag) {
-      results = results.filter((c) => c.tags.includes(filters.tag!));
-    }
-    if (filters?.search) {
-      const s = filters.search.toLowerCase();
-      results = results.filter(
-        (c) =>
-          c.first_name.toLowerCase().includes(s) ||
-          c.last_name.toLowerCase().includes(s) ||
-          c.email.toLowerCase().includes(s) ||
-          (c.company && c.company.toLowerCase().includes(s))
-      );
-    }
-
-    return results.sort(
-      (a, b) =>
-        new Date(b.last_activity_at).getTime() - new Date(a.last_activity_at).getTime()
+  private static async webinarContactIds(context: CrmOwnerContext): Promise<Set<string>> {
+    const { data, error } = await context.client
+      .from("webinar_registrations")
+      .select("contact_id")
+      .eq("business_id", context.businessId)
+      .not("contact_id", "is", null);
+    if (error) throw persistenceError("webinar contact lookup", error);
+    return new Set(
+      ((data ?? []) as Array<{ contact_id?: string | null }>)
+        .map((row) => row.contact_id)
+        .filter((id): id is string => Boolean(id))
     );
   }
 
-  /**
-   * Finds a specific contact by ID.
-   */
-  static async getContactById(id: string): Promise<Contact | null> {
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from("crm_contacts")
-          .select("*")
-          .eq("business_id", DEFAULT_BUSINESS_ID)
-          .eq("id", id)
-          .single();
-
-        if (!error && data) {
-          return data as Contact;
-        }
-      } catch {
-        // Fallback
-      }
-    }
-
-    return memoryContacts.find((c) => c.id === id) || null;
+  private static async readContacts(context: CrmOwnerContext): Promise<Contact[]> {
+    const [contactResult, webinarIds] = await Promise.all([
+      context.client
+        .from("crm_contacts")
+        .select("*")
+        .eq("business_id", context.businessId)
+        .order("last_activity_at", { ascending: false }),
+      this.webinarContactIds(context),
+    ]);
+    if (contactResult.error) throw persistenceError("contacts", contactResult.error);
+    return ((contactResult.data ?? []) as Record<string, unknown>[]).map((row) => {
+      const contactId = String(row.id);
+      return mapContact(row, context.businessId, webinarIds.has(contactId) ? "webinar" : undefined);
+    });
   }
 
-  /**
-   * Creates a new contact and records initial activity.
-   */
-  static async createContact(input: CreateContactInput): Promise<Contact> {
-    const now = new Date().toISOString();
-    const newContact: Contact = {
-      id: `cont-${Date.now()}`,
-      business_id: DEFAULT_BUSINESS_ID,
-      first_name: input.first_name,
-      last_name: input.last_name,
-      email: input.email,
-      phone: input.phone || null,
-      company: input.company || null,
-      stage: input.stage || "lead",
-      value: input.value ?? 0,
-      source: input.source || "manual",
-      tags: input.tags || [],
-      next_action_text: input.next_action_text || null,
-      next_action_due_at: input.next_action_due_at || null,
-      last_activity_at: now,
-      created_at: now,
-      updated_at: now,
-    };
-
-    let created: Contact = newContact;
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from("crm_contacts")
-          .insert({
-            ...newContact,
-            id: undefined, // Let PostgreSQL gen_random_uuid
-          })
-          .select()
-          .single();
-
-        if (!error && data) {
-          created = data as Contact;
-        }
-      } catch {
-        // Fallback
-      }
-    }
-
-    if (created === newContact) {
-      memoryContacts.unshift(newContact);
-    }
-
-    await this.logActivity(
-      created.id,
-      input.source === "website_form" ? "form_submission" : "note",
-      input.source === "website_form" ? "Website Lead Captured" : "Contact Created",
-      `Lead created via ${input.source}`,
-      input.source === "website_form" ? "system" : "owner"
-    );
-
-    // Central Audit Logging per AGENTS.md §9
-    await AuditService.recordEvent(
-      {
-        business_id: DEFAULT_BUSINESS_ID,
-        action: "crm.contact.created",
-        actor: {
-          id: input.source === "website_form" ? "system" : "owner",
-          type: input.source === "website_form" ? "system" : "user",
-        },
-        resource: {
-          type: "crm_contact",
-          id: created.id,
-        },
-        outcome: "success",
-        metadata: {
-          first_name: created.first_name,
-          last_name: created.last_name,
-          email: created.email,
-          stage: created.stage,
-          source: created.source,
-        },
-      },
-      { critical: false }
-    );
-
-    return created;
-  }
-
-  /**
-   * Updates an existing contact and logs stage progression.
-   */
-  static async updateContact(
-    id: string,
-    input: UpdateContactInput
-  ): Promise<Contact | null> {
-    const existing = await this.getContactById(id);
-    if (!existing) return null;
-
-    const now = new Date().toISOString();
-    const stageChanged = Boolean(input.stage && input.stage !== existing.stage);
-
-    let updated: Contact | null = null;
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from("crm_contacts")
-          .update({
-            ...input,
-            last_activity_at: now,
-            updated_at: now,
-          })
-          .eq("business_id", DEFAULT_BUSINESS_ID)
-          .eq("id", id)
-          .select()
-          .single();
-
-        if (!error && data) {
-          updated = data as Contact;
-        }
-      } catch {
-        // Fallback
-      }
-    }
-
-    if (!updated) {
-      const index = memoryContacts.findIndex((c) => c.id === id);
-      if (index !== -1) {
-        updated = {
-          ...memoryContacts[index],
-          ...input,
-          last_activity_at: now,
-          updated_at: now,
-        };
-        memoryContacts[index] = updated;
-      }
-    }
-
-    if (!updated) return null;
-
-    if (stageChanged) {
-      await this.logActivity(
-        id,
-        "stage_change",
-        `Stage moved to ${input.stage}`,
-        `Stage changed from ${existing.stage} to ${input.stage}`,
-        "owner",
-        { previous_stage: existing.stage, new_stage: input.stage }
+  static async listContacts(filters?: ContactFilters, context?: CrmOwnerContext): Promise<Contact[]> {
+    const ownerContext = requireCrmContext(context);
+    const contacts = await this.readContacts(ownerContext);
+    const normalizedFilters = filters ?? { limit: 50, offset: 0 };
+    const search = normalizedFilters.search?.toLowerCase();
+    const filtered = contacts.filter((contact) => {
+      if (normalizedFilters.stage && contact.stage !== normalizedFilters.stage) return false;
+      if (normalizedFilters.source && contact.source !== normalizedFilters.source) return false;
+      if (normalizedFilters.tag && !contact.tags.includes(normalizedFilters.tag)) return false;
+      if (!search) return true;
+      return [contact.first_name, contact.last_name, contact.email, contact.company ?? ""].some(
+        (value) => value.toLowerCase().includes(search)
       );
-    }
+    });
+    const offset = normalizedFilters.offset ?? 0;
+    const limit = normalizedFilters.limit ?? 50;
+    return filtered.slice(offset, offset + limit);
+  }
 
-    // Central Audit Logging per AGENTS.md §9
-    const action = stageChanged ? "crm.contact.stage_changed" : "crm.contact.updated";
-    await AuditService.recordEvent(
-      {
-        business_id: DEFAULT_BUSINESS_ID,
-        action,
-        actor: {
-          id: "owner",
-          type: "user",
-        },
-        resource: {
-          type: "crm_contact",
-          id,
-        },
-        outcome: "success",
-        metadata: {
-          previous_stage: existing.stage,
-          new_stage: input.stage ?? existing.stage,
-          updated_fields: Object.keys(input),
-        },
-      },
-      { critical: false }
+  static async getContactById(id: string, context?: CrmOwnerContext): Promise<Contact | null> {
+    const ownerContext = requireCrmContext(context);
+    const { data, error } = await ownerContext.client
+      .from("crm_contacts")
+      .select("*")
+      .eq("business_id", ownerContext.businessId)
+      .eq("id", id)
+      .maybeSingle();
+    if (error) throw persistenceError("contact lookup", error);
+    if (!data) return null;
+    const webinarIds = await this.webinarContactIds(ownerContext);
+    return mapContact(
+      data as Record<string, unknown>,
+      ownerContext.businessId,
+      webinarIds.has(String(data.id)) ? "webinar" : undefined
     );
-
-    return updated;
   }
 
-  /**
-   * Deletes a contact and cleans up associated memory.
-   */
-  static async deleteContact(id: string): Promise<boolean> {
-    let deleted = false;
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
-      try {
-        const { error } = await supabase
-          .from("crm_contacts")
-          .delete()
-          .eq("business_id", DEFAULT_BUSINESS_ID)
-          .eq("id", id);
-        if (!error) deleted = true;
-      } catch {
-        // Fallback
-      }
+  static async createContact(input: CreateContactInput, context?: CrmOwnerContext): Promise<Contact> {
+    const ownerContext = requireCrmContext(context);
+    const email = input.email.trim().toLowerCase();
+    const source = input.source ?? "manual";
+    const { data, error } = await ownerContext.client.rpc("create_crm_contact_transaction", {
+      p_first_name: input.first_name.trim(),
+      p_last_name: input.last_name.trim(),
+      p_email: email,
+      p_phone: input.phone || null,
+      p_company: input.company || null,
+      p_stage: input.stage ?? "lead",
+      p_value: input.value ?? 0,
+      p_source: source,
+      p_tags: input.tags ?? [],
+      p_next_action_text: input.next_action_text || null,
+      p_next_action_due_at: input.next_action_due_at || null,
+    });
+    if (error || !data) {
+      throw error ? persistenceError("contact creation", error) : persistenceError("contact creation", {});
     }
 
-    const initialLen = memoryContacts.length;
-    memoryContacts = memoryContacts.filter((c) => c.id !== id);
-    memoryActivities = memoryActivities.filter((a) => a.contact_id !== id);
-    if (memoryContacts.length < initialLen) {
-      deleted = true;
-    }
-
-    if (deleted) {
-      // Central Audit Logging per AGENTS.md §9
-      await AuditService.recordEvent(
-        {
-          business_id: DEFAULT_BUSINESS_ID,
-          action: "crm.contact.deleted",
-          actor: {
-            id: "owner",
-            type: "user",
-          },
-          resource: {
-            type: "crm_contact",
-            id,
-          },
-          outcome: "success",
-          metadata: {
-            contact_id: id,
-          },
-        },
-        { critical: false }
-      );
-    }
-
-    return deleted;
+    const result = data as { contact: Record<string, unknown> };
+    const webinarIds = await this.webinarContactIds(ownerContext);
+    return mapContact(
+      result.contact,
+      ownerContext.businessId,
+      webinarIds.has(String(result.contact.id)) ? "webinar" : undefined
+    );
   }
 
-  /**
-   * Retrieves timeline activities for a given contact.
-   */
-  static async getContactActivities(contactId: string): Promise<Activity[]> {
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from("crm_activities")
-          .select("*")
-          .eq("business_id", DEFAULT_BUSINESS_ID)
-          .eq("contact_id", contactId)
-          .order("created_at", { ascending: false });
+  static async updateContact(id: string, input: UpdateContactInput, context?: CrmOwnerContext): Promise<Contact | null> {
+    const ownerContext = requireCrmContext(context);
+    const patch: Record<string, unknown> = { ...input };
+    if ("email" in patch && typeof patch.email === "string") patch.email = patch.email.trim().toLowerCase();
+    if ("phone" in patch && patch.phone === "") patch.phone = null;
+    if ("company" in patch && patch.company === "") patch.company = null;
+    if ("next_action_text" in patch && patch.next_action_text === "") patch.next_action_text = null;
+    if ("next_action_due_at" in patch && patch.next_action_due_at === "") patch.next_action_due_at = null;
 
-        if (!error && data) {
-          return data as Activity[];
-        }
-      } catch {
-        // Fallback
-      }
-    }
+    const { data, error } = await ownerContext.client.rpc("update_crm_contact_transaction", {
+      p_contact_id: id,
+      p_patch: patch,
+    });
+    if (error) throw persistenceError("contact update", error);
+    if (!data) return null;
 
-    return memoryActivities
-      .filter((a) => a.contact_id === contactId)
-      .sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
+    const result = data as { contact: Record<string, unknown> };
+    const webinarIds = await this.webinarContactIds(ownerContext);
+    return mapContact(
+      result.contact,
+      ownerContext.businessId,
+      webinarIds.has(String(result.contact.id)) ? "webinar" : undefined
+    );
   }
 
-  /**
-   * Logs an action in the contact timeline (system, user, or AI agent).
-   */
+  static async deleteContact(id: string, context?: CrmOwnerContext): Promise<boolean> {
+    const ownerContext = requireCrmContext(context);
+    const { data, error } = await ownerContext.client.rpc("delete_crm_contact_transaction", {
+      p_contact_id: id,
+    });
+    if (error) throw persistenceError("contact deletion", error);
+    return Boolean((data as { deleted?: boolean } | null)?.deleted);
+  }
+
+  static async getContactActivities(contactId: string, context?: CrmOwnerContext): Promise<Activity[]> {
+    const ownerContext = requireCrmContext(context);
+    const contact = await this.getContactById(contactId, ownerContext);
+    if (!contact) {
+      throw new CrmServiceError("The requested contact was not found.", "CONTACT_NOT_FOUND", 404);
+    }
+    const { data, error } = await ownerContext.client
+      .from("crm_activities")
+      .select("*")
+      .eq("business_id", ownerContext.businessId)
+      .eq("contact_id", contactId)
+      .order("created_at", { ascending: false });
+    if (error) throw persistenceError("activity lookup", error);
+    return ((data ?? []) as Record<string, unknown>[]).map((row) =>
+      mapActivity(row, ownerContext.businessId, contactId)
+    );
+  }
+
   static async logActivity(
     contactId: string,
-    type: Activity["type"],
+    type: ActivityType,
     title: string,
     description?: string,
-    actor: Activity["actor"] = "owner",
-    metadata?: Record<string, unknown>
+    actor: ActivityActor = "owner",
+    metadata?: Record<string, unknown>,
+    context?: CrmOwnerContext
   ): Promise<Activity> {
-    const newActivity: Activity = {
-      id: `act-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      business_id: DEFAULT_BUSINESS_ID,
-      contact_id: contactId,
-      type,
-      title,
-      description: description || null,
-      actor,
-      metadata: metadata || {},
-      created_at: new Date().toISOString(),
-    };
-
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
-      try {
-        await supabase.from("crm_activities").insert({
-          ...newActivity,
-          id: undefined,
-        });
-      } catch {
-        // Continue to memory
-      }
+    const ownerContext = requireCrmContext(context);
+    const contact = await this.getContactById(contactId, ownerContext);
+    if (!contact) {
+      throw new CrmServiceError("The requested contact was not found.", "CONTACT_NOT_FOUND", 404);
     }
 
-    memoryActivities.unshift(newActivity);
-    return newActivity;
+    const safeMetadata = sanitizeAuditMetadata(metadata ?? {}) as Record<string, unknown>;
+    const { data, error } = await ownerContext.client.rpc("create_crm_activity_transaction", {
+      p_contact_id: contactId,
+      p_type: type,
+      p_title: title.trim(),
+      p_description: description?.trim() || null,
+      p_actor: actor,
+      p_metadata: safeMetadata,
+    });
+    if (error || !data) {
+      throw error ? persistenceError("activity creation", error) : persistenceError("activity creation", {});
+    }
+
+    return mapActivity(data as Record<string, unknown>, ownerContext.businessId, contactId);
   }
 
-  /**
-   * Computes funnel and conversion statistics per DESIGN.md §15.2.
-   */
-  static async getStats(): Promise<CrmStats> {
-    const contacts = await this.listContacts();
-
+  static async getStats(context?: CrmOwnerContext): Promise<CrmStats> {
+    const ownerContext = requireCrmContext(context);
+    const contacts = await this.readContacts(ownerContext);
     const stageCounts: Record<ContactStage, number> = {
       lead: 0,
       contacted: 0,
@@ -427,7 +299,6 @@ export class CrmService {
       customer: 0,
       churned: 0,
     };
-
     const stageValues: Record<ContactStage, number> = {
       lead: 0,
       contacted: 0,
@@ -436,21 +307,18 @@ export class CrmService {
       customer: 0,
       churned: 0,
     };
-
     let totalPipelineValue = 0;
-
-    for (const c of contacts) {
-      stageCounts[c.stage] = (stageCounts[c.stage] || 0) + 1;
-      stageValues[c.stage] = (stageValues[c.stage] || 0) + c.value;
-      if (c.stage !== "churned") {
-        totalPipelineValue += c.value;
+    for (const contact of contacts) {
+      if (contact.stage in stageCounts) {
+        stageCounts[contact.stage as ContactStage] += 1;
+        stageValues[contact.stage as ContactStage] += contact.value;
       }
+      if (contact.stage !== "churned") totalPipelineValue += contact.value;
     }
 
     const total = contacts.length;
-    const qualifiedCount = (stageCounts.qualified || 0) + (stageCounts.proposal || 0) + (stageCounts.customer || 0);
-    const customerCount = stageCounts.customer || 0;
-
+    const qualifiedCount = stageCounts.qualified + stageCounts.proposal + stageCounts.customer;
+    const customerCount = stageCounts.customer;
     return {
       totalContacts: total,
       totalPipelineValue,

@@ -443,4 +443,4 @@ $$;
 REVOKE ALL ON FUNCTION public.get_public_webinar_registration_form(TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.register_public_webinar_attendee(TEXT, TEXT, TEXT, TEXT[], BOOLEAN) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_public_webinar_registration_form(TEXT) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.register_public_webinar_attendee(TEXT, TEXT, TEXT, TEXT[], BOOLEAN) TO anon, authenticated;
+RANT EXECUTE ON FUNCTION public.register_public_webinar_attendee(TEXT, TEXT, TEXT, TEXT[], BOOLEAN) TO anon, authenticated;

@@ -1,13 +1,21 @@
 import { NextResponse } from "next/server";
 import { WorkflowEngineService } from "@/services/workflow-engine.service";
 import { ApproveWorkflowInputSchema } from "@/lib/validations/workflow";
+import { requireOwnerContext } from "@/lib/supabase/owner-context";
+import { workflowErrorResponse } from "../../_errors";
+
+interface RouteParams {
+  params: Promise<{ id: string }>;
+}
 
 /**
  * POST /api/workflows/[id]/approve
  * Human-in-the-loop sign-off for paused approval gate checkpoints.
  */
-export async function POST(request: Request) {
+export async function POST(request: Request, { params }: RouteParams) {
   try {
+    const { id } = await params;
+    const context = await requireOwnerContext();
     const json = await request.json().catch(() => null);
     const parsed = ApproveWorkflowInputSchema.safeParse(json);
 
@@ -25,6 +33,8 @@ export async function POST(request: Request) {
     }
 
     const run = await WorkflowEngineService.approveWorkflowRun(
+      context,
+      id,
       parsed.data.runId,
       parsed.data.approved,
       parsed.data.reason
@@ -32,15 +42,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ data: run }, { status: 200 });
   } catch (err: unknown) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: err instanceof Error ? err.message : "Failed to record approval decision",
-          details: null,
-        },
-      },
-      { status: 500 }
-    );
+    return workflowErrorResponse(err, "Failed to record approval decision");
   }
 }

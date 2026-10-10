@@ -1,7 +1,32 @@
-import { createClient, createAdminClient } from "@/lib/supabase/server";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
+import { requireOwnerContext } from "@/lib/supabase/owner-context";
 import { SignUpInput, LoginInput } from "@/lib/validations/auth";
 import { AuditService } from "./audit.service";
-import { SYSTEM_BUSINESS_ID } from "@/lib/validations/audit";
+
+const GOOGLE_MEET_SCOPE = "https://www.googleapis.com/auth/meetings.space.created";
+type PlatformAuthAction = "auth.signup" | "auth.failed_login";
+
+async function recordPlatformAuthEvent(
+  action: PlatformAuthAction,
+  reasonCode: string,
+  metadata: Record<string, unknown> = {},
+) {
+  try {
+    await AuditService.recordPlatformSecurityEvent(
+      action,
+      { type: "auth_session", id: "unauthenticated" },
+      { ...metadata, reason_code: reasonCode },
+    );
+  } catch {
+    console.error(`[AUTH-AUDIT-UNAVAILABLE] action=${action} reason=${reasonCode}`);
+  }
+}
+
+function genericAuthError(message: string) {
+  return message.toLowerCase().includes("already")
+    ? "An account with those details already exists."
+    : "Unable to complete authentication.";
+}
 
 export class AuthService {
   /**
@@ -78,20 +103,8 @@ export class AuthService {
       .maybeSingle();
 
     if (existingUser) {
-      await AuditService.recordEvent(
-        {
-          business_id: SYSTEM_BUSINESS_ID,
-          action: "auth.signup",
-          actor: { id: "anonymous", type: "user" },
-          resource: { type: "auth_user", id: "unregistered" },
-          outcome: "failure",
-          error: { code: "USERNAME_TAKEN", message: "This username is already taken. Please pick another one." },
-          metadata: { username, email_domain: email.split("@")[1] || "" },
-        },
-        { critical: false, useAdminClient: true }
-      );
-
-      throw new Error("This username is already taken. Please pick another one.");
+      await recordPlatformAuthEvent("auth.signup", "USERNAME_TAKEN");
+      throw new Error("An account with that username already exists.");
     }
 
     // 2. Create confirmed user directly via Admin API
@@ -106,28 +119,8 @@ export class AuthService {
     });
 
     if (adminError) {
-      const isRegistered = adminError.message.includes("already been registered");
-      const errorMessage = isRegistered
-        ? "An account with this email address already exists."
-        : adminError.message;
-
-      await AuditService.recordEvent(
-        {
-          business_id: SYSTEM_BUSINESS_ID,
-          action: "auth.signup",
-          actor: { id: "anonymous", type: "user" },
-          resource: { type: "auth_user", id: "unregistered" },
-          outcome: "failure",
-          error: {
-            code: isRegistered ? "EMAIL_ALREADY_REGISTERED" : "ADMIN_USER_CREATE_FAILED",
-            message: errorMessage,
-          },
-          metadata: { username, email_domain: email.split("@")[1] || "" },
-        },
-        { critical: false, useAdminClient: true }
-      );
-
-      throw new Error(errorMessage);
+      await recordPlatformAuthEvent("auth.signup", "ACCOUNT_PROVISIONING_FAILED");
+      throw new Error(genericAuthError(adminError.message));
     }
 
     if (!adminUserData.user) {
@@ -136,170 +129,104 @@ export class AuthService {
 
     const userId = adminUserData.user.id;
     const workspaceName = `${username}'s Workspace`;
-    let businessId = SYSTEM_BUSINESS_ID;
+    const { error: profileError } = await adminSupabase.from("profiles").upsert(
+      {
+        id: userId,
+        username,
+        email,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "id" },
+    );
+    if (profileError) throw new Error("Unable to provision the account profile.");
 
-    // 3. Store in profiles & businesses
-    try {
-      await adminSupabase.from("profiles").upsert(
+    const { data: existingBusiness, error: existingBusinessError } = await adminSupabase
+      .from("businesses")
+      .select("id")
+      .eq("owner_id", userId)
+      .maybeSingle();
+    if (existingBusinessError) throw new Error("Unable to provision the workspace.");
+
+    const { data: business, error: businessError } = await adminSupabase
+      .from("businesses")
+      .upsert(
         {
-          id: userId,
-          username: username,
-          email: email,
+          owner_id: userId,
+          name: workspaceName,
+          created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         },
-        { onConflict: "id" }
-      );
+        { onConflict: "owner_id" },
+      )
+      .select("id")
+      .maybeSingle();
+    if (businessError || !business?.id) throw new Error("Unable to provision the workspace.");
 
-      const { data: createdBiz } = await adminSupabase
-        .from("businesses")
-        .upsert(
-          {
-            owner_id: userId,
-            name: workspaceName,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "owner_id" }
-        )
-        .select("id")
-        .maybeSingle();
-
-      if (createdBiz?.id) {
-        businessId = createdBiz.id;
-      } else {
-        const { data: existingBiz } = await adminSupabase
-          .from("businesses")
-          .select("id")
-          .eq("owner_id", userId)
-          .maybeSingle();
-        if (existingBiz?.id) {
-          businessId = existingBiz.id;
-        }
-      }
-    } catch {
-      // Non-fatal
-    }
-
-    // Record business workspace creation audit event only if business was provisioned
-    if (businessId !== SYSTEM_BUSINESS_ID) {
-      await AuditService.recordEvent(
-        {
-          business_id: businessId,
-          action: "business.created",
-          actor: { id: userId, type: "user" },
-          resource: { type: "business", id: businessId },
-          outcome: "success",
-          metadata: { workspace_name: workspaceName },
-        },
-        { critical: true, useAdminClient: true }
-      );
-    }
-
-    // Record user registration audit event
-    await AuditService.recordEvent(
-      {
-        business_id: businessId,
-        action: "auth.signup",
-        actor: { id: userId, type: "user" },
-        resource: { type: "auth_user", id: userId },
-        outcome: "success",
-        metadata: { username, email_domain: email.split("@")[1] || "" },
-      },
-      { critical: true, useAdminClient: true }
-    );
-
-    // 4. Automatically sign the user in
+    // 4. Automatically sign the user in, then audit only with verified context.
     const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
       email: email,
       password: input.password,
     });
 
-    if (signInError) {
-      await AuditService.recordEvent(
-        {
-          business_id: businessId,
-          action: "auth.failed_login",
-          actor: { id: userId, type: "user" },
-          resource: { type: "auth_session", id: userId },
-          outcome: "failure",
-          error: { code: "SIGNIN_AFTER_SIGNUP_FAILED", message: signInError.message },
-          metadata: { username },
-        },
-        { critical: false, useAdminClient: true }
-      );
-
-      throw new Error(signInError.message);
+    if (signInError || !signInData.user) {
+      await recordPlatformAuthEvent("auth.failed_login", "SIGNIN_AFTER_SIGNUP_FAILED");
+      throw new Error("Account created, but sign-in could not be completed.");
     }
 
-    // Record initial session login event
-    await AuditService.recordEvent(
-      {
-        business_id: businessId,
-        action: "auth.login",
-        actor: { id: userId, type: "user" },
-        resource: { type: "auth_session", id: userId },
+    const context = await requireOwnerContext();
+    if (!existingBusiness) {
+      await AuditService.recordBusinessEvent(context, {
+        action: "business.created",
+        resource: { type: "business", id: context.businessId },
         outcome: "success",
-        metadata: { auth_method: "password", username },
-      },
-      { critical: true, client: supabase }
-    );
+        metadata: { business_name: workspaceName, provisioning_source: "password_signup" },
+      });
+    }
+    await AuditService.recordBusinessEvent(context, {
+      action: "auth.signup",
+      resource: { type: "auth_user", id: context.user.id },
+      outcome: "success",
+      metadata: { method: "password" },
+    });
+    await AuditService.recordBusinessEvent(context, {
+      action: "auth.login",
+      resource: { type: "auth_session", id: context.user.id },
+      outcome: "success",
+      metadata: { method: "password" },
+    });
 
     return {
       user: {
-        id: userId,
-        email: email,
-        username: username,
-        workspaceName: workspaceName,
+        id: context.user.id,
+        email: context.user.email,
+        username,
+        workspaceName,
       },
       session: signInData.session,
     };
   }
 
-  /**
-   * Log in user with either username or email and password.
-   */
+  /** Logs in with the existing email credential flow. */
   static async logIn(input: LoginInput) {
     const supabase = await createClient();
-    const adminSupabase = createAdminClient();
 
-    let targetEmail = input.identifier.trim();
-    let resolvedUsername = input.identifier.trim();
-    let businessId = SYSTEM_BUSINESS_ID;
+    let targetEmail = input.identifier.trim().toLowerCase();
+    const identifierType: "email" | "username" = targetEmail.includes("@") ? "email" : "username";
 
-    if (!targetEmail.includes("@")) {
-      const { data: profile } = await adminSupabase
+    if (identifierType === "username") {
+      const admin = createAdminClient();
+      const { data: profile, error: profileError } = await admin
         .from("profiles")
-        .select("id, email, username")
+        .select("email")
         .ilike("username", targetEmail)
         .maybeSingle();
-
-      if (!profile || !profile.email) {
-        await AuditService.recordEvent(
-          {
-            business_id: SYSTEM_BUSINESS_ID,
-            action: "auth.failed_login",
-            actor: { id: "anonymous", type: "user" },
-            resource: { type: "auth_session", id: "unauthenticated" },
-            outcome: "failure",
-            error: { code: "USER_NOT_FOUND", message: "Invalid username or password." },
-            metadata: { identifier_type: "username" },
-          },
-          { critical: false, useAdminClient: true }
-        );
-
+      if (profileError || !profile?.email) {
+        await recordPlatformAuthEvent("auth.failed_login", "INVALID_CREDENTIALS", {
+          identifier_type: identifierType,
+        });
         throw new Error("Invalid username or password.");
       }
-      targetEmail = profile.email;
-      resolvedUsername = profile.username || resolvedUsername;
-    } else {
-      const { data: profile } = await adminSupabase
-        .from("profiles")
-        .select("id, username")
-        .ilike("email", targetEmail)
-        .maybeSingle();
-      if (profile) {
-        resolvedUsername = profile.username || resolvedUsername;
-      }
+      targetEmail = String(profile.email).toLowerCase();
     }
 
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
@@ -307,53 +234,26 @@ export class AuthService {
       password: input.password,
     });
 
-    if (authError) {
-      await AuditService.recordEvent(
-        {
-          business_id: SYSTEM_BUSINESS_ID,
-          action: "auth.failed_login",
-          actor: { id: "anonymous", type: "user" },
-          resource: { type: "auth_session", id: "unauthenticated" },
-          outcome: "failure",
-          error: { code: "INVALID_CREDENTIALS", message: "Invalid username or password." },
-          metadata: { identifier_type: input.identifier.includes("@") ? "email" : "username" },
-        },
-        { critical: false, useAdminClient: true }
-      );
-
+    if (authError || !authData.user) {
+      await recordPlatformAuthEvent("auth.failed_login", "INVALID_CREDENTIALS", {
+        identifier_type: identifierType,
+      });
       throw new Error("Invalid username or password.");
     }
 
-    // Resolve tenant context strictly from verified authData.user.id
-    if (authData.user?.id) {
-      const { data: userBiz } = await adminSupabase
-        .from("businesses")
-        .select("id")
-        .eq("owner_id", authData.user.id)
-        .maybeSingle();
-      if (userBiz?.id) {
-        businessId = userBiz.id;
-      }
-    }
-
-    // Record successful login audit event
-    await AuditService.recordEvent(
-      {
-        business_id: businessId,
-        action: "auth.login",
-        actor: { id: authData.user.id, type: "user" },
-        resource: { type: "auth_session", id: authData.user.id },
-        outcome: "success",
-        metadata: { auth_method: "password", username: resolvedUsername },
-      },
-      { critical: true, client: supabase }
-    );
+    const context = await requireOwnerContext();
+    await AuditService.recordBusinessEvent(context, {
+      action: "auth.login",
+      resource: { type: "auth_session", id: context.user.id },
+      outcome: "success",
+      metadata: { method: "password" },
+    });
 
     return {
       user: {
-        id: authData.user.id,
-        email: authData.user.email,
-        username: authData.user.user_metadata?.username || resolvedUsername,
+        id: context.user.id,
+        email: context.user.email,
+        username: context.user.user_metadata?.username || input.identifier.trim(),
       },
       session: authData.session,
     };
@@ -364,137 +264,52 @@ export class AuthService {
    */
   static async logOut() {
     const supabase = await createClient();
-    const adminSupabase = createAdminClient();
-
-    // Authoritatively resolve user context before terminating session
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (user) {
-      let businessId = SYSTEM_BUSINESS_ID;
-      const { data: userBiz } = await adminSupabase
-        .from("businesses")
-        .select("id")
-        .eq("owner_id", user.id)
-        .maybeSingle();
-
-      if (userBiz?.id) {
-        businessId = userBiz.id;
-      }
-
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        await AuditService.recordEvent(
-          {
-            business_id: businessId,
-            action: "auth.logout",
-            actor: { id: user.id, type: "user" },
-            resource: { type: "auth_session", id: user.id },
-            outcome: "failure",
-            error: { code: "SIGNOUT_FAILED", message: error.message },
-            metadata: { email_domain: user.email ? user.email.split("@")[1] : undefined },
-          },
-          { critical: false, client: supabase }
-        );
-        throw new Error(error.message);
-      }
-
-      await AuditService.recordEvent(
-        {
-          business_id: businessId,
-          action: "auth.logout",
-          actor: { id: user.id, type: "user" },
-          resource: { type: "auth_session", id: user.id },
-          outcome: "success",
-          metadata: { email_domain: user.email ? user.email.split("@")[1] : undefined },
-        },
-        { critical: false, client: supabase }
-      );
-      return;
-    }
-
+    const context = await requireOwnerContext();
     const { error } = await supabase.auth.signOut();
     if (error) {
-      throw new Error(error.message);
+      await AuditService.recordBusinessEvent(context, {
+        action: "auth.logout",
+        resource: { type: "auth_session", id: context.user.id },
+        outcome: "failure",
+        error: { code: "SIGNOUT_FAILED", message: "Sign out failed." },
+      });
+      throw new Error("Could not sign out.");
     }
+
+    await AuditService.recordBusinessEvent(context, {
+      action: "auth.logout",
+      resource: { type: "auth_session", id: context.user.id },
+      outcome: "success",
+    });
   }
 
   /**
    * Get current authenticated user session and workspace info.
    */
   static async getCurrentUser() {
-    const supabase = await createClient();
-    const adminSupabase = createAdminClient();
-
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser();
-
-    if (error || !user) {
-      return null;
-    }
-
-    const extracted = AuthService.extractUserAndWorkspace(user);
-    let displayName = extracted.displayName;
-    let workspaceName = extracted.workspaceName;
-
     try {
-      const { data: profile } = await adminSupabase
+      const context = await requireOwnerContext();
+      const { data: profile } = await context.client
         .from("profiles")
         .select("username")
-        .eq("id", user.id)
+        .eq("id", context.user.id)
         .maybeSingle();
-
-      if (profile?.username) {
-        displayName = profile.username;
-      }
-
-      const { data: business } = await adminSupabase
+      const extracted = AuthService.extractUserAndWorkspace(context.user);
+      const { data: business } = await context.client
         .from("businesses")
-        .select("id, name")
-        .eq("owner_id", user.id)
+        .select("name")
+        .eq("id", context.businessId)
         .maybeSingle();
-
-      if (business?.name && !business.name.startsWith("My's")) {
-        workspaceName = business.name;
-      } else {
-        const isNewBusiness = !business;
-        workspaceName = `${displayName}'s Workspace`;
-        // Update database if it held the old "My's Workspace" or lazily provision
-        const { data: updatedBiz } = await adminSupabase
-          .from("businesses")
-          .upsert({ owner_id: user.id, name: workspaceName }, { onConflict: "owner_id" })
-          .select("id")
-          .maybeSingle();
-
-        const bizId = updatedBiz?.id || business?.id;
-        if (bizId) {
-          await AuditService.recordEvent(
-            {
-              business_id: bizId,
-              action: isNewBusiness ? "business.created" : "business.updated",
-              actor: { id: user.id, type: "user" },
-              resource: { type: "business", id: bizId },
-              outcome: "success",
-              metadata: isNewBusiness
-                ? { workspace_name: workspaceName, reason: "lazy_provisioning" }
-                : { updated_field: "name", new_name: workspaceName, reason: "legacy_migration" },
-            },
-            { critical: false, useAdminClient: true }
-          );
-        }
-      }
+      return {
+        id: context.user.id,
+        email: context.user.email,
+        username: profile?.username || extracted.displayName,
+        workspaceName: business?.name || extracted.workspaceName,
+      };
     } catch {
-      // Fallback
+      return null;
     }
-
-    return {
-      id: user.id,
-      email: user.email,
-      username: displayName,
-      workspaceName: workspaceName,
-    };
   }
+
+  static readonly googleMeetScope = GOOGLE_MEET_SCOPE;
 }

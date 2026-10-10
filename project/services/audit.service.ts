@@ -4,23 +4,25 @@ if (typeof window !== "undefined") {
 
 import {
   AuditEventInputSchema,
-  AuditEventRecordSchema,
   AuditQueryFiltersSchema,
+  PLATFORM_SECURITY_ACTIONS,
   sanitizeAuditMetadata,
 } from "../lib/validations/audit";
+import { allowlistedAuditMetadata } from "../lib/validations/audit-actions";
 import type {
   AuditEventInput,
   AuditEventRecord,
   AuditQueryFilters,
 } from "../lib/validations/audit";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { OwnerContext } from "../lib/supabase/owner-context";
 
 /**
  * Lazy-loads Next.js server-scoped Supabase client only when no client is passed.
  */
-async function resolveDefaultSupabaseClient(useAdmin = false): Promise<SupabaseClient> {
-  const { createClient, createAdminClient } = await import("../lib/supabase/server");
-  return useAdmin ? createAdminClient() : await createClient();
+async function resolveDefaultSupabaseClient(): Promise<SupabaseClient> {
+  const { createClient } = await import("../lib/supabase/server");
+  return createClient();
 }
 
 /**
@@ -49,8 +51,7 @@ export class AuditValidationError extends AuditLoggingError {
 
 export interface RecordEventOptions {
   /**
-   * If true (default), persistence failures throw AuditLoggingError to fail closed.
-   * If false, failures log to stderr but do not throw (for non-critical operational telemetry).
+   * @deprecated Kept for call-site compatibility. Audit persistence failures always throw.
    */
   critical?: boolean;
   /**
@@ -58,11 +59,6 @@ export interface RecordEventOptions {
    * If omitted, the service derives the appropriate authenticated server client.
    */
   client?: SupabaseClient;
-  /**
-   * If true, uses the privileged admin client to record events (e.g. system background jobs,
-   * webhooks, or failed login attempts before an authenticated session exists).
-   */
-  useAdminClient?: boolean;
 }
 
 /**
@@ -72,121 +68,54 @@ export interface RecordEventOptions {
  * and failure policies across all Nexus business domains.
  */
 export class AuditService {
-  /**
-   * Records a single structured audit event.
-   * By default, operations are critical: failure to persist will throw AuditLoggingError,
-   * guaranteeing that business mutations cannot commit without their required audit trail.
-   */
+  static async recordBusinessEvent(
+    context: OwnerContext,
+    event: Omit<AuditEventInput, "scope" | "business_id" | "actor">
+  ): Promise<string> {
+    return this.recordEventViaRpc(
+      {
+        ...event,
+        scope: "business",
+        business_id: context.businessId,
+        actor: { id: context.user.id, type: "user" },
+      },
+      { client: context.client }
+    );
+  }
+
+  /** Records an anonymous or pre-business security event through its restricted server-only RPC. */
+  static async recordPlatformSecurityEvent(
+    action: (typeof PLATFORM_SECURITY_ACTIONS)[number],
+    resource: { type: string; id: string },
+    metadata: Record<string, unknown> = {}
+  ): Promise<string> {
+    const { createAdminClient } = await import("../lib/supabase/server");
+    const db = createAdminClient();
+    const safeMetadata = sanitizeAuditMetadata(
+      allowlistedAuditMetadata(action, metadata)
+    ) as Record<string, unknown>;
+    const { data, error } = await db.rpc("record_platform_security_event", {
+      p_action: action,
+      p_resource_type: resource.type,
+      p_resource_id: resource.id,
+      p_metadata: safeMetadata,
+    });
+    if (error || typeof data !== "string") {
+      throw new AuditLoggingError(
+        "Could not record the security event.",
+        "AUDIT_PLATFORM_RPC_FAILED",
+        error ? { pgCode: error.code } : undefined
+      );
+    }
+    return data;
+  }
+
+  /** Writes only through the checked database insertion routine. */
   static async recordEvent(
     input: AuditEventInput,
     options: RecordEventOptions = {}
-  ): Promise<AuditEventRecord> {
-    const isCritical = options.critical !== false;
-
-    try {
-      // 1. Validate payload at trust boundary
-      const validationResult = AuditEventInputSchema.safeParse(input);
-      if (!validationResult.success) {
-        throw new AuditValidationError(
-          `Audit event payload validation failed: ${validationResult.error.message}`,
-          validationResult.error.flatten()
-        );
-      }
-
-      const validEvent = validationResult.data;
-
-      // 2. Sanitize metadata (recursively strip secrets, passwords, tokens, raw prompts)
-      const sanitizedMetadata = sanitizeAuditMetadata(validEvent.metadata) as Record<string, unknown>;
-
-      // 3. Resolve the appropriate database client
-      const db = options.client || (await resolveDefaultSupabaseClient(options.useAdminClient));
-
-      // 4. Construct the database payload matching public.audit_logs
-      const dbPayload = {
-        business_id: validEvent.business_id,
-        schema_version: validEvent.schema_version,
-        action: validEvent.action,
-        actor_id: validEvent.actor.id,
-        actor_type: validEvent.actor.type,
-        initiator_id: validEvent.initiator?.id ?? null,
-        initiator_type: validEvent.initiator?.type ?? null,
-        approver_id: validEvent.approver?.id ?? null,
-        approver_type: validEvent.approver?.type ?? null,
-        approved_at: validEvent.approver?.approved_at ?? null,
-        resource_type: validEvent.resource.type,
-        resource_id: validEvent.resource.id,
-        outcome: validEvent.outcome,
-        error_code: validEvent.error?.code ?? null,
-        error_message: validEvent.error?.message ?? null,
-        correlation_id: validEvent.correlation_id ?? null,
-        workflow_id: validEvent.workflow_id ?? null,
-        request_id: validEvent.request_id ?? null,
-        metadata: sanitizedMetadata,
-      };
-
-      // 5. Insert audit log record
-      const { data, error } = await db
-        .from("audit_logs")
-        .insert(dbPayload)
-        .select()
-        .single();
-
-      if (error) {
-        throw new AuditLoggingError(
-          `Failed to persist audit log record: ${error.message} (code: ${error.code})`,
-          "AUDIT_DB_INSERT_FAILED",
-          { pgCode: error.code, details: error.details }
-        );
-      }
-
-      if (!data) {
-        throw new AuditLoggingError(
-          "Audit log insert returned empty response from database",
-          "AUDIT_EMPTY_RESPONSE"
-        );
-      }
-
-      // 6. Validate persisted record format
-      const parsedRecord = AuditEventRecordSchema.safeParse(data);
-      if (!parsedRecord.success) {
-        return data as AuditEventRecord;
-      }
-
-      return parsedRecord.data;
-    } catch (err: unknown) {
-      const error = err instanceof AuditLoggingError ? err : new AuditLoggingError(
-        err instanceof Error ? err.message : "Unknown error during audit logging",
-        "AUDIT_UNEXPECTED_ERROR",
-        err
-      );
-
-      // Safe diagnostic output without leaking sensitive data
-      console.error(
-        `[AUDIT-LOG-FAILURE] action=${input?.action} biz=${input?.business_id} outcome=${input?.outcome} error=${error.message}`
-      );
-
-      if (isCritical) {
-        throw error;
-      }
-
-      // Return synthetic fallback object when caller explicitly requests non-critical behavior
-      return {
-        id: "00000000-0000-0000-0000-000000000000",
-        business_id: input.business_id,
-        schema_version: 1,
-        timestamp: new Date().toISOString(),
-        action: input.action,
-        actor_id: input.actor.id,
-        actor_type: input.actor.type,
-        resource_type: input.resource.type,
-        resource_id: input.resource.id,
-        outcome: "failure",
-        error_code: error.code,
-        error_message: error.message,
-        metadata: {},
-        created_at: new Date().toISOString(),
-      };
-    }
+  ): Promise<string> {
+    return this.recordEventViaRpc(input, options);
   }
 
   /**
@@ -196,7 +125,7 @@ export class AuditService {
   static async recordCriticalEvent(
     input: AuditEventInput,
     options: Omit<RecordEventOptions, "critical"> = {}
-  ): Promise<AuditEventRecord> {
+  ): Promise<string> {
     return this.recordEvent(input, { ...options, critical: true });
   }
 
@@ -208,8 +137,6 @@ export class AuditService {
     input: AuditEventInput,
     options: RecordEventOptions = {}
   ): Promise<string> {
-    const isCritical = options.critical !== false;
-
     try {
       const validationResult = AuditEventInputSchema.safeParse(input);
       if (!validationResult.success) {
@@ -220,10 +147,13 @@ export class AuditService {
       }
 
       const validEvent = validationResult.data;
-      const sanitizedMetadata = sanitizeAuditMetadata(validEvent.metadata) as Record<string, unknown>;
-      const db = options.client || (await resolveDefaultSupabaseClient(options.useAdminClient));
+      const sanitizedMetadata = sanitizeAuditMetadata(
+        allowlistedAuditMetadata(validEvent.action, validEvent.metadata)
+      ) as Record<string, unknown>;
+      const db = options.client || (await resolveDefaultSupabaseClient());
 
-      const { data, error } = await db.rpc("record_audit_log_tx", {
+      const { data, error } = await db.rpc("record_owner_audit_log_tx", {
+        p_scope: validEvent.scope,
         p_business_id: validEvent.business_id,
         p_action: validEvent.action,
         p_actor_id: validEvent.actor.id,
@@ -265,54 +195,7 @@ export class AuditService {
         `[AUDIT-LOG-FAILURE-RPC] action=${input?.action} biz=${input?.business_id} outcome=${input?.outcome} error=${error.message}`
       );
 
-      if (isCritical) {
-        throw error;
-      }
-
-      return "00000000-0000-0000-0000-000000000000";
-    }
-  }
-
-  /**
-   * Transaction-aware wrapper pattern:
-   * Executes a business operation and ensures the audit event is persisted.
-   * If the audit persistence fails, the entire operation throws and fails closed.
-   */
-  static async withAudit<T>(
-    eventInput: AuditEventInput,
-    operation: () => Promise<T>,
-    options: RecordEventOptions = {}
-  ): Promise<{ result: T; auditEvent: AuditEventRecord }> {
-    try {
-      const result = await operation();
-      
-      const auditEvent = await this.recordEvent(
-        { ...eventInput, outcome: "success" },
-        { ...options, critical: true }
-      );
-
-      return { result, auditEvent };
-    } catch (opError: unknown) {
-      // Record failure audit trail
-      const errorMessage = opError instanceof Error ? opError.message : "Operation failed";
-      
-      try {
-        await this.recordEvent(
-          {
-            ...eventInput,
-            outcome: "failure",
-            error: {
-              code: "OPERATION_FAILED",
-              message: errorMessage,
-            },
-          },
-          { ...options, critical: false }
-        );
-      } catch {
-        // Suppress secondary audit error during primary business error propagation
-      }
-
-      throw opError;
+      throw error;
     }
   }
 

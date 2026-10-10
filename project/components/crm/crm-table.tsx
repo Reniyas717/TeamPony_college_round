@@ -35,7 +35,7 @@ export function CrmTable({
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <StageBadge stage={contact.stage} />
+                  <StageBadge stage={contact.stage} legacyStage={contact.legacy_stage} />
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-col">
@@ -65,8 +65,8 @@ export function CrmTable({
   );
 }
 
-function StageBadge({ stage }: { stage: Contact['stage'] }) {
-  const map: Record<Contact['stage'], { label: string; variant: "neutral" | "info" | "warning" | "success" | "danger" }> = {
+function StageBadge({ stage, legacyStage }: { stage: Contact['stage']; legacyStage?: string }) {
+  const map: Record<Exclude<Contact['stage'], "unknown">, { label: string; variant: "neutral" | "info" | "warning" | "success" | "danger" }> = {
     lead: { label: "Lead", variant: "neutral" },
     contacted: { label: "Contacted", variant: "info" },
     qualified: { label: "Qualified", variant: "info" },
@@ -75,6 +75,9 @@ function StageBadge({ stage }: { stage: Contact['stage'] }) {
     churned: { label: "Churned", variant: "danger" },
   };
 
+  if (stage === "unknown") {
+    return <Badge variant="warning">Unknown: {legacyStage || "legacy value"}</Badge>;
+  }
   const s = map[stage];
   return <Badge variant={s.variant}>{s.label}</Badge>;
 }

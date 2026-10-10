@@ -2,7 +2,7 @@
 
 import { use, useState } from "react";
 import Link from "next/link";
-import { useWorkflow, useTriggerWorkflow } from "@/hooks/use-workflows";
+import { useLatestWorkflowRun, useWorkflow, useTriggerWorkflow } from "@/hooks/use-workflows";
 import { DagCanvas } from "@/components/workflows/dag-canvas";
 import { ApprovalBanner } from "@/components/workflows/approval-banner";
 import { RunInspector } from "@/components/workflows/run-inspector";
@@ -11,9 +11,11 @@ import { WorkflowRun } from "@/lib/validations/workflow";
 export default function WorkflowDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data: workflow, isLoading, error } = useWorkflow(id);
+  const { data: latestRun } = useLatestWorkflowRun(id);
   const triggerMutation = useTriggerWorkflow();
   
-  const [activeRun, setActiveRun] = useState<WorkflowRun | null>(null);
+  const [selectedRun, setSelectedRun] = useState<WorkflowRun | null>(null);
+  const activeRun = selectedRun ?? latestRun ?? null;
 
   if (isLoading) {
     return (
@@ -43,16 +45,13 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
       // For demonstration, passing a dummy event payload
       const result = await triggerMutation.mutateAsync({
         id,
-        payload: {
-          payload: {
-            event_id: `evt-test-${Date.now()}`,
-            email: "test.lead@example.com",
-            phone: "+15550199",
-            contactId: "dummy-contact-id",
-          },
-        },
+        payload: { payload: {
+          event_id: `evt-test-${Date.now()}`,
+          email: "test.lead@example.com",
+          phone: "+15550199",
+        } },
       });
-      setActiveRun(result.run);
+      setSelectedRun(result.run);
     } catch (err) {
       console.error("Test fire failed", err);
     }

@@ -1,84 +1,65 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { AuditQueryFiltersSchema } from "@/lib/validations/audit";
+import { OwnerContextError, requireOwnerContext } from "@/lib/supabase/owner-context";
 import { AuditService } from "@/services/audit.service";
-import { ActorType, AuditOutcome } from "@/lib/validations/audit";
 
 export async function GET(request: Request) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const context = await requireOwnerContext();
+    const params = new URL(request.url).searchParams;
+    const parsed = AuditQueryFiltersSchema.safeParse({
+      business_id: context.businessId,
+      limit: params.has("limit") ? Number(params.get("limit")) : undefined,
+      offset: params.has("offset") ? Number(params.get("offset")) : undefined,
+      action: params.get("action") ?? undefined,
+      actor_id: params.get("actor_id") ?? undefined,
+      actor_type: params.get("actor_type") ?? undefined,
+      resource_type: params.get("resource_type") ?? undefined,
+      resource_id: params.get("resource_id") ?? undefined,
+      outcome: params.get("outcome") ?? undefined,
+      correlation_id: params.get("correlation_id") ?? undefined,
+      workflow_id: params.get("workflow_id") ?? undefined,
+      from_timestamp: params.get("from_timestamp") ?? undefined,
+      to_timestamp: params.get("to_timestamp") ?? undefined,
+    });
 
-    if (authError || !user) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
-        { status: 401 }
+        { error: { code: "VALIDATION_ERROR", message: "Invalid audit filters", details: parsed.error.flatten() } },
+        { status: 400 }
       );
     }
 
-    // Resolve verified business owned by user
-    const { data: business, error: bizError } = await supabase
-      .from("businesses")
-      .select("id, name")
-      .eq("owner_id", user.id)
-      .maybeSingle();
-
-    if (bizError) {
+    const [result, businessResult] = await Promise.all([
+      AuditService.queryEvents(parsed.data, { client: context.client }),
+      context.client.from("businesses").select("name").eq("id", context.businessId).maybeSingle(),
+    ]);
+    if (businessResult.error) {
       return NextResponse.json(
-        { error: { code: "INTERNAL_ERROR", message: bizError.message } },
+        { error: { code: "INTERNAL_ERROR", message: "Could not load audit records." } },
         { status: 500 }
       );
     }
-
-    if (!business?.id) {
-      return NextResponse.json(
-        { error: { code: "NOT_FOUND", message: "No business workspace found for user" } },
-        { status: 404 }
-      );
-    }
-
-    const { searchParams } = new URL(request.url);
-    const limit = Math.min(Math.max(Number(searchParams.get("limit") || 50), 1), 100);
-    const offset = Math.max(Number(searchParams.get("offset") || 0), 0);
-    const action = searchParams.get("action") || undefined;
-    const actorType = (searchParams.get("actor_type") as ActorType) || undefined;
-    const outcome = (searchParams.get("outcome") as AuditOutcome) || undefined;
-    const correlationId = searchParams.get("correlation_id") || undefined;
-
-    const result = await AuditService.queryEvents(
-      {
-        business_id: business.id,
-        limit,
-        offset,
-        action,
-        actor_type: actorType,
-        outcome,
-        correlation_id: correlationId,
-      },
-      { client: supabase }
-    );
 
     return NextResponse.json({
       data: {
         events: result.events,
         total: result.total,
-        business_id: business.id,
-        workspace_name: business.name,
-        page: Math.floor(offset / limit) + 1,
-        limit,
+        business_id: context.businessId,
+        workspace_name: businessResult.data?.name ?? "Workspace",
+        page: Math.floor(parsed.data.offset / parsed.data.limit) + 1,
+        limit: parsed.data.limit,
       },
     });
-  } catch (err: unknown) {
-    const error = err as Error;
+  } catch (error) {
+    if (error instanceof OwnerContextError) {
+      return NextResponse.json(
+        { error: { code: error.code, message: error.message, details: null } },
+        { status: error.status }
+      );
+    }
     return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: error.message || "Failed to retrieve audit log records",
-        },
-      },
+      { error: { code: "INTERNAL_ERROR", message: "Could not load audit records.", details: null } },
       { status: 500 }
     );
   }

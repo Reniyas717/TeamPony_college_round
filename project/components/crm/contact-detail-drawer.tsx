@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useState } from "react";
 import { useContact, useContactActivities, useUpdateContact, useAddActivity } from "@/hooks/use-crm";
-import { Contact } from "@/lib/validations/crm";
+import type { ContactStage } from "@/lib/validations/crm";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
@@ -16,7 +16,7 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
 
   if (!contactId) return null;
 
-  const handleStageChange = async (newStage: Contact['stage']) => {
+  const handleStageChange = async (newStage: ContactStage) => {
     if (!contact) return;
     await updateContact({ id: contact.id, data: { stage: newStage } });
   };
@@ -53,9 +53,10 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                 </h2>
                 <select 
                   className="h-8 px-2 py-1 text-sm rounded-sm border border-input bg-background font-semibold"
-                  value={contact.stage}
-                  onChange={(e) => handleStageChange(e.target.value as Contact['stage'])}
+                  value={contact.stage === "unknown" ? "" : contact.stage}
+                  onChange={(e) => handleStageChange(e.target.value as ContactStage)}
                 >
+                  {contact.stage === "unknown" && <option value="">Unknown: {contact.legacy_stage || "unrecognized value"}</option>}
                   <option value="lead">Lead</option>
                   <option value="contacted">Contacted</option>
                   <option value="qualified">Qualified</option>

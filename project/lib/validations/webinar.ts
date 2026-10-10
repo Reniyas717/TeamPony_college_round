@@ -40,7 +40,7 @@ export const WebinarActionSchema = z.object({
   no_show_body: z.string().trim().max(10000).optional(),
 }).strict();
 
-export const WebinarRescheduleSchema = WebinarInputSchema.extend({
+export const WebinarRescheduleSchema = WebinarInputSchema.safeExtend({
   action: z.literal("reschedule"),
   expected_version: z.number().int().positive(),
   expected_recipient_count: z.number().int().nonnegative(),

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { WorkflowEngineService } from "@/services/workflow-engine.service";
+import { requireOwnerContext } from "@/lib/supabase/owner-context";
+import { workflowErrorResponse } from "../_errors";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -12,7 +14,8 @@ interface RouteParams {
 export async function GET(_request: Request, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const workflow = await WorkflowEngineService.getWorkflowById(id);
+    const context = await requireOwnerContext();
+    const workflow = await WorkflowEngineService.getWorkflowById(context, id);
 
     if (!workflow) {
       return NextResponse.json(
@@ -29,16 +32,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
 
     return NextResponse.json({ data: workflow }, { status: 200 });
   } catch (err: unknown) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: err instanceof Error ? err.message : "Failed to fetch workflow",
-          details: null,
-        },
-      },
-      { status: 500 }
-    );
+    return workflowErrorResponse(err, "Failed to fetch workflow");
   }
 }
 
@@ -49,7 +43,8 @@ export async function GET(_request: Request, { params }: RouteParams) {
 export async function DELETE(_request: Request, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const deleted = await WorkflowEngineService.deleteWorkflow(id);
+    const context = await requireOwnerContext();
+    const deleted = await WorkflowEngineService.deleteWorkflow(context, id);
 
     if (!deleted) {
       return NextResponse.json(
@@ -66,15 +61,6 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
 
     return NextResponse.json({ data: { success: true } }, { status: 200 });
   } catch (err: unknown) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: err instanceof Error ? err.message : "Failed to delete workflow",
-          details: null,
-        },
-      },
-      { status: 500 }
-    );
+    return workflowErrorResponse(err, "Failed to delete workflow");
   }
 }

@@ -1,10 +1,12 @@
 import { z } from "zod";
+import { AUDIT_ACTIONS, type AuditAction } from "./audit-actions";
 
-/**
- * System/Default Business UUID used for pre-authentication or platform-level events
- * before an active business tenant context exists. Matches the seeded default business.
- */
-export const SYSTEM_BUSINESS_ID = "00000000-0000-0000-0000-000000000001";
+export const PLATFORM_SECURITY_ACTIONS = [
+  "auth.signup",
+  "auth.failed_login",
+  "security.unauthorized_access",
+  "security.rate_limited",
+] as const;
 
 /**
  * Authoritative Actor Types per AGENTS.md and Central Audit Architecture.
@@ -51,70 +53,14 @@ export type AuditResource = z.infer<typeof AuditResourceSchema>;
 /**
  * Standard Action Categories for Nexus.
  */
-export const StandardAuditAction = [
-  // Authentication & Session
-  "auth.login",
-  "auth.logout",
-  "auth.signup",
-  "auth.failed_login",
-  "auth.password_reset",
-  "auth.session_revoked",
-  // Business & Workspace
-  "business.created",
-  "business.updated",
-  "business.api_key_rotated",
-  "business.settings_changed",
-  // CRM & Contacts
-  "crm.contact.created",
-  "crm.contact.updated",
-  "crm.contact.deleted",
-  "crm.contact.stage_changed",
-  // SaaS Billing & Subscriptions
-  "billing.subscription.created",
-  "billing.subscription.updated",
-  "billing.subscription.cancelled",
-  "billing.invoice.paid",
-  "billing.payment_failed",
-  // Visual Website Builder
-  "website.created",
-  "website.updated",
-  "website.published",
-  "website.unpublished",
-  "website.deleted",
-  // Marketing Automation
-  "marketing.campaign.created",
-  "marketing.campaign.updated",
-  "marketing.campaign.dispatched",
-  "marketing.campaign.paused",
-  // Webinars
-  "webinar.created",
-  "webinar.scheduled",
-  "webinar.completed",
-  "webinar.cancelled",
-  // AI Agent & High-Impact Workflows
-  "ai.workflow.created",
-  "ai.workflow.approved",
-  "ai.workflow.rejected",
-  "ai.workflow.executed",
-  "ai.workflow.failed",
-  // Security & Boundary Violations
-  "security.unauthorized_access",
-  "security.rate_limited",
-  "security.tenant_violation",
-] as const;
-
+export const StandardAuditAction = AUDIT_ACTIONS;
 export type StandardAuditActionType = (typeof StandardAuditAction)[number];
 
 /**
  * Action schema validating dot-notated action format (category.resource.verb).
  */
-export const AuditActionSchema = z
-  .string()
-  .min(3, "Action name must be at least 3 characters")
-  .regex(
-    /^[a-z0-9_-]+\.[a-z0-9_-]+(\.[a-z0-9_-]+)*$/,
-    "Action must follow lowercase dot notation (e.g., 'crm.contact.created' or 'auth.login')"
-  );
+export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
+export type { AuditAction };
 
 /**
  * PostgreSQL-compatible UUID pattern (accepts standard v4, v1-v8, nil, and test fixtures).
@@ -126,8 +72,9 @@ export const UuidSchema = z.string().regex(UUID_REGEX, "Invalid UUID format");
  * Input schema for recording an audit event.
  */
 export const AuditEventInputSchema = z.object({
-  // Authoritative server-derived business tenant context
-  business_id: UuidSchema,
+  // Business events require an owner business; only approved security events may be platform scoped.
+  scope: z.enum(["business", "platform"]).default("business"),
+  business_id: UuidSchema.nullable(),
   
   // Action identifier
   action: AuditActionSchema,
@@ -165,6 +112,21 @@ export const AuditEventInputSchema = z.object({
   
   // Schema version (defaults to 1)
   schema_version: z.number().int().positive().default(1),
+}).superRefine((event, ctx) => {
+  if (event.scope === "business" && !event.business_id) {
+    ctx.addIssue({ code: "custom", path: ["business_id"], message: "Business events require an owned business." });
+  }
+  if (event.scope === "platform" && (
+    event.business_id !== null
+    || !PLATFORM_SECURITY_ACTIONS.includes(event.action as (typeof PLATFORM_SECURITY_ACTIONS)[number])
+    || event.outcome !== "failure"
+    || event.actor.type !== "integration"
+    || event.actor.id !== "supabase_auth"
+    || event.initiator !== undefined
+    || event.approver !== undefined
+  )) {
+    ctx.addIssue({ code: "custom", path: ["scope"], message: "Platform scope is restricted to failed events written by the trusted authentication integration." });
+  }
 });
 
 export type AuditEventInput = z.input<typeof AuditEventInputSchema>;
@@ -175,7 +137,7 @@ export type ValidatedAuditEvent = z.output<typeof AuditEventInputSchema>;
  */
 export const AuditEventRecordSchema = z.object({
   id: UuidSchema,
-  business_id: UuidSchema,
+  business_id: UuidSchema.nullable(),
   schema_version: z.number().int().positive(),
   timestamp: z.string().datetime(),
   action: z.string(),

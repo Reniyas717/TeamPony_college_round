@@ -1,18 +1,14 @@
-import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { CrmService } from "./crm.service";
+import { randomUUID } from "node:crypto";
+import type { OwnerContext } from "@/lib/supabase/owner-context";
 import {
   CustomerJourneyMap,
   JourneyMapStage,
   JourneyStageAction,
   GenerateJourneyMapInput,
+  AddStageInput,
   UpdateStageInput,
   NexusTelemetry,
 } from "@/lib/validations/journey-map";
-
-export const DEFAULT_BUSINESS_ID = "00000000-0000-0000-0000-000000000001";
-
-// In-Memory store for active session (zero pre-seeded dummy data)
-const memoryMaps: CustomerJourneyMap[] = [];
 
 /**
  * Intelligent AI Journey Generator
@@ -21,10 +17,10 @@ const memoryMaps: CustomerJourneyMap[] = [];
  */
 function buildJourneyFromObjective(
   objective: string,
-  businessId: string = DEFAULT_BUSINESS_ID,
+  businessId: string,
   telemetry?: NexusTelemetry
 ): CustomerJourneyMap {
-  const mapId = `map-${Date.now()}`;
+  const mapId = randomUUID();
   const lowerObj = objective.toLowerCase();
   const crmCount = telemetry?.crmContactsCount ?? 0;
   const pipelineValue = telemetry?.crmPipelineValue ?? 0;
@@ -70,7 +66,7 @@ function buildJourneyFromObjective(
         findings_type: crmCount > 0 ? "data_backed" : "hypothesis",
         actions: [
           {
-            id: `act-${mapId}-1`,
+            id: randomUUID(),
             stage_id: "",
             journey_map_id: mapId,
             title: "Streamline Registration to 1-Click Form",
@@ -106,7 +102,7 @@ function buildJourneyFromObjective(
         findings_type: "hypothesis",
         actions: [
           {
-            id: `act-${mapId}-2`,
+            id: randomUUID(),
             stage_id: "",
             journey_map_id: mapId,
             title: "Launch Automated Onboarding Sequence",
@@ -140,7 +136,7 @@ function buildJourneyFromObjective(
         findings_type: "hypothesis",
         actions: [
           {
-            id: `act-${mapId}-3`,
+            id: randomUUID(),
             stage_id: "",
             journey_map_id: mapId,
             title: "Auto-Invite Inactive Users to Weekly Live Masterclass",
@@ -174,7 +170,7 @@ function buildJourneyFromObjective(
         findings_type: "hypothesis",
         actions: [
           {
-            id: `act-${mapId}-4`,
+            id: randomUUID(),
             stage_id: "",
             journey_map_id: mapId,
             title: "Configure Monthly ROI & Value Digest",
@@ -229,7 +225,7 @@ function buildJourneyFromObjective(
         findings_type: "hypothesis",
         actions: [
           {
-            id: `act-${mapId}-1`,
+            id: randomUUID(),
             stage_id: "",
             journey_map_id: mapId,
             title: "Trigger Inactivity Review Task in CRM",
@@ -263,7 +259,7 @@ function buildJourneyFromObjective(
         findings_type: "hypothesis",
         actions: [
           {
-            id: `act-${mapId}-2`,
+            id: randomUUID(),
             stage_id: "",
             journey_map_id: mapId,
             title: "Enable 7-Day Payment Grace Flow",
@@ -297,7 +293,7 @@ function buildJourneyFromObjective(
         findings_type: "hypothesis",
         actions: [
           {
-            id: `act-${mapId}-3`,
+            id: randomUUID(),
             stage_id: "",
             journey_map_id: mapId,
             title: "Present Flexible Retention Options in Billing",
@@ -347,7 +343,7 @@ function buildJourneyFromObjective(
         findings_type: "hypothesis",
         actions: [
           {
-            id: `act-${mapId}-1`,
+            id: randomUUID(),
             stage_id: "",
             journey_map_id: mapId,
             title: "Enable Instant AI Support Triage in CRM",
@@ -377,7 +373,7 @@ function buildJourneyFromObjective(
         findings_type: "hypothesis",
         actions: [
           {
-            id: `act-${mapId}-2`,
+            id: randomUUID(),
             stage_id: "",
             journey_map_id: mapId,
             title: "Automate 48-Hour Resolution Verification",
@@ -413,7 +409,7 @@ function buildJourneyFromObjective(
         findings_type: "hypothesis",
         actions: [
           {
-            id: `act-${mapId}-1`,
+            id: randomUUID(),
             stage_id: "",
             journey_map_id: mapId,
             title: "Configure Proactive Capacity Notification",
@@ -443,7 +439,7 @@ function buildJourneyFromObjective(
         findings_type: "hypothesis",
         actions: [
           {
-            id: `act-${mapId}-2`,
+            id: randomUUID(),
             stage_id: "",
             journey_map_id: mapId,
             title: "Assign Expansion Opportunity to Sales in CRM",
@@ -486,7 +482,7 @@ function buildJourneyFromObjective(
         findings_type: "hypothesis",
         actions: [
           {
-            id: `act-${mapId}-1`,
+            id: randomUUID(),
             stage_id: "",
             journey_map_id: mapId,
             title: "Clarify Hero Value Proposition & Social Proof",
@@ -522,7 +518,7 @@ function buildJourneyFromObjective(
         findings_type: "hypothesis",
         actions: [
           {
-            id: `act-${mapId}-2`,
+            id: randomUUID(),
             stage_id: "",
             journey_map_id: mapId,
             title: "Assign High-Intent Pricing Visitors in CRM",
@@ -558,7 +554,7 @@ function buildJourneyFromObjective(
         findings_type: "hypothesis",
         actions: [
           {
-            id: `act-${mapId}-3`,
+            id: randomUUID(),
             stage_id: "",
             journey_map_id: mapId,
             title: "Deploy Streamlined Low-Friction Registration Flow",
@@ -594,7 +590,7 @@ function buildJourneyFromObjective(
         findings_type: "hypothesis",
         actions: [
           {
-            id: `act-${mapId}-4`,
+            id: randomUUID(),
             stage_id: "",
             journey_map_id: mapId,
             title: "Trigger Automated Onboarding Email Flow",
@@ -630,7 +626,7 @@ function buildJourneyFromObjective(
         findings_type: "hypothesis",
         actions: [
           {
-            id: `act-${mapId}-5`,
+            id: randomUUID(),
             stage_id: "",
             journey_map_id: mapId,
             title: "Improve Upgrade Prompts & Offer Annual Saving",
@@ -666,7 +662,7 @@ function buildJourneyFromObjective(
         findings_type: "hypothesis",
         actions: [
           {
-            id: `act-${mapId}-6`,
+            id: randomUUID(),
             stage_id: "",
             journey_map_id: mapId,
             title: "Identify Inactive Users & Offer Relevant Support",
@@ -687,9 +683,10 @@ function buildJourneyFromObjective(
 
   // Assign stage IDs and link actions
   const fullStages: JourneyMapStage[] = stagesData.map((stg, idx) => {
-    const stageId = `stg-${mapId}-${idx + 1}`;
+    const stageId = randomUUID();
     const linkedActions = (stg.actions || []).map((act) => ({
       ...act,
+      id: randomUUID(),
       stage_id: stageId,
       journey_map_id: mapId,
     }));
@@ -716,274 +713,420 @@ function buildJourneyFromObjective(
   };
 }
 
+type JourneyMapMetadata = {
+  summary?: string;
+  stage_context?: Record<string, { customer_needs: string[]; findings_type: "hypothesis" | "data_backed" }>;
+};
+
+type DbMapRow = {
+  id: string;
+  business_id: string;
+  title: string;
+  objective: string;
+  archetype: string;
+  metadata: unknown;
+  created_at: string;
+  updated_at: string;
+};
+
+type DbStageRow = {
+  id: string;
+  journey_map_id: string;
+  business_id: string;
+  order_index: number;
+  stage_key: string;
+  stage_name: string;
+  description: string;
+  customer_actions: string[];
+  customer_thoughts: string[];
+  emotion: string;
+  touchpoints: string[];
+  pain_points: string[];
+  opportunities: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+type DbActionRow = {
+  id: string;
+  stage_id: string;
+  journey_map_id: string;
+  business_id: string;
+  title: string;
+  description: string;
+  module_target: "crm" | "campaign" | "website" | "webinar";
+  suggested_action_type: string;
+  action_payload: unknown;
+  expected_impact: string;
+  status: "PROPOSED" | "APPROVED" | "EXECUTED" | "DISMISSED";
+  idempotency_key: string | null;
+  executed_at: string | null;
+  created_at: string;
+};
+
+export class JourneyMapServiceError extends Error {
+  constructor(public readonly code: string, message: string, public readonly status = 500) {
+    super(message);
+    this.name = "JourneyMapServiceError";
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function parseMapMetadata(value: unknown): JourneyMapMetadata {
+  if (!isRecord(value)) return {};
+  const stageContext = isRecord(value.stage_context) ? value.stage_context : {};
+  const parsedContext: JourneyMapMetadata["stage_context"] = {};
+
+  for (const [stageKey, context] of Object.entries(stageContext)) {
+    if (!isRecord(context)) continue;
+    parsedContext[stageKey] = {
+      customer_needs: asStringArray(context.customer_needs),
+      findings_type: context.findings_type === "data_backed" ? "data_backed" : "hypothesis",
+    };
+  }
+
+  return {
+    summary: typeof value.summary === "string" ? value.summary : undefined,
+    stage_context: parsedContext,
+  };
+}
+
+function parseActionPayload(value: unknown) {
+  if (!isRecord(value)) return { actionPayload: {}, supplemental: {} as Record<string, unknown> };
+  const { __nexus, ...actionPayload } = value;
+  return {
+    actionPayload,
+    supplemental: isRecord(__nexus) ? __nexus : {},
+  };
+}
+
+function storedActionPayload(action: JourneyStageAction, executionResult: JourneyStageAction["execution_result"] = action.execution_result) {
+  return {
+    ...action.action_payload,
+    __nexus: {
+      why_it_helps: action.why_it_helps,
+      evidence_type: action.evidence_type,
+      execution_result: executionResult,
+    },
+  };
+}
+
+function safeError(operation: string, error: unknown): never {
+  console.error(`[JOURNEY-MAP-${operation}] persistence failed`, error instanceof Error ? error.message : error);
+  throw new JourneyMapServiceError("PERSISTENCE_FAILED", "Journey data could not be saved.", 503);
+}
+
+function mapAction(row: DbActionRow): JourneyStageAction {
+  const { actionPayload, supplemental } = parseActionPayload(row.action_payload);
+  return {
+    id: row.id,
+    stage_id: row.stage_id,
+    journey_map_id: row.journey_map_id,
+    title: row.title,
+    description: row.description,
+    why_it_helps: typeof supplemental.why_it_helps === "string"
+      ? supplemental.why_it_helps
+      : "Helps remove friction and guides the customer to the next journey step",
+    module_target: row.module_target,
+    suggested_action_type: row.suggested_action_type,
+    evidence_type: supplemental.evidence_type === "data_backed" ? "data_backed" : "hypothesis",
+    action_payload: actionPayload,
+    expected_impact: row.expected_impact,
+    status: row.status,
+    idempotency_key: row.idempotency_key,
+    executed_at: row.executed_at,
+    execution_result: isRecord(supplemental.execution_result) && typeof supplemental.execution_result.message === "string"
+      ? {
+          message: supplemental.execution_result.message,
+          target_module: typeof supplemental.execution_result.target_module === "string"
+            ? supplemental.execution_result.target_module
+            : "proposal",
+          link: typeof supplemental.execution_result.link === "string" ? supplemental.execution_result.link : undefined,
+        }
+      : null,
+    created_at: row.created_at,
+  };
+}
+
+function mapStage(
+  row: DbStageRow,
+  metadata: JourneyMapMetadata,
+  actions: DbActionRow[]
+): JourneyMapStage {
+  const supplemental = metadata.stage_context?.[row.stage_key];
+  return {
+    id: row.id,
+    journey_map_id: row.journey_map_id,
+    order_index: row.order_index,
+    stage_key: row.stage_key,
+    stage_name: row.stage_name,
+    objective: row.description,
+    customer_actions: asStringArray(row.customer_actions),
+    touchpoints: asStringArray(row.touchpoints),
+    customer_needs: supplemental?.customer_needs ?? [],
+    customer_thoughts: asStringArray(row.customer_thoughts),
+    emotion: ["delighted", "positive", "neutral", "confused", "frustrated"].includes(row.emotion)
+      ? row.emotion as JourneyMapStage["emotion"]
+      : "neutral",
+    friction_points: asStringArray(row.pain_points),
+    opportunities: asStringArray(row.opportunities),
+    findings_type: supplemental?.findings_type ?? "hypothesis",
+    actions: actions.filter((action) => action.stage_id === row.id).map(mapAction),
+  };
+}
+
+function mapMap(row: DbMapRow, stages: DbStageRow[], actions: DbActionRow[]): CustomerJourneyMap {
+  const metadata = parseMapMetadata(row.metadata);
+  return {
+    id: row.id,
+    business_id: row.business_id,
+    title: row.title,
+    objective: row.objective,
+    journey_type: row.archetype,
+    summary: metadata.summary ?? "",
+    stages: stages
+      .filter((stage) => stage.journey_map_id === row.id && stage.business_id === row.business_id)
+      .sort((a, b) => a.order_index - b.order_index)
+      .map((stage) => mapStage(stage, metadata, actions)),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+function assertUuid(value: string, label: string) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
+    throw new JourneyMapServiceError("VALIDATION_ERROR", `${label} must be a UUID.`, 400);
+  }
+}
+
 export class JourneyMapService {
-  /**
-   * Retrieves live cross-Nexus telemetry signals from CRM, Billing, Websites, and Campaigns.
-   */
-  static async getTelemetry(): Promise<NexusTelemetry> {
-    try {
-      const stats = await CrmService.getStats();
-      return {
-        crmContactsCount: stats.totalContacts,
-        crmPipelineValue: stats.totalPipelineValue,
-        crmStageBreakdown: stats.stageCounts,
-        activeWebsites: 1, // Standard active instance from Website Builder
-        billingMrr: 0, // SaaS Billing baseline
-        activeCampaigns: 0, // Marketing automation campaigns
-        scheduledWebinars: 0, // Webinar sessions
-      };
-    } catch {
-      return {
-        crmContactsCount: 0,
-        crmPipelineValue: 0,
-        crmStageBreakdown: {},
-        activeWebsites: 1,
-        billingMrr: 0,
-        activeCampaigns: 0,
-        scheduledWebinars: 0,
-      };
-    }
+  private static async getMapRow(context: OwnerContext, mapId: string): Promise<DbMapRow | null> {
+    assertUuid(mapId, "Journey map ID");
+    const { data, error } = await context.client
+      .from("customer_journey_maps")
+      .select("*")
+      .eq("id", mapId)
+      .eq("business_id", context.businessId)
+      .maybeSingle();
+    if (error) safeError("MAP_READ", error);
+    return (data as DbMapRow | null) ?? null;
   }
 
-  /**
-   * Generates a new customer journey based purely on natural language business objective.
-   */
-  static async generateJourneyMap(input: GenerateJourneyMapInput): Promise<CustomerJourneyMap> {
-    const supabase = getSupabaseServerClient();
-    let businessId = DEFAULT_BUSINESS_ID;
-    const telemetry = await this.getTelemetry();
-
-    if (supabase) {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: bus } = await supabase
-            .from("businesses")
-            .select("id")
-            .eq("owner_id", user.id)
-            .single();
-          if (bus) businessId = bus.id;
-        }
-      } catch {
-        // use defaults
-      }
-    }
-
-    const newMap = buildJourneyFromObjective(input.objective, businessId, telemetry);
-
-    // Try persisting to DB if tables exist
-    if (supabase) {
-      try {
-        const { data: dbMap } = await supabase
-          .from("customer_journey_maps")
-          .insert({
-            id: newMap.id,
-            business_id: businessId,
-            title: newMap.title,
-            objective: newMap.objective,
-            archetype: newMap.journey_type,
-            target_persona: "Target Customer",
-            status: "ACTIVE",
-          })
-          .select()
-          .single();
-
-        if (dbMap) {
-          for (const stg of newMap.stages) {
-            await supabase.from("journey_map_stages").insert({
-              id: stg.id,
-              journey_map_id: dbMap.id,
-              business_id: businessId,
-              order_index: stg.order_index,
-              stage_key: stg.stage_key,
-              stage_name: stg.stage_name,
-              description: stg.objective,
-              customer_actions: stg.customer_actions,
-              customer_thoughts: stg.customer_thoughts,
-              emotion: stg.emotion,
-              touchpoints: stg.touchpoints,
-              pain_points: stg.friction_points,
-              opportunities: stg.opportunities,
-            });
-
-            for (const act of stg.actions) {
-              await supabase.from("journey_stage_actions").insert({
-                id: act.id,
-                stage_id: stg.id,
-                journey_map_id: dbMap.id,
-                business_id: businessId,
-                title: act.title,
-                description: act.description,
-                module_target: act.module_target,
-                suggested_action_type: act.suggested_action_type,
-                action_payload: act.action_payload,
-                expected_impact: act.expected_impact,
-                status: "PROPOSED",
-              });
-            }
-          }
-        }
-      } catch {
-        // DB table not migrated yet, persists in memory
-      }
-    }
-
-    memoryMaps.unshift(newMap);
-    return newMap;
-  }
-
-  static async getJourneyMaps(): Promise<CustomerJourneyMap[]> {
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
-      try {
-        const { data: maps } = await supabase
-          .from("customer_journey_maps")
-          .select("*, stages:journey_map_stages(*, actions:journey_stage_actions(*))")
-          .order("created_at", { ascending: false });
-
-        if (maps && maps.length > 0) {
-          return maps as unknown as CustomerJourneyMap[];
-        }
-      } catch {
-        // fallback
-      }
-    }
-
-    return memoryMaps;
-  }
-
-  static async getJourneyMapById(id: string): Promise<CustomerJourneyMap | null> {
-    const maps = await this.getJourneyMaps();
-    return maps.find((m) => m.id === id) || null;
-  }
-
-  static async updateStage(mapId: string, stageId: string, input: UpdateStageInput): Promise<JourneyMapStage | null> {
-    const map = memoryMaps.find((m) => m.id === mapId);
+  private static async getMapChildren(context: OwnerContext, mapId: string) {
+    const map = await this.getMapRow(context, mapId);
     if (!map) return null;
 
-    const stg = map.stages.find((s) => s.id === stageId);
-    if (!stg) return null;
+    const { data: stages, error: stageError } = await context.client
+      .from("journey_map_stages")
+      .select("*")
+      .eq("journey_map_id", map.id)
+      .eq("business_id", context.businessId)
+      .order("order_index", { ascending: true });
+    if (stageError) safeError("STAGE_READ", stageError);
 
-    if (input.stage_name !== undefined) stg.stage_name = input.stage_name;
-    if (input.objective !== undefined) stg.objective = input.objective;
-    if (input.customer_actions !== undefined) stg.customer_actions = input.customer_actions;
-    if (input.touchpoints !== undefined) stg.touchpoints = input.touchpoints;
-    if (input.customer_needs !== undefined) stg.customer_needs = input.customer_needs;
-    if (input.customer_thoughts !== undefined) stg.customer_thoughts = input.customer_thoughts;
-    if (input.emotion !== undefined) stg.emotion = input.emotion;
-    if (input.friction_points !== undefined) stg.friction_points = input.friction_points;
-    if (input.opportunities !== undefined) stg.opportunities = input.opportunities;
+    const stageRows = (stages ?? []) as unknown as DbStageRow[];
+    const stageIds = stageRows.map((stage) => stage.id);
+    let actionRows: DbActionRow[] = [];
+    if (stageIds.length > 0) {
+      const { data: actions, error: actionError } = await context.client
+        .from("journey_stage_actions")
+        .select("*")
+        .eq("journey_map_id", map.id)
+        .eq("business_id", context.businessId)
+        .in("stage_id", stageIds);
+      if (actionError) safeError("ACTION_READ", actionError);
+      actionRows = (actions ?? []) as unknown as DbActionRow[];
+    }
 
-    return stg;
+    return { map, stages: stageRows, actions: actionRows };
   }
 
-  static async deleteStage(mapId: string, stageId: string): Promise<boolean> {
-    const map = memoryMaps.find((m) => m.id === mapId);
-    if (!map) return false;
+  static async getTelemetry(context: OwnerContext): Promise<NexusTelemetry> {
+    const { data, error } = await context.client
+      .from("crm_contacts")
+      .select("stage, value")
+      .eq("business_id", context.businessId);
 
-    const idx = map.stages.findIndex((s) => s.id === stageId);
-    if (idx === -1) return false;
+    if (error) {
+      console.error("[JOURNEY-MAP-TELEMETRY] CRM telemetry unavailable", error.message);
+      throw new Error("Journey telemetry is temporarily unavailable.");
+    }
 
-    map.stages.splice(idx, 1);
-    // Re-index remaining stages
-    map.stages.forEach((s, i) => {
-      s.order_index = i + 1;
-    });
+    const stageBreakdown: Record<string, number> = {};
+    let pipelineValue = 0;
+    for (const contact of (data ?? []) as Array<{ stage?: unknown; value?: unknown }>) {
+      if (typeof contact.stage === "string") stageBreakdown[contact.stage] = (stageBreakdown[contact.stage] ?? 0) + 1;
+      if (typeof contact.value === "number") pipelineValue += contact.value;
+    }
 
-    return true;
+    return {
+      crmContactsCount: data?.length ?? 0,
+      crmPipelineValue: pipelineValue,
+      crmStageBreakdown: stageBreakdown,
+      activeWebsites: 1,
+      billingMrr: 0,
+      activeCampaigns: 0,
+      scheduledWebinars: 0,
+    };
   }
 
-  static async addStage(mapId: string, stageName: string): Promise<JourneyMapStage | null> {
-    const map = memoryMaps.find((m) => m.id === mapId);
-    if (!map) return null;
-
-    const newIndex = map.stages.length + 1;
-    const stageId = `stg-${mapId}-${Date.now()}`;
-    const newStage: JourneyMapStage = {
-      id: stageId,
-      journey_map_id: mapId,
-      order_index: newIndex,
-      stage_key: `custom_${newIndex}`,
-      stage_name: stageName || `Stage ${newIndex}`,
-      objective: "Define the customer objective at this stage",
-      customer_actions: ["Interacts with platform"],
-      touchpoints: ["Website"],
-      customer_needs: ["Clear outcome"],
-      customer_thoughts: ["What is the next step?"],
-      emotion: "neutral",
-      friction_points: ["Potential friction point"],
-      opportunities: ["Opportunity for improvement"],
-      findings_type: "hypothesis",
-      actions: [],
+  static async generateJourneyMap(context: OwnerContext, input: GenerateJourneyMapInput): Promise<CustomerJourneyMap> {
+    const telemetry = await this.getTelemetry(context);
+    const newMap = buildJourneyFromObjective(input.objective, context.businessId, telemetry);
+    const metadata: JourneyMapMetadata = {
+      summary: newMap.summary,
+      stage_context: Object.fromEntries(
+        newMap.stages.map((stage) => [stage.stage_key, {
+          customer_needs: stage.customer_needs,
+          findings_type: stage.findings_type,
+        }])
+      ),
     };
 
-    map.stages.push(newStage);
-    return newStage;
+    const { error: mapError } = await context.client.rpc("generate_customer_journey_map_transaction", {
+      p_map: {
+        id: newMap.id,
+        title: newMap.title,
+        objective: newMap.objective,
+        journey_type: newMap.journey_type,
+        target_persona: "Target Customer",
+        status: "ACTIVE",
+        metadata,
+        stages: newMap.stages.map((stage) => ({
+          ...stage,
+          actions: stage.actions.map((action) => ({
+            ...action,
+            action_payload: storedActionPayload(action),
+            idempotency_key: action.id,
+          })),
+        })),
+      },
+    });
+    if (mapError) safeError("MAP_CREATE", mapError);
+    const persisted = await this.getMapChildren(context, newMap.id);
+    if (!persisted) throw new JourneyMapServiceError("NOT_FOUND", "Journey map was not found after saving.", 404);
+    return mapMap(persisted.map, persisted.stages, persisted.actions);
   }
 
-  static async executeAction(mapId: string, actionId: string, decision: "approve" | "dismiss"): Promise<JourneyStageAction | null> {
-    const map = memoryMaps.find((m) => m.id === mapId);
-    if (!map) return null;
+  static async getJourneyMaps(context: OwnerContext): Promise<CustomerJourneyMap[]> {
+    const { data, error } = await context.client
+      .from("customer_journey_maps")
+      .select("*")
+      .eq("business_id", context.businessId)
+      .order("created_at", { ascending: false });
+    if (error) safeError("MAP_LIST", error);
 
-    for (const stg of map.stages) {
-      const act = stg.actions.find((a) => a.id === actionId);
-      if (act) {
-        act.status = decision === "approve" ? "APPROVED" : "DISMISSED";
-        act.executed_at = decision === "approve" ? new Date().toISOString() : null;
+    const mapRows = (data ?? []) as unknown as DbMapRow[];
+    if (mapRows.length === 0) return [];
+    const mapIds = mapRows.map((map) => map.id);
+    const { data: stages, error: stageError } = await context.client
+      .from("journey_map_stages")
+      .select("*")
+      .eq("business_id", context.businessId)
+      .in("journey_map_id", mapIds)
+      .order("order_index", { ascending: true });
+    if (stageError) safeError("STAGE_LIST", stageError);
 
-        if (decision === "approve") {
-          switch (act.module_target) {
-            case "website":
-              act.execution_result = {
-                message: "Optimization deployed to Website Studio: Updated landing page hero headline & social proof badge on /site/default.",
-                target_module: "website",
-                link: "/dashboard",
-              };
-              break;
-            case "crm":
-              act.execution_result = {
-                message: "Pipeline rule registered in Intelligent CRM: High-intent prospects automatically tagged and prioritized.",
-                target_module: "crm",
-                link: "/crm",
-              };
-              break;
-            case "campaign":
-              act.execution_result = {
-                message: "Sequence generated in Marketing Campaigns: Automated onboarding & re-engagement workflow queued.",
-                target_module: "campaign",
-                link: "/dashboard",
-              };
-              break;
-            case "webinar":
-              act.execution_result = {
-                message: "Webinar invitation workflow active: Consideration prospects automatically enrolled in live product demo.",
-                target_module: "webinar",
-                link: "/dashboard",
-              };
-              break;
-            default:
-              act.execution_result = {
-                message: `Action approved and synchronized with ${act.module_target}.`,
-                target_module: act.module_target,
-                link: "/dashboard",
-              };
-          }
-        } else {
-          act.execution_result = null;
-        }
+    const stageRows = (stages ?? []) as unknown as DbStageRow[];
+    const stageIds = stageRows.map((stage) => stage.id);
+    let actionRows: DbActionRow[] = [];
+    if (stageIds.length > 0) {
+      const { data: actions, error: actionError } = await context.client
+        .from("journey_stage_actions")
+        .select("*")
+        .eq("business_id", context.businessId)
+        .in("journey_map_id", mapIds)
+        .in("stage_id", stageIds);
+      if (actionError) safeError("ACTION_LIST", actionError);
+      actionRows = (actions ?? []) as unknown as DbActionRow[];
+    }
+    return mapRows.map((map) => mapMap(map, stageRows, actionRows));
+  }
 
-        return act;
+  static async getJourneyMapById(context: OwnerContext, id: string): Promise<CustomerJourneyMap | null> {
+    const persisted = await this.getMapChildren(context, id);
+    return persisted ? mapMap(persisted.map, persisted.stages, persisted.actions) : null;
+  }
+
+  static async updateStage(context: OwnerContext, mapId: string, stageId: string, input: UpdateStageInput): Promise<JourneyMapStage | null> {
+    assertUuid(stageId, "Stage ID");
+    const patch: Record<string, unknown> = {};
+    if (input.stage_name !== undefined) patch.stage_name = input.stage_name;
+    if (input.objective !== undefined) patch.objective = input.objective;
+    if (input.customer_actions !== undefined) patch.customer_actions = input.customer_actions;
+    if (input.touchpoints !== undefined) patch.touchpoints = input.touchpoints;
+    if (input.customer_thoughts !== undefined) patch.customer_thoughts = input.customer_thoughts;
+    if (input.emotion !== undefined) patch.emotion = input.emotion;
+    if (input.customer_needs !== undefined) patch.customer_needs = input.customer_needs;
+    if (input.friction_points !== undefined) patch.friction_points = input.friction_points;
+    if (input.opportunities !== undefined) patch.opportunities = input.opportunities;
+    if (input.findings_type !== undefined) patch.findings_type = input.findings_type;
+
+    const { data, error } = await context.client.rpc("update_journey_stage_transaction", {
+      p_map_id: mapId,
+      p_stage_id: stageId,
+      p_patch: patch,
+    });
+    if (error) safeError("STAGE_UPDATE", error);
+    if (!data) return null;
+    const refreshed = await this.getMapChildren(context, mapId);
+    return refreshed?.stages.find((stage) => stage.id === stageId)
+      ? mapStage(refreshed.stages.find((stage) => stage.id === stageId)!, parseMapMetadata(refreshed.map.metadata), refreshed.actions)
+      : null;
+  }
+
+  static async addStage(context: OwnerContext, mapId: string, input: AddStageInput): Promise<JourneyMapStage | null> {
+    const { data, error } = await context.client.rpc("add_journey_stage_transaction", {
+      p_map_id: mapId,
+      p_stage: { stage_name: input.stage_name },
+    });
+    if (error) safeError("STAGE_CREATE", error);
+    if (!data) return null;
+    const refreshed = await this.getMapChildren(context, mapId);
+    const stage = refreshed?.stages.find((item) => item.id === String((data as Record<string, unknown>).id));
+    return stage && refreshed
+      ? mapStage(stage, parseMapMetadata(refreshed.map.metadata), refreshed.actions)
+      : null;
+  }
+
+  static async deleteStage(context: OwnerContext, mapId: string, stageId: string): Promise<boolean> {
+    assertUuid(stageId, "Stage ID");
+    const { data, error } = await context.client.rpc("delete_journey_stage_transaction", {
+      p_map_id: mapId,
+      p_stage_id: stageId,
+    });
+    if (error) {
+      if (error.message.includes("JOURNEY_LAST_STAGE")) {
+        throw new JourneyMapServiceError("LAST_STAGE", "A journey map must keep at least one stage.", 409);
       }
+      safeError("STAGE_DELETE", error);
     }
-    return null;
+    return Boolean((data as { deleted?: boolean } | null)?.deleted);
   }
 
-  static async deleteMap(mapId: string): Promise<boolean> {
-    const idx = memoryMaps.findIndex((m) => m.id === mapId);
-    if (idx !== -1) {
-      memoryMaps.splice(idx, 1);
-      return true;
-    }
-    return false;
+  static async executeAction(context: OwnerContext, mapId: string, actionId: string, decision: "approve" | "dismiss"): Promise<JourneyStageAction | null> {
+    assertUuid(actionId, "Action ID");
+    const { data, error } = await context.client.rpc("decide_journey_action_transaction", {
+      p_map_id: mapId,
+      p_action_id: actionId,
+      p_decision: decision,
+    });
+    if (error) safeError("ACTION_UPDATE", error);
+    return data ? mapAction(data as unknown as DbActionRow) : null;
+  }
+
+  static async deleteMap(context: OwnerContext, mapId: string): Promise<boolean> {
+    const { data, error } = await context.client.rpc("delete_customer_journey_map_transaction", {
+      p_map_id: mapId,
+    });
+    if (error) safeError("MAP_DELETE", error);
+    return Boolean((data as { deleted?: boolean } | null)?.deleted);
   }
 }

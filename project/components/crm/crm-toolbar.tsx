@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ContactFilters, Contact } from "@/lib/validations/crm";
+import { ContactFilters } from "@/lib/validations/crm";
 import { Button } from "@/components/ui/button";
 import { SearchNormal1, FilterAdd } from "iconsax-react";
 
@@ -29,7 +29,7 @@ export function CrmToolbar({
         <select 
           className="h-10 px-3 py-2 rounded-sm border border-input bg-card text-base focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
           value={filters.stage || ""}
-          onChange={(e) => onFiltersChange({ ...filters, stage: e.target.value as Contact['stage'] || undefined })}
+          onChange={(e) => onFiltersChange({ ...filters, stage: (e.target.value as ContactFilters['stage']) || undefined })}
         >
           <option value="">All Stages</option>
           <option value="lead">Lead</option>

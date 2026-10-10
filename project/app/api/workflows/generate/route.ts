@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { WorkflowAIService } from "@/services/workflow-ai.service";
 import { GenerateWorkflowInputSchema } from "@/lib/validations/workflow";
+import { requireOwnerContext } from "@/lib/supabase/owner-context";
+import { workflowErrorResponse } from "../_errors";
 
 /**
  * POST /api/workflows/generate
@@ -8,6 +10,7 @@ import { GenerateWorkflowInputSchema } from "@/lib/validations/workflow";
  */
 export async function POST(request: Request) {
   try {
+    await requireOwnerContext();
     const json = await request.json().catch(() => null);
     const parsed = GenerateWorkflowInputSchema.safeParse(json);
 
@@ -28,15 +31,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ data: dag }, { status: 200 });
   } catch (err: unknown) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: err instanceof Error ? err.message : "Failed to compile workflow prompt",
-          details: null,
-        },
-      },
-      { status: 500 }
-    );
+    return workflowErrorResponse(err, "Failed to compile workflow prompt");
   }
 }
