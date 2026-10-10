@@ -49,10 +49,13 @@ function Navbar() {
             <Link href="#ai-agent" className="hover:text-foreground transition-colors">AI Agent</Link>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <ThemeToggle />
+          <Button variant="ghost" asChild className="hidden sm:inline-flex">
+            <Link href="/login">Sign in</Link>
+          </Button>
           <Button variant="primary" asChild>
-            <Link href="#get-started">Get started</Link>
+            <Link href="/signup">Get started</Link>
           </Button>
         </div>
       </Container>
@@ -76,12 +79,14 @@ function Hero() {
               Nexus connects your websites, customer records, billing, marketing, and AI-powered workflows into a single, intelligent workspace. No silos. No friction.
             </p>
             <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
-              <Button size="lg" variant="primary" className="w-full sm:w-auto px-8">
-                Get started
+              <Button size="lg" variant="primary" asChild className="w-full sm:w-auto px-8">
+                <Link href="/signup">Get started</Link>
               </Button>
-              <Button size="lg" variant="outline" className="w-full sm:w-auto px-8 group bg-transparent">
-                Explore platform <ArrowRight size="18" className="ml-2 group-hover:translate-x-1 transition-transform" />
-              </Button>
+              <Button size="lg" variant="outline" asChild className="w-full sm:w-auto px-8 group bg-transparent">
+                <Link href="/login">
+                Sign in to workspace <ArrowRight size="18" className="ml-2 group-hover:translate-x-1 transition-transform" />
+                </Link>
+            </Button>
             </div>
           </div>
 
