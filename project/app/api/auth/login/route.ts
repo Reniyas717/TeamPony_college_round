@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { AuthService } from "@/services/auth.service";
 import { LoginSchema } from "@/lib/validations/auth";
+import { AuditService } from "@/services/audit.service";
+import { SYSTEM_BUSINESS_ID } from "@/lib/validations/audit";
 
 export async function POST(request: Request) {
   try {
@@ -8,6 +10,19 @@ export async function POST(request: Request) {
     const parsed = LoginSchema.safeParse(body);
 
     if (!parsed.success) {
+      await AuditService.recordEvent(
+        {
+          business_id: SYSTEM_BUSINESS_ID,
+          action: "auth.failed_login",
+          actor: { id: "anonymous", type: "user" },
+          resource: { type: "auth_session", id: "unauthenticated" },
+          outcome: "failure",
+          error: { code: "VALIDATION_ERROR", message: "Malformed login credentials" },
+          metadata: { reason: "validation_failure" },
+        },
+        { critical: false, useAdminClient: true }
+      );
+
       return NextResponse.json(
         {
           error: {

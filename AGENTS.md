@@ -384,7 +384,49 @@ The approval UI must display:
 
 ---
 
-## 9. Frontend & UI Engineering Standards
+## 9. Mandatory Central Audit Logging Architecture
+
+Nexus requires a unified, authoritative, server-side audit trail for all security-relevant events and meaningful business state changes across CRM, billing, marketing, website building, analytics, and autonomous AI workflows.
+
+### 9.1 Mandatory Audit Logging Rules
+
+1. **Feature Audit Specification:** Every new feature must explicitly identify and document its auditable business and security actions during design.
+2. **Central Service Exclusivity:** All services must record events via the shared `AuditService` (`@/services/audit.service.ts`). Services must **never** implement bespoke audit tables, independent insertion logic, or incompatible event schemas.
+3. **Mandatory Auditable Categories:**
+   - **Authentication & Identity:** User login, logout, registration, password changes, session revocations, and failed login attempts.
+   - **Security & Authorization:** Configuration changes, API key creation/rotation, tenant boundary access attempts, and permission violations.
+   - **Business State Mutations:** CRM contact/deal stage changes, subscription updates, invoice payments, website publishing, and campaign dispatches.
+   - **Sensitive Data Operations:** Bulk exports, data deletions, and credential modifications.
+   - **AI Workflows & Approvals:** Workflow creation, human approval/rejection decisions, autonomous action executions, and execution failures.
+4. **Distinction from Diagnostics & Analytics:**
+   - **Audit Logs:** Immutable, compliance-grade records of *who did what, to which resource, when, under what authority, and with what outcome*.
+   - **Debug / Application Logs:** Transient operational logs (`console.log`, APM traces) for developer diagnostics.
+   - **Analytics:** High-volume user behavior telemetry (e.g. pageviews, scroll depth, button hover). Do NOT log technical noise, page views, or keystrokes into the audit table.
+5. **Actor & Authority Disambiguation:**
+   - Actor types must explicitly distinguish **Human user (`user`)**, **AI agent (`ai_agent`)**, **System process (`system`)**, and **External integration (`integration`)**.
+   - Preserve the strict separation between:
+     - **Initiator:** The identity that requested the action (e.g., human user who prompted the agent).
+     - **Approver:** The identity that signed off on a high-consequence action (e.g., business owner confirmation).
+     - **Actor (Executor):** The entity actually executing the database mutation or external API call (e.g., the AI agent).
+     - **STRICT DIRECTIVE:** Never represent an AI-executed action as a direct human action simply because a human originally prompted it.
+6. **Trusted Context Only:** Never trust client-supplied `business_id`, `actor_id`, `outcome`, or approval flags. Authoritative context must be derived strictly on the server from authenticated sessions (`supabase.auth.getUser()`) and server-verified business ownership.
+7. **Privacy & Zero-Credential Policy:**
+   - The audit service must **NEVER** persist passwords, session cookies, auth tokens, API keys, private keys, payment card PANs/CVVs, unrestricted HTTP request/response bodies, or unredacted raw AI prompts.
+   - All metadata must pass through allowlisting and `sanitizeAuditMetadata()`.
+8. **Append-Only Immutability:**
+   - Normal application paths must not modify (`UPDATE`) or delete (`DELETE`) historical audit records.
+   - Enforced by database RLS default-deny and the PostgreSQL trigger `trg_audit_logs_immutable`.
+9. **Atomic Recording & Fail-Closed Policy:**
+   - Critical business mutations and required audit records must commit atomically where supported.
+   - A business operation must **NEVER** report success if its required audit event failed to persist.
+   - If audit persistence fails for a critical action, the operation must fail closed and rethrow `AuditLoggingError`.
+10. **Strict Tenant Isolation:** Audit access must be strictly scoped to the authenticated owner's `business_id`. Cross-tenant audit querying is cryptographically prevented at both the service and RLS layers.
+11. **Testing & Coverage:** Tests must cover audit emission, tenant isolation, metadata redaction, failure handling, and append-only constraints.
+12. **Explicit Exception Approval:** Any intentional omission of audit logging for a state change must be documented, justified, and approved. Silent omission is prohibited.
+
+---
+
+## 10. Frontend & UI Engineering Standards
 
 All frontend code must conform to the authoritative [`DESIGN.md`](./DESIGN.md) specification:
 
@@ -396,9 +438,9 @@ All frontend code must conform to the authoritative [`DESIGN.md`](./DESIGN.md) s
 
 ---
 
-## 10. Verification, Testing & Quality Gates
+## 11. Verification, Testing & Quality Gates
 
-### 10.1 Package Scripts & Verification Commands `[REPO]`
+### 11.1 Package Scripts & Verification Commands `[REPO]`
 
 The following scripts are verified in `project/package.json`:
 
@@ -412,21 +454,25 @@ npm --prefix project run build
 # Code linting (ESLint 9 + Next.js config)
 npm --prefix project run lint
 
+# Automated test execution (Node built-in runner)
+npm --prefix project test
+
 # Start production server
 npm --prefix project run start
 ```
 
-### 10.2 Quality Gates for AI Coding Agents
+### 11.2 Quality Gates for AI Coding Agents
 
 Before declaring any coding task complete:
 1. **Lint Check:** Run `npm --prefix project run lint` — must exit with code 0.
 2. **Type & Build Check:** Run `npm --prefix project run build` — Turbopack compilation and TypeScript verification must pass with zero errors.
-3. **Security Sanity Check:** Ensure no secrets or service-role keys are exposed in client-side code, git diffs, or client bundles.
-4. **Surgical Verification:** Run `git status` to verify no unrelated files, configuration items, or lockfiles were inadvertently touched.
+3. **Audit Verification:** Ensure any new business mutation emits a structured event via `AuditService` with sanitized metadata and server-derived tenant context.
+4. **Security Sanity Check:** Ensure no secrets or service-role keys are exposed in client-side code, git diffs, or client bundles.
+5. **Surgical Verification:** Run `git status` to verify no unrelated files, configuration items, or lockfiles were inadvertently touched.
 
 ---
 
-## 11. Agent Behavioral Checklist & Anti-Patterns
+## 12. Agent Behavioral Checklist & Anti-Patterns
 
 ### ❌ Strict Prohibitions
 - **NO** direct client-side Supabase database queries or browser-initialized DB clients.
@@ -435,6 +481,10 @@ Before declaring any coding task complete:
 - **NO** trusting client-provided `business_id` parameters.
 - **NO** installing unvetted packages when native standard library or existing tools suffice (Ponytail).
 - **NO** speculative abstractions or premature generalizations (Karpathy).
+- **NO** modifying or deleting historical audit records (append-only enforcement).
+- **NO** inventing independent audit tables or bypassing the central `AuditService`.
+- **NO** silently swallowing audit persistence failures for critical business mutations.
+- **NO** logging raw passwords, tokens, API keys, or unrestricted AI prompts.
 - **NO** modifying files outside the specific task scope.
 - **NO** fabricated claims of test execution or tool results.
 
@@ -442,4 +492,5 @@ Before declaring any coding task complete:
 - Always trace user requests down the **Ladder of Simplicity**.
 - Always construct a **reproduction loop** before attempting bug fixes.
 - Always enforce **tenant scoping** at the database layer.
+- Always emit structured audit events via `AuditService` for all security and meaningful state changes.
 - Always cross-reference [`DESIGN.md`](./DESIGN.md) when touching user interfaces.
