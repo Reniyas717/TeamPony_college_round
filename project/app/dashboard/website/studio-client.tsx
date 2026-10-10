@@ -40,6 +40,10 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
   const [addInsertIndex, setAddInsertIndex] = React.useState<number>(0);
   const [aiAssistOpen, setAiAssistOpen] = React.useState<boolean>(false);
 
+  // Immediate action loading indicators
+  const [creatingTemplate, setCreatingTemplate] = React.useState<string | null>(null);
+  const [openingWebsiteId, setOpeningWebsiteId] = React.useState<string | null>(null);
+
   // Helper to commit document changes into undo stack
   const updateDocWithHistory = React.useCallback(
     (newDoc: WebsiteDocument) => {
@@ -58,6 +62,7 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
   const handleSelectTemplate = async (
     templateId: "editorial-luxury" | "modern-saas" | "creative-studio" | "blank"
   ) => {
+    setCreatingTemplate(templateId);
     const tpl = TEMPLATES[templateId] || TEMPLATES["blank"];
     const slugSuffix = Math.random().toString(36).substring(2, 6);
     const title = `${tpl.name} Site`;
@@ -89,18 +94,24 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
       }
     } catch (err) {
       console.error("Failed to create website:", err);
+    } finally {
+      setCreatingTemplate(null);
     }
   };
 
-  // 2. Open existing website
+  // 2. Open existing website with instant responsive feedback
   const handleOpenWebsite = (w: WebsiteRecord) => {
-    setCurrentWebsite(w);
-    setDocument(w.content);
-    setSelectedSectionId(w.content.sections?.[0]?.id || null);
-    setHistory([w.content]);
-    setHistoryIndex(0);
-    setIsDirty(false);
-    setView("editor");
+    setOpeningWebsiteId(w.id);
+    setTimeout(() => {
+      setCurrentWebsite(w);
+      setDocument(w.content);
+      setSelectedSectionId(w.content.sections?.[0]?.id || null);
+      setHistory([w.content]);
+      setHistoryIndex(0);
+      setIsDirty(false);
+      setView("editor");
+      setOpeningWebsiteId(null);
+    }, 40);
   };
 
   // 3. Save draft to backend
@@ -360,10 +371,12 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
   const selectedSection = document.sections.find((s) => s.id === selectedSectionId) || null;
 
   return (
-    <div className="flex-1 flex flex-col min-h-[calc(100vh-64px)] overflow-x-hidden">
+    <div className="flex-1 flex flex-col h-full min-w-0">
       {view === "gallery" ? (
         <TemplateGallery
           websites={websites}
+          creatingTemplate={creatingTemplate}
+          openingWebsiteId={openingWebsiteId}
           onSelectTemplate={handleSelectTemplate}
           onOpenWebsite={handleOpenWebsite}
           onDeleteWebsite={handleDeleteWebsite}
@@ -371,7 +384,7 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
           onStartAiAssist={() => setAiAssistOpen(true)}
         />
       ) : (
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
           {/* Top Editor Header */}
           <EditorHeader
             title={currentWebsite?.title || "My Website"}
@@ -423,6 +436,7 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
               onMoveDown={handleMoveDown}
               onDuplicate={handleDuplicate}
               onDelete={handleDeleteSection}
+              onToggleHide={handleToggleHide}
               onOpenAddSection={handleOpenAddSection}
               onUpdateSectionField={(id, field, val) => {
                 const newSections = document.sections.map((s) =>

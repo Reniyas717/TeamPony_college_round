@@ -15,6 +15,7 @@ interface EditorCanvasProps {
   onMoveDown: (index: number) => void;
   onDuplicate: (index: number) => void;
   onDelete: (index: number) => void;
+  onToggleHide: (index: number) => void;
   onOpenAddSection: (insertIndex?: number) => void;
   onUpdateSectionField: (id: string, field: keyof WebsiteSection, value: unknown) => void;
 }
@@ -28,6 +29,7 @@ export function EditorCanvas({
   onMoveDown,
   onDuplicate,
   onDelete,
+  onToggleHide,
   onOpenAddSection,
   onUpdateSectionField,
 }: EditorCanvasProps) {
@@ -122,6 +124,7 @@ export function EditorCanvas({
                   onMoveDown={index < sections.length - 1 ? () => onMoveDown(index) : undefined}
                   onDuplicate={() => onDuplicate(index)}
                   onDelete={() => onDelete(index)}
+                  onToggleHide={() => onToggleHide(index)}
                   onUpdateField={(field, val) => onUpdateSectionField(section.id, field, val)}
                 />
 
