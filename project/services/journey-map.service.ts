@@ -11,7 +11,7 @@ import {
 
 export const DEFAULT_BUSINESS_ID = "00000000-0000-0000-0000-000000000001";
 
-// In-Memory store for active session (zero pre-seeded dummy data)
+// In-Memory store initialized with active journey
 const memoryMaps: CustomerJourneyMap[] = [];
 
 /**
@@ -849,6 +849,16 @@ export class JourneyMapService {
       }
     }
 
+    if (memoryMaps.length === 0) {
+      const telemetry = await this.getTelemetry();
+      const defaultMap = buildJourneyFromObjective(
+        "Increase paid customer conversions from website traffic",
+        DEFAULT_BUSINESS_ID,
+        telemetry
+      );
+      memoryMaps.push(defaultMap);
+    }
+
     return memoryMaps;
   }
 
@@ -937,28 +947,28 @@ export class JourneyMapService {
               act.execution_result = {
                 message: "Optimization deployed to Website Studio: Updated landing page hero headline & social proof badge on /site/default.",
                 target_module: "website",
-                link: "/dashboard",
+                link: "/dashboard/website",
               };
               break;
             case "crm":
               act.execution_result = {
                 message: "Pipeline rule registered in Intelligent CRM: High-intent prospects automatically tagged and prioritized.",
                 target_module: "crm",
-                link: "/crm",
+                link: "/dashboard/crm",
               };
               break;
             case "campaign":
               act.execution_result = {
                 message: "Sequence generated in Marketing Campaigns: Automated onboarding & re-engagement workflow queued.",
                 target_module: "campaign",
-                link: "/dashboard",
+                link: "/dashboard/marketing",
               };
               break;
             case "webinar":
               act.execution_result = {
                 message: "Webinar invitation workflow active: Consideration prospects automatically enrolled in live product demo.",
                 target_module: "webinar",
-                link: "/dashboard",
+                link: "/dashboard/webinars",
               };
               break;
             default:

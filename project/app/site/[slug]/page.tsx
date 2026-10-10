@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { WebsiteService } from "@/services/website.service";
 import { SectionRenderer } from "@/components/website-builder/section-renderer";
+import { LiveBadge } from "@/components/website-builder/live-badge";
 
 interface PublicSitePageProps {
   params: Promise<{ slug: string }>;
@@ -64,13 +65,18 @@ export default async function PublicWebsitePage({ params }: PublicSitePageProps)
   };
   const sections = (document.sections || []).filter((s) => !s.hidden);
 
+  const bodyFontClass =
+    theme.fontBody === "serif"
+      ? "font-serif"
+      : "font-sans";
+
   return (
     <div
       style={{
         backgroundColor: theme.canvasBg || "#FDFBF7",
         color: theme.textPrimary || "#1F1C18",
       }}
-      className="min-h-screen flex flex-col font-sans selection:bg-brand selection:text-brand-foreground"
+      className={`min-h-screen flex flex-col ${bodyFontClass} selection:bg-brand selection:text-brand-foreground`}
     >
       {/* Live Public Sections */}
       <main className="flex-1">
@@ -110,14 +116,8 @@ export default async function PublicWebsitePage({ params }: PublicSitePageProps)
         </div>
       </footer>
 
-      {/* Floating Live Badge */}
-      <div className="fixed bottom-4 right-4 z-50">
-        <div className="bg-black/85 text-white text-[11px] font-mono px-3 py-1.5 rounded-full backdrop-blur-md shadow-lg flex items-center gap-2 border border-white/10">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="font-semibold">Live Site</span>
-          <span className="text-zinc-400 hidden sm:inline">/{website.slug}</span>
-        </div>
-      </div>
+      {/* Floating Dismissible Live Badge */}
+      <LiveBadge slug={website.slug} />
     </div>
   );
 }

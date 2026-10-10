@@ -21,6 +21,25 @@ interface SectionTemplateOption {
 
 const SECTION_OPTIONS: SectionTemplateOption[] = [
   {
+    type: "header",
+    category: "Navigation & Headers",
+    name: "Branded Navigation Header",
+    description: "Responsive top navigation bar with brand name, subtitle, and link buttons.",
+    sample: {
+      type: "header",
+      name: "Navigation Header",
+      title: "MAISON VALLIER",
+      subtitle: "PARIS • KYOTO",
+      buttons: [
+        { id: "btn-h1", text: "Philosophy", href: "#manifesto", variant: "link" },
+        { id: "btn-h2", text: "Works", href: "#gallery", variant: "link" },
+        { id: "btn-h3", text: "Pricing", href: "#pricing", variant: "link" },
+        { id: "btn-h4", text: "Contact", href: "#contact", variant: "outline" },
+      ],
+      style: { background: "default", paddingY: "compact", align: "left", columns: 1, fullWidth: false },
+    },
+  },
+  {
     type: "hero",
     category: "Hero & Intro",
     name: "Editorial Asymmetric Hero",
@@ -141,6 +160,40 @@ const SECTION_OPTIONS: SectionTemplateOption[] = [
         },
       ],
       style: { background: "default", paddingY: "spacious", align: "left", columns: 3, fullWidth: false },
+    },
+  },
+  {
+    type: "case-studies",
+    category: "Visual Portfolios",
+    name: "Architectural Case Studies",
+    description: "Alternating project cards with large imagery, metadata tags, project numbers, and awards.",
+    sample: {
+      type: "case-studies",
+      name: "Selected Works",
+      eyebrow: "CASE ARCHIVES",
+      title: "Selected Artifacts 2024–2026",
+      subtitle: "A rigorous index of multi-disciplinary work across interactive technology and architecture.",
+      items: [
+        {
+          id: "cs-1",
+          title: "Aura Spatial OS",
+          subtitle: "Spatial Computing Interface • Tokyo",
+          description: "Complete design system and interaction framework for head-mounted computing in luxury architectural visualisation.",
+          imageUrl: "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80",
+          badge: "Award Winner",
+          meta: "Spatial UI / Design System",
+        },
+        {
+          id: "cs-2",
+          title: "Nordic Acoustic Lab",
+          subtitle: "Sonic Identity & Exhibition • Oslo",
+          description: "Bespoke variable typography and algorithmic generative audio sculptures for sound manufacturing.",
+          imageUrl: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=800&q=80",
+          badge: "Identity",
+          meta: "Generative Audio & Print",
+        },
+      ],
+      style: { background: "dark", paddingY: "spacious", align: "left", columns: 1, fullWidth: false },
     },
   },
   {

@@ -230,7 +230,8 @@ function FeatureSplit({
   headline, 
   description, 
   visual,
-  bgClass = "bg-background"
+  bgClass = "bg-background",
+  id,
 }: { 
   reversed?: boolean; 
   title: string; 
@@ -238,9 +239,10 @@ function FeatureSplit({
   description: string; 
   visual: React.ReactNode;
   bgClass?: string;
+  id?: string;
 }) {
   return (
-    <Section className={`${bgClass} border-b border-border`}>
+    <Section id={id} className={`${bgClass} border-b border-border`}>
       <Container>
         <div className={`grid lg:grid-cols-2 gap-12 lg:gap-24 items-center ${reversed ? 'rtl' : ''}`}>
           <div className={reversed ? 'ltr' : ''}>
@@ -265,6 +267,7 @@ function Features() {
   return (
     <>
       <FeatureSplit
+        id="product"
         bgClass="bg-muted/40 dark:bg-white/[0.035]"
         title="CRM & Billing"
         headline="Customer records and revenue, seamlessly synced."
