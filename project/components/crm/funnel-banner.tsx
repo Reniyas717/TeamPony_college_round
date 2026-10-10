@@ -7,19 +7,19 @@ export function FunnelBanner({ stats }: { stats?: CrmStats }) {
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
       <StatCard label="Total Contacts" value={stats.totalContacts} />
-      <StatCard 
-        label="Qualified Leads" 
-        value={stats.conversionRate.qualifiedOfTotal.count} 
+      <StatCard
+        label="Qualified Leads"
+        value={stats.conversionRate.qualifiedOfTotal.count}
         rate={`${stats.conversionRate.qualifiedOfTotal.percentage.toFixed(1)}%`}
         denominator={`of ${stats.conversionRate.qualifiedOfTotal.total}`}
       />
-      <StatCard 
-        label="Pipeline Value" 
-        value={new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(stats.totalPipelineValue)} 
+      <StatCard
+        label="Churned Leads"
+        value={stats.stageCounts?.churned || 0}
       />
-      <StatCard 
-        label="Customers (Total)" 
-        value={stats.conversionRate.customersOfTotal.count} 
+      <StatCard
+        label="Customers (Total)"
+        value={stats.conversionRate.customersOfTotal.count}
       />
     </div>
   );

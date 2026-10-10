@@ -87,11 +87,6 @@ export function CreateContactDrawer({ isOpen, onClose }: { isOpen: boolean; onCl
               <label className="text-sm font-semibold text-foreground">Company</label>
               <input type="text" className="h-10 px-3 rounded-sm border border-input bg-background focus:ring-2 focus:ring-ring focus:outline-none" value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} />
             </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-semibold text-foreground">Deal Value (₹)</label>
-              <input type="number" min="0" className="h-10 px-3 rounded-sm border border-input bg-background focus:ring-2 focus:ring-ring focus:outline-none tabular-nums" value={formData.value} onChange={e => setFormData({...formData, value: e.target.value})} />
-            </div>
           </form>
         </div>
 
