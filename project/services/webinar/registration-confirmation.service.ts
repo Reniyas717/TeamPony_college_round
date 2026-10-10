@@ -1,11 +1,12 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/server";
+import { getGoogleEmailSenderForBusiness, GoogleTokenVaultError } from "./google-token-vault.service";
+import { processWebinarEmailOutbox } from "./email-worker.service";
 
 type Registration = { id: string; business_id: string; email: string; full_name: string };
 type RegistrationSession = { business_id: string; webinar_id: string };
 type Business = { id: string; owner_id: string; name: string };
-type Profile = { email: string };
 type Webinar = {
   id: string;
   title: string;
@@ -30,9 +31,6 @@ function formatSessionTime(webinar: Webinar) {
 }
 
 export async function queueRegistrationConfirmations(registrationId: string) {
-  const from = process.env.WEBINAR_EMAIL_FROM?.trim();
-  if (!from) return { status: "not_configured" as const };
-
   const admin = createAdminClient();
   const { data: rawRegistration, error: registrationError } = await admin
     .from("webinar_registrations")
@@ -41,6 +39,15 @@ export async function queueRegistrationConfirmations(registrationId: string) {
     .maybeSingle();
   if (registrationError || !rawRegistration) return { status: "not_queued" as const };
   const registration = rawRegistration as Registration;
+  let from: string;
+  try {
+    from = await getGoogleEmailSenderForBusiness(registration.business_id);
+  } catch (error) {
+    return { status: error instanceof GoogleTokenVaultError
+      && (error.code === "RECONNECT_REQUIRED" || error.code === "NOT_CONNECTED")
+      ? "gmail_reconnect_required" as const
+      : "not_configured" as const };
+  }
 
   const { data: rawSelections, error: selectionsError } = await admin
     .from("webinar_registration_sessions")
@@ -58,12 +65,10 @@ export async function queueRegistrationConfirmations(registrationId: string) {
   ]);
   if (businessError || webinarsError || !rawBusiness || !rawWebinars) return { status: "not_queued" as const };
   const business = rawBusiness as Business;
-  const { data: rawProfile, error: profileError } = await admin
-    .from("profiles").select("email").eq("id", business.owner_id).maybeSingle();
-  if (profileError) return { status: "not_queued" as const };
-  const replyTo = (rawProfile as Profile | null)?.email ?? null;
 
   let queued = 0;
+  let queueFailed = false;
+  const effectKeys: string[] = [];
   for (const rawWebinar of rawWebinars) {
     const webinar = rawWebinar as Webinar;
     const time = formatSessionTime(webinar);
@@ -80,7 +85,7 @@ export async function queueRegistrationConfirmations(registrationId: string) {
       p_effect_key: `registration-confirmation/${registration.id}/${webinar.id}`,
       p_to_email: registration.email,
       p_from_email: from,
-      p_reply_to_email: replyTo,
+      p_reply_to_email: from,
       p_subject: `Registration confirmed: ${webinar.title}`,
       p_html_body: `<p>Hi ${greeting},</p><p>Your registration for <strong>${title}</strong> with ${businessName} is confirmed.</p><p>${escapeHtml(time)} (${escapeHtml(webinar.timezone)})</p>${meetLink}`,
       p_text_body: `Hi ${registration.full_name},\n\nYour registration for ${webinar.title} with ${business.name} is confirmed.\n${time} (${webinar.timezone})\n${webinar.meeting_uri ? `Join the Google Meet: ${webinar.meeting_uri}` : "Your organizer will share the meeting link before the session."}`,
@@ -88,9 +93,55 @@ export async function queueRegistrationConfirmations(registrationId: string) {
       p_scheduled_for: new Date().toISOString(),
       p_max_attempts: 5,
     });
-    if (error) return { status: queued > 0 ? "partially_queued" as const : "not_queued" as const };
+    if (error) {
+      queueFailed = true;
+      break;
+    }
     queued += 1;
+    effectKeys.push(`registration-confirmation/${registration.id}/${webinar.id}`);
   }
 
-  return { status: "queued" as const, count: queued };
+  if (queued === 0) return { status: "not_queued" as const };
+
+  let accepted = 0;
+  let retryQueued = 0;
+  let failed = 0;
+  let reconnectRequired = 0;
+  let unknown = 0;
+  let pending = 0;
+  for (const effectKey of effectKeys) {
+    try {
+      const result = await processWebinarEmailOutbox(1, registration.business_id, effectKey);
+      accepted += result.provider_accepted;
+      retryQueued += result.retry_queued;
+      failed += result.failed;
+      reconnectRequired += result.reconnect_required;
+      unknown += result.unknown + result.finalization_failed;
+      if (result.claimed === 0) pending += 1;
+    } catch (error) {
+      const reason = error instanceof Error ? error.name : "UnknownError";
+      console.error(`[WEBINAR-REGISTRATION-DELIVERY-FAILED] reason=${reason}`);
+      pending += 1;
+    }
+  }
+
+  const deliveryStatus = unknown > 0
+    ? "unknown" as const
+    : reconnectRequired > 0
+      ? "gmail_reconnect_required" as const
+    : retryQueued > 0
+      ? "retry_queued" as const
+        : failed > 0
+          ? "failed" as const
+      : pending > 0
+        ? "pending" as const
+        : accepted === queued
+          ? "provider_accepted" as const
+          : "pending" as const;
+
+  return {
+    status: queueFailed ? "partially_queued" as const : "queued" as const,
+    count: queued,
+    deliveryStatus,
+  };
 }

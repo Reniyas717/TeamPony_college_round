@@ -3,12 +3,15 @@ import "server-only";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 import { createAdminClient } from "@/lib/supabase/server";
+import { GOOGLE_GMAIL_SEND_SCOPE, GOOGLE_MEET_SCOPE } from "@/lib/google-oauth";
 
 type GoogleTokenBundle = {
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
   scopes: string[];
+  googleSub?: string;
+  senderEmail?: string;
 };
 
 type OAuthSession = {
@@ -28,7 +31,7 @@ function encryptedFields(row: StoredEncryptedToken): EncryptedToken {
 
 export class GoogleTokenVaultError extends Error {
   constructor(public readonly code: "NOT_CONNECTED" | "RECONNECT_REQUIRED" | "CONFIGURATION_ERROR" | "PROVIDER_ERROR") {
-    super("Google Meet authorization is unavailable. Reconnect Google sign-in or check the server configuration.");
+    super("Google authorization is unavailable. Reconnect Google sign-in or check the server configuration.");
   }
 }
 
@@ -107,16 +110,19 @@ export async function storeGoogleTokensFromLogin(ownerId: string, session: OAuth
     || session.user?.identities?.some((identity) => identity.provider === "google");
   if (!isGoogle) return;
 
+  const tokenInfo = await inspectGoogleAccessToken(session.provider_token);
   const { admin, businessId } = await businessForOwner(ownerId);
   const { data: previous } = await admin.from("business_google_provider_tokens")
     .select("token_ciphertext,token_iv,token_auth_tag,granted_scopes")
     .eq("business_id", businessId)
     .maybeSingle();
-  let refreshToken = session.provider_refresh_token ?? null;
-  if (!refreshToken && previous) {
-    refreshToken = decryptTokenBundle(encryptedFields(previous as StoredEncryptedToken), businessId).refreshToken;
+  let previousBundle: GoogleTokenBundle | null = null;
+  if (previous) {
+    try { previousBundle = decryptTokenBundle(encryptedFields(previous as StoredEncryptedToken), businessId); } catch { /* A new Google grant can replace an unreadable old bundle. */ }
   }
-  if (!refreshToken) return;
+  const sameGoogleAccount = previousBundle?.googleSub === tokenInfo.sub;
+  const refreshToken = session.provider_refresh_token ?? (sameGoogleAccount ? previousBundle?.refreshToken : null) ?? null;
+  if (!refreshToken) return { scopes: tokenInfo.scopes };
 
   const expiresAt = typeof session.provider_token_expires_at === "number"
     ? session.provider_token_expires_at
@@ -125,8 +131,35 @@ export async function storeGoogleTokensFromLogin(ownerId: string, session: OAuth
     accessToken: session.provider_token,
     refreshToken,
     expiresAt,
-    scopes: ["https://www.googleapis.com/auth/meetings.space.created"],
+    scopes: tokenInfo.scopes,
+    googleSub: tokenInfo.sub,
+    senderEmail: tokenInfo.email,
   });
+  return { scopes: tokenInfo.scopes };
+}
+
+async function inspectGoogleAccessToken(accessToken: string) {
+  let response: Response;
+  try {
+    response = await fetch("https://oauth2.googleapis.com/tokeninfo", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ access_token: accessToken }),
+      cache: "no-store",
+    });
+  } catch {
+    throw new GoogleTokenVaultError("PROVIDER_ERROR");
+  }
+  const info = await response.json().catch(() => null) as {
+    sub?: unknown; email?: unknown; email_verified?: unknown; scope?: unknown;
+  } | null;
+  if (!response.ok || typeof info?.sub !== "string" || !info.sub
+    || typeof info.email !== "string" || !info.email.includes("@")
+    || ![true, "true"].includes(info.email_verified as boolean | string)
+    || typeof info.scope !== "string") {
+    throw new GoogleTokenVaultError("RECONNECT_REQUIRED");
+  }
+  return { sub: info.sub, email: info.email.trim().toLowerCase(), scopes: info.scope.split(" ").filter(Boolean) };
 }
 
 async function refreshBundle(bundle: GoogleTokenBundle): Promise<GoogleTokenBundle> {
@@ -162,9 +195,6 @@ async function refreshBundle(bundle: GoogleTokenBundle): Promise<GoogleTokenBund
   }
 
   const returnedScopes = typeof result.scope === "string" ? result.scope.split(" ").filter(Boolean) : bundle.scopes;
-  if (!returnedScopes.includes("https://www.googleapis.com/auth/meetings.space.created")) {
-    throw new GoogleTokenVaultError("RECONNECT_REQUIRED");
-  }
   return {
     accessToken: result.access_token,
     refreshToken: typeof result.refresh_token === "string" ? result.refresh_token : bundle.refreshToken,
@@ -173,7 +203,7 @@ async function refreshBundle(bundle: GoogleTokenBundle): Promise<GoogleTokenBund
   };
 }
 
-export async function getGoogleAccessTokenForBusiness(businessId: string) {
+async function loadGoogleTokenBundle(businessId: string) {
   const admin = createAdminClient();
   const { data: rawRow, error } = await admin.from("business_google_provider_tokens")
     .select("token_ciphertext,token_iv,token_auth_tag,granted_scopes")
@@ -182,25 +212,47 @@ export async function getGoogleAccessTokenForBusiness(businessId: string) {
   if (error || !rawRow) throw new GoogleTokenVaultError("NOT_CONNECTED");
 
   let bundle = decryptTokenBundle(encryptedFields(rawRow as StoredEncryptedToken), businessId);
-  const requiredScope = "https://www.googleapis.com/auth/meetings.space.created";
-  if (!bundle.scopes.includes(requiredScope)) throw new GoogleTokenVaultError("RECONNECT_REQUIRED");
   if (bundle.expiresAt <= Math.floor(Date.now() / 1000) + 60) {
     bundle = await refreshBundle(bundle);
     await storeBundle(admin, businessId, bundle);
   }
+  return bundle;
+}
+
+export async function getGoogleAccessTokenForBusiness(businessId: string, requiredScope = GOOGLE_MEET_SCOPE) {
+  const bundle = await loadGoogleTokenBundle(businessId);
+  if (!bundle.scopes.includes(requiredScope)) throw new GoogleTokenVaultError("RECONNECT_REQUIRED");
   return bundle.accessToken;
+}
+
+export async function getGoogleEmailSenderForBusiness(businessId: string) {
+  const bundle = await loadGoogleTokenBundle(businessId);
+  if (!bundle.scopes.includes(GOOGLE_GMAIL_SEND_SCOPE) || !bundle.googleSub || !bundle.senderEmail) {
+    throw new GoogleTokenVaultError("RECONNECT_REQUIRED");
+  }
+  return bundle.senderEmail;
+}
+
+export async function getGoogleGmailCredentialsForBusiness(businessId: string) {
+  const bundle = await loadGoogleTokenBundle(businessId);
+  if (!bundle.scopes.includes(GOOGLE_GMAIL_SEND_SCOPE) || !bundle.googleSub || !bundle.senderEmail) {
+    throw new GoogleTokenVaultError("RECONNECT_REQUIRED");
+  }
+  return { accessToken: bundle.accessToken, senderEmail: bundle.senderEmail };
 }
 
 export async function getGoogleConnectionStatus(businessId: string) {
   const admin = createAdminClient();
   const { data, error } = await admin.from("business_google_provider_tokens")
-    .select("granted_scopes,access_token_expires_at,updated_at")
+    .select("token_ciphertext,token_iv,token_auth_tag,granted_scopes,access_token_expires_at,updated_at")
     .eq("business_id", businessId)
     .maybeSingle();
   if (error) throw new GoogleTokenVaultError("CONFIGURATION_ERROR");
   return {
     connected: Boolean(data),
-    scope_granted: Boolean(data?.granted_scopes?.includes("https://www.googleapis.com/auth/meetings.space.created")),
+    scope_granted: Boolean(data?.granted_scopes?.includes(GOOGLE_MEET_SCOPE)),
+    gmail_scope_granted: Boolean(data?.granted_scopes?.includes(GOOGLE_GMAIL_SEND_SCOPE)),
+    sender_email: data?.token_ciphertext ? decryptTokenBundle(encryptedFields(data as StoredEncryptedToken), businessId).senderEmail ?? null : null,
     access_token_expires_at: data?.access_token_expires_at ?? null,
     updated_at: data?.updated_at ?? null,
   };

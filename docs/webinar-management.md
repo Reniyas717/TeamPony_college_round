@@ -80,26 +80,24 @@ A logged-in business owner manages standalone webinar sessions and webinar serie
 
 ## Integration prerequisites
 
-Implementation extends the existing Supabase Google sign-in and callback with the Meet scope and an encrypted server-side provider-token vault with refresh. Configure the vault key and the same Google OAuth client credentials used by Supabase Auth, plus a verified email sender. The hackathon demo uses an owner-triggered manual email batch; automatic scheduling is deferred. Integration setup and runtime behavior are not yet verified. Email and Meet failures must be visible and retries must not duplicate external effects.
+Implementation extends the existing Supabase Google sign-in and callback with Meet and Gmail send scopes and an encrypted server-side provider-token vault with refresh. Configure the vault key and the same Google OAuth client credentials used by Supabase Auth. Webinar emails are sent through the business owner's verified Google account. The hackathon demo uses an owner-triggered manual batch for scheduled messages; registration confirmations are attempted immediately. Automatic scheduling is deferred. External Google setup and the live email lifecycle still require verification.
 
 ### Delivery configuration contract
 
-The server-only delivery slice uses these deployment values:
+The server-only webinar delivery slice uses these deployment values:
 
-- `RESEND_API_KEY`: Resend API key; never expose it to browser code.
-- `WEBINAR_EMAIL_FROM`: verified sender identity used when producers create outbox rows.
 - `WEBINAR_WORKER_SECRET`: required as `Authorization: Bearer <secret>` for `POST /api/internal/webinar-work`.
 - `NEXT_PUBLIC_APP_URL`: the public Nexus origin used by future message producers for links.
 - `WEBINAR_GOOGLE_TOKEN_ENCRYPTION_KEY`: 32-byte key as 64 hex characters or base64 for AES-256-GCM token encryption.
 - `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET`: the same Google OAuth client values configured for Supabase Auth; used only by the server-side provider-token refresh.
 
-The existing login requests `https://www.googleapis.com/auth/meetings.space.created`, which covers spaces Nexus creates and their participant records. The existing PKCE callback encrypts Google provider tokens before writing them to the business-scoped vault. Supabase does not refresh Google tokens on the application’s behalf; Nexus uses the configured OAuth client values to refresh them server-side. Never expose the vault key, client secret, or provider tokens in browser code.
+The existing Google login requests `https://www.googleapis.com/auth/meetings.space.created` and `https://www.googleapis.com/auth/gmail.send`. The Gmail permission is sensitive and allows Nexus to send messages on the owner's behalf; Nexus does not read the mailbox. The PKCE callback checks Google's token grant and verified account address, then encrypts provider tokens, the Google subject, and sender address in the business-scoped vault. Supabase does not refresh Google tokens on the application's behalf; Nexus uses the configured OAuth client values to refresh them server-side. Never expose the vault key, client secret, or provider tokens in browser code. Enable Gmail API and add the Gmail scope to the Google OAuth consent configuration. Each owner must reconnect Google and approve the permission. For the hackathon, keep the app in Testing and add demo owners as test users.
 
-The worker accepts at most 50 jobs per invocation, leases jobs for five minutes, retries bounded transient failures with database-controlled backoff, and keeps provider outcomes that cannot be confirmed in `unknown` for reconciliation. Provider acceptance is the highest delivery state currently represented; it is not inbox delivery. This records the delivery contract and limits only; it does not claim the webinar feature is implemented.
+The worker accepts at most 50 jobs per invocation, leases jobs for five minutes, retries confirmed transient failures with database-controlled backoff, and keeps provider outcomes that cannot be confirmed in `unknown` without an automatic resend. Gmail acceptance is the highest delivery state currently represented; it is not inbox delivery. Gmail does not provide an idempotency key for its send endpoint. Old Resend outbox rows retain their original sender and will fail the sender match check; they must be recreated as new email jobs after Gmail is connected.
 
 ### Manual worker trigger
 
-Cron is deferred for the hackathon. From the webinar dashboard, the signed-in owner can select **Process queued emails** to process one bounded batch of up to 50 emails for their own business. The server derives the business from the verified session; the browser never receives the worker secret. Apply `20261019_webinar_manual_worker.sql` to enable business-scoped claims. Run the action again if more than 50 jobs are queued. The result reports provider acceptance and failure counts; acceptance does not guarantee inbox delivery. Automatic delivery requires a future scheduler or always-on worker.
+Cron is deferred for the hackathon. From the webinar dashboard, the signed-in owner can select **Process queued emails** to process one bounded batch of up to 50 due messages for their own business. The server derives the business from the verified session; the browser never receives the worker secret. Apply `20261019_webinar_manual_worker.sql` to enable business-scoped claims. Run the action again if more than 50 jobs are queued. The result reports Gmail acceptance, retryable failures, reconnect requirements, permanent failures, and unknown outcomes. Acceptance does not guarantee inbox delivery. Automatic delivery requires a future scheduler or always-on worker.
 
 ## Repository observations
 

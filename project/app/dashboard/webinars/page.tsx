@@ -10,7 +10,11 @@ export default function WebinarsPage() {
 async function WebinarsContent() {
   const { businessId } = await requireWebinarOwner();
   const google = await getGoogleConnectionStatus(businessId);
-  return <div className="min-h-screen bg-background text-foreground"><WebinarList googleConnected={google.connected && google.scope_granted} /></div>;
+  return <div className="min-h-screen bg-background text-foreground"><WebinarList google={{
+    meetConnected: google.connected && google.scope_granted,
+    gmailConnected: google.connected && google.gmail_scope_granted,
+    senderEmail: google.sender_email,
+  }} /></div>;
 }
 
 function WebinarLoading() {

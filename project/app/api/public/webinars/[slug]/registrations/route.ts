@@ -63,6 +63,8 @@ export async function POST(request: Request, { params }: Context) {
 
   if (error) {
     const message = error.message;
+    const safeMessage = message.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]").replace(/\s+/g, " ").slice(0, 240);
+    console.error(`[PUBLIC-WEBINAR-REGISTRATION-RPC-FAILED] code=${error.code ?? "unknown"} message=${safeMessage}`);
     if (message.includes("WEBINAR_NOT_FOUND")) return errorResponse("NOT_FOUND", "This webinar is no longer available.", 404);
     if (message.includes("INVALID_SESSION_SELECTION")) return errorResponse("INVALID_SESSION_SELECTION", "Choose at least one available session.", 422);
     if (message.includes("INVALID_REQUEST")) return errorResponse("VALIDATION_ERROR", "The submitted details are invalid.", 400);
@@ -73,25 +75,35 @@ export async function POST(request: Request, { params }: Context) {
   }
 
   const registrationId = typeof data?.registration_id === "string" ? data.registration_id : null;
-  const notifications = registrationId
-    ? await queueRegistrationConfirmations(registrationId)
-    : { status: "not_queued" as const };
+  let notifications: Awaited<ReturnType<typeof queueRegistrationConfirmations>> = { status: "not_queued" };
 
   if (registrationId) {
-    const admin = createAdminClient();
-    const [{ data: registration }, { data: selection }] = await Promise.all([
-      admin.from("webinar_registrations").select("business_id").eq("id", registrationId).maybeSingle(),
-      admin.from("webinar_registration_sessions").select("webinar_id").eq("registration_id", registrationId).order("webinar_id").limit(1).maybeSingle(),
-    ]);
-    if (registration?.business_id) {
-      const context = { businessId: registration.business_id };
-      await recordWebinarAudit(context, {
-        action: "webinar.notification.queued", resourceType: "webinar_registration", resourceId: registrationId,
-        actorId: "webinar_public", actorType: "integration",
-        client: admin,
-        outcome: notifications.status === "queued" || notifications.status === "partially_queued" ? "success" : "failure",
-        metadata: { webinar_id: selection?.webinar_id ?? registrationId, operation_id: `${registrationId}/confirmation`, recipient_count: notifications.count ?? 0, notification_type: "registration_confirmation" },
-      });
+    try {
+      notifications = await queueRegistrationConfirmations(registrationId);
+    } catch (notificationError) {
+      const reason = notificationError instanceof Error ? notificationError.name : "UnknownError";
+      console.error(`[PUBLIC-WEBINAR-CONFIRMATION-QUEUE-FAILED] reason=${reason}`);
+    }
+
+    try {
+      const admin = createAdminClient();
+      const [{ data: registration }, { data: selection }] = await Promise.all([
+        admin.from("webinar_registrations").select("business_id").eq("id", registrationId).maybeSingle(),
+        admin.from("webinar_registration_sessions").select("webinar_id").eq("registration_id", registrationId).order("webinar_id").limit(1).maybeSingle(),
+      ]);
+      if (registration?.business_id) {
+        const context = { businessId: registration.business_id };
+        await recordWebinarAudit(context, {
+          action: "webinar.notification.queued", resourceType: "webinar_registration", resourceId: registrationId,
+          actorId: "webinar_public", actorType: "integration",
+          client: admin,
+          outcome: notifications.status === "queued" || notifications.status === "partially_queued" ? "success" : "failure",
+          metadata: { webinar_id: selection?.webinar_id ?? registrationId, operation_id: `${registrationId}/confirmation`, recipient_count: notifications.count ?? 0, notification_type: "registration_confirmation" },
+        });
+      }
+    } catch (auditError) {
+      const reason = auditError instanceof Error ? auditError.name : "UnknownError";
+      console.error(`[PUBLIC-WEBINAR-NOTIFICATION-AUDIT-FAILED] reason=${reason}`);
     }
   }
 

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/server";
+import { getGoogleEmailSenderForBusiness } from "./google-token-vault.service";
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => ({
@@ -16,8 +17,9 @@ export async function queueCancellationNotifications(input: {
   start: string | null;
   timezone: string;
 }) {
-  const from = process.env.WEBINAR_EMAIL_FROM?.trim();
-  if (!from) return { status: "not_configured" as const, recipients: 0, queued: 0 };
+  let from: string;
+  try { from = await getGoogleEmailSenderForBusiness(input.businessId); }
+  catch { return { status: "not_configured" as const, recipients: 0, queued: 0 }; }
 
   const admin = createAdminClient();
   const { data: links, error: linksError } = await admin.from("webinar_registration_sessions")
@@ -31,7 +33,6 @@ export async function queueCancellationNotifications(input: {
     admin.from("businesses").select("id,owner_id,name").eq("id", input.businessId).maybeSingle(),
   ]);
   if (peopleError || businessError || !business || !people) return { status: "not_queued" as const, recipients: ids.length, queued: 0 };
-  const { data: profile } = await admin.from("profiles").select("email").eq("id", business.owner_id).maybeSingle();
   const time = input.start ? new Intl.DateTimeFormat("en", { dateStyle: "full", timeStyle: "short", timeZone: input.timezone }).format(new Date(input.start)) : "Time to be announced";
   let queued = 0;
   for (const person of people) {
@@ -42,7 +43,7 @@ export async function queueCancellationNotifications(input: {
       p_effect_key: `event-cancellation/${input.webinarId}/${input.version}/${person.id}`,
       p_to_email: person.email,
       p_from_email: from,
-      p_reply_to_email: profile?.email ?? null,
+      p_reply_to_email: from,
       p_subject: `Cancelled: ${input.title}`,
       p_html_body: `<p>Hi ${escapeHtml(person.full_name)},</p><p>${escapeHtml(business.name)} has cancelled <strong>${escapeHtml(input.title)}</strong>, scheduled for ${escapeHtml(time)} (${escapeHtml(input.timezone)}).</p><p>Please reply to this email if you have questions.</p>`,
       p_text_body: `Hi ${person.full_name},\n\n${business.name} has cancelled ${input.title}, scheduled for ${time} (${input.timezone}).\n\nPlease reply to this email if you have questions.`,
@@ -64,8 +65,9 @@ export async function queueRescheduleNotifications(input: {
   start: string;
   timezone: string;
 }) {
-  const from = process.env.WEBINAR_EMAIL_FROM?.trim();
-  if (!from) return { status: "not_configured" as const, recipients: 0, queued: 0 };
+  let from: string;
+  try { from = await getGoogleEmailSenderForBusiness(input.businessId); }
+  catch { return { status: "not_configured" as const, recipients: 0, queued: 0 }; }
   const admin = createAdminClient();
   const { data: links, error: linkError } = await admin.from("webinar_registration_sessions")
     .select("registration_id").eq("business_id", input.businessId).eq("webinar_id", input.webinarId);
@@ -77,7 +79,6 @@ export async function queueRescheduleNotifications(input: {
     admin.from("businesses").select("owner_id,name").eq("id", input.businessId).maybeSingle(),
   ]);
   if (peopleError || businessError || !business || !people) return { status: "not_queued" as const, recipients: ids.length, queued: 0 };
-  const { data: profile } = await admin.from("profiles").select("email").eq("id", business.owner_id).maybeSingle();
   const time = new Intl.DateTimeFormat("en", { dateStyle: "full", timeStyle: "short", timeZone: input.timezone }).format(new Date(input.start));
   let queued = 0;
   for (const person of people) {
@@ -85,7 +86,7 @@ export async function queueRescheduleNotifications(input: {
       p_business_id: input.businessId, p_webinar_id: input.webinarId,
       p_kind: "reschedule_notification",
       p_effect_key: `event-reschedule/${input.webinarId}/${input.version}/${person.id}`,
-      p_to_email: person.email, p_from_email: from, p_reply_to_email: profile?.email ?? null,
+      p_to_email: person.email, p_from_email: from, p_reply_to_email: from,
       p_subject: `New time: ${input.title}`,
       p_html_body: `<p>Hi ${escapeHtml(person.full_name)},</p><p>${escapeHtml(business.name)} has rescheduled <strong>${escapeHtml(input.title)}</strong> to ${escapeHtml(time)} (${escapeHtml(input.timezone)}).</p><p>Your existing Google Meet link is unchanged.</p>`,
       p_text_body: `Hi ${person.full_name},\n\n${business.name} has rescheduled ${input.title} to ${time} (${input.timezone}). Your existing Google Meet link is unchanged.`,
