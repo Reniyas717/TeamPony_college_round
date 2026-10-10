@@ -20,13 +20,9 @@
   --destructive: oklch(0.5771 0.2152 27.3250);
   --destructive-foreground: oklch(1.0000 0 0);
   --border: oklch(0.8434 0.0231 87.1621);
+  --border-strong: oklch(0.60 0.02 85);
   --input: oklch(0.8434 0.0231 87.1621);
   --ring: oklch(0.3012 0 0);
-  --chart-1: oklch(0.6863 0.1743 34.2614);
-  --chart-2: oklch(0.2350 0 0);
-  --chart-3: oklch(0.4688 0.0136 84.5932);
-  --chart-4: oklch(0.7057 0.0250 82.0932);
-  --chart-5: oklch(0.8340 0.0232 87.1630);
   --sidebar: oklch(0.8985 0.0199 87.5195);
   --sidebar-foreground: oklch(0.2350 0 0);
   --sidebar-primary: oklch(0.3012 0 0);
@@ -35,9 +31,32 @@
   --sidebar-accent-foreground: oklch(0.3012 0 0);
   --sidebar-border: oklch(0.8434 0.0231 87.1621);
   --sidebar-ring: oklch(0.3012 0 0);
-  --font-sans: Google Sans Flex, ui-sans-serif, sans-serif, system-ui;
-  --font-serif: Google Sans Flex, ui-sans-serif, sans-serif, system-ui;
-  --font-mono: Google Sans Code, ui-monospace, monospace;
+  --brand: oklch(0.6863 0.1743 34.2614);
+  --brand-foreground: oklch(0.2350 0 0);
+  --brand-text: oklch(0.48 0.14 34);
+  --brand-subtle: oklch(0.93 0.035 45);
+  --chart-1: var(--brand);
+  --chart-2: oklch(0.2350 0 0);
+  --chart-3: oklch(0.4688 0.0136 84.5932);
+  --chart-4: oklch(0.7057 0.0250 82.0932);
+  --chart-5: oklch(0.8340 0.0232 87.1630);
+
+  --status-success-fg: oklch(0.45 0.11 150);
+  --status-success-bg: oklch(0.93 0.04 150);
+  --status-success-border: color-mix(in oklab, var(--status-success-fg) 30%, transparent);
+  --status-warning-fg: oklch(0.46 0.09 75);
+  --status-warning-bg: oklch(0.94 0.06 85);
+  --status-warning-border: color-mix(in oklab, var(--status-warning-fg) 30%, transparent);
+  --status-info-fg: oklch(0.45 0.10 240);
+  --status-info-bg: oklch(0.93 0.03 240);
+  --status-info-border: color-mix(in oklab, var(--status-info-fg) 30%, transparent);
+  --status-danger-fg: oklch(0.50 0.19 27.3);
+  --status-danger-bg: oklch(0.93 0.04 27);
+  --status-danger-border: color-mix(in oklab, var(--status-danger-fg) 30%, transparent);
+  --status-neutral-fg: oklch(0.36 0.01 85);
+  --status-neutral-bg: var(--secondary);
+  --status-neutral-border: color-mix(in oklab, var(--status-neutral-fg) 30%, transparent);
+
   --radius: 1rem;
   --shadow-x: 0;
   --shadow-y: 1px;
@@ -53,7 +72,6 @@
   --shadow-lg: 0 1px 10px 0px hsl(0 0% 0% / 0.05), 0 4px 6px -1px hsl(0 0% 0% / 0.05);
   --shadow-xl: 0 1px 10px 0px hsl(0 0% 0% / 0.05), 0 8px 10px -1px hsl(0 0% 0% / 0.05);
   --shadow-2xl: 0 1px 10px 0px hsl(0 0% 0% / 0.13);
-  --tracking-normal: 0em;
   --spacing: 0.25rem;
 }
 
@@ -75,6 +93,7 @@
   --destructive: oklch(0.6368 0.2078 25.3313);
   --destructive-foreground: oklch(1.0000 0 0);
   --border: oklch(0.1822 0 0);
+  --border-strong: oklch(0.30 0 0);
   --input: oklch(0.3904 0 0);
   --ring: oklch(0.5103 0 0);
   --chart-1: oklch(0.4325 0.0376 198.3573);
@@ -90,24 +109,26 @@
   --sidebar-accent-foreground: oklch(0.8520 0.0205 100.6306);
   --sidebar-border: oklch(0.1822 0 0);
   --sidebar-ring: oklch(0.5103 0 0);
-  --font-sans: Google Sans Flex, ui-sans-serif, sans-serif, system-ui;
-  --font-serif: Google Sans Flex, ui-sans-serif, sans-serif, system-ui;
-  --font-mono: Google Sans Code, ui-monospace, monospace;
-  --radius: 1rem;
-  --shadow-x: 0;
-  --shadow-y: 1px;
-  --shadow-blur: 10px;
-  --shadow-spread: 0px;
-  --shadow-opacity: 0.05;
-  --shadow-color: #000000;
-  --shadow-2xs: 0 1px 10px 0px hsl(0 0% 0% / 0.03);
-  --shadow-xs: 0 1px 10px 0px hsl(0 0% 0% / 0.03);
-  --shadow-sm: 0 1px 10px 0px hsl(0 0% 0% / 0.05), 0 1px 2px -1px hsl(0 0% 0% / 0.05);
-  --shadow: 0 1px 10px 0px hsl(0 0% 0% / 0.05), 0 1px 2px -1px hsl(0 0% 0% / 0.05);
-  --shadow-md: 0 1px 10px 0px hsl(0 0% 0% / 0.05), 0 2px 4px -1px hsl(0 0% 0% / 0.05);
-  --shadow-lg: 0 1px 10px 0px hsl(0 0% 0% / 0.05), 0 4px 6px -1px hsl(0 0% 0% / 0.05);
-  --shadow-xl: 0 1px 10px 0px hsl(0 0% 0% / 0.05), 0 8px 10px -1px hsl(0 0% 0% / 0.05);
-  --shadow-2xl: 0 1px 10px 0px hsl(0 0% 0% / 0.13);
+  --brand: oklch(0.4325 0.0376 198.3573);
+  --brand-foreground: oklch(1.0000 0 0);
+  --brand-text: oklch(0.72 0.05 198.3573);
+  --brand-subtle: oklch(0.25 0.02 198.3573);
+
+  --status-success-fg: oklch(0.78 0.13 150);
+  --status-success-bg: oklch(0.28 0.05 150);
+  --status-success-border: color-mix(in oklab, var(--status-success-fg) 30%, transparent);
+  --status-warning-fg: oklch(0.80 0.12 85);
+  --status-warning-bg: oklch(0.30 0.05 85);
+  --status-warning-border: color-mix(in oklab, var(--status-warning-fg) 30%, transparent);
+  --status-info-fg: oklch(0.76 0.10 240);
+  --status-info-bg: oklch(0.28 0.04 240);
+  --status-info-border: color-mix(in oklab, var(--status-info-fg) 30%, transparent);
+  --status-danger-fg: oklch(0.72 0.17 25);
+  --status-danger-bg: oklch(0.28 0.06 25);
+  --status-danger-border: color-mix(in oklab, var(--status-danger-fg) 30%, transparent);
+  --status-neutral-fg: oklch(0.80 0.01 85);
+  --status-neutral-bg: var(--secondary);
+  --status-neutral-border: color-mix(in oklab, var(--status-neutral-fg) 30%, transparent);
 }
 
 @theme inline {
@@ -128,13 +149,9 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -143,11 +160,48 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-text: var(--brand-text);
+  --color-brand-subtle: var(--brand-subtle);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
 
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
-  --font-serif: var(--font-serif);
+  --color-status-success-fg: var(--status-success-fg);
+  --color-status-success-bg: var(--status-success-bg);
+  --color-status-success-border: var(--status-success-border);
+  --color-status-warning-fg: var(--status-warning-fg);
+  --color-status-warning-bg: var(--status-warning-bg);
+  --color-status-warning-border: var(--status-warning-border);
+  --color-status-info-fg: var(--status-info-fg);
+  --color-status-info-bg: var(--status-info-bg);
+  --color-status-info-border: var(--status-info-border);
+  --color-status-danger-fg: var(--status-danger-fg);
+  --color-status-danger-bg: var(--status-danger-bg);
+  --color-status-danger-border: var(--status-danger-border);
+  --color-status-neutral-fg: var(--status-neutral-fg);
+  --color-status-neutral-bg: var(--status-neutral-bg);
+  --color-status-neutral-border: var(--status-neutral-border);
 
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-bricolage), var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --text-display-xl: 4rem;
+  --text-display-xl--line-height: 1.02;
+  --text-display-lg: 3rem;
+  --text-display-lg--line-height: 1.05;
+  --text-display-md: 2.5rem;
+  --text-display-md--line-height: 1.08;
+  --text-page: 2rem;
+  --text-page--line-height: 1.15;
+  --text-page-sm: 1.75rem;
+  --text-page-sm--line-height: 1.2;
+
+  --radius-xs: calc(var(--radius) - 8px);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -168,6 +222,11 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground transition-colors duration-500 ease-out;
+  }
+  /* Fix for iconsax-react missing stroke/fill in some Next.js environments */
+  svg path:not([stroke]) {
+    stroke: currentColor;
+    fill: none;
   }
 }
