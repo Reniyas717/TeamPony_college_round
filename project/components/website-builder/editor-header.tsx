@@ -15,6 +15,7 @@ import {
 
 interface EditorHeaderProps {
   title: string;
+  slug?: string;
   isPublished: boolean;
   isDirty: boolean;
   isSaving: boolean;
@@ -34,6 +35,7 @@ interface EditorHeaderProps {
 
 export function EditorHeader({
   title,
+  slug,
   isPublished,
   isDirty,
   isSaving,
@@ -74,15 +76,29 @@ export function EditorHeader({
             title="Click to rename website"
           />
 
-          <span
-            className={`px-2 py-0.5 rounded-sm text-[10px] font-mono font-semibold shrink-0 ${
-              isPublished
-                ? "bg-status-success-bg text-status-success-fg"
-                : "bg-muted/60 text-muted-foreground"
-            }`}
-          >
-            {isPublished ? "Live" : "Draft"}
-          </span>
+          {isPublished && slug ? (
+            <a
+              href={`/site/${slug}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold shrink-0 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-all shadow-xs"
+              title={`View published live website at /site/${slug}`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>/site/{slug}</span>
+              <span className="text-[10px] opacity-75">↗</span>
+            </a>
+          ) : (
+            <span
+              className={`px-2 py-0.5 rounded-sm text-[10px] font-mono font-semibold shrink-0 ${
+                isPublished
+                  ? "bg-status-success-bg text-status-success-fg"
+                  : "bg-muted/60 text-muted-foreground"
+              }`}
+            >
+              {isPublished ? "Live" : "Draft"}
+            </span>
+          )}
         </div>
       </div>
 

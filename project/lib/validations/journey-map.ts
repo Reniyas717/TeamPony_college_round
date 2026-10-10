@@ -93,6 +93,7 @@ export const UpdateStageInputSchema = z.object({
   emotion: StageEmotionSchema.optional(),
   friction_points: z.array(z.string()).optional(),
   opportunities: z.array(z.string()).optional(),
+  findings_type: EvidenceTypeSchema.optional(),
 });
 export type UpdateStageInput = z.infer<typeof UpdateStageInputSchema>;
 

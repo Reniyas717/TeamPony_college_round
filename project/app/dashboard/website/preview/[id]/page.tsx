@@ -35,9 +35,23 @@ export default async function WebsitePreviewPage({ params }: PreviewPageProps) {
     notFound();
   }
 
-  const document = website.content;
-  const theme = document.theme;
+  const document = website.content || {};
+  const theme = document.theme || {
+    canvasBg: "#FDFBF7",
+    surfaceBg: "#F4EFE6",
+    textPrimary: "#1F1C18",
+    textMuted: "#797268",
+    borderColor: "rgba(31, 28, 24, 0.12)",
+    accentColor: "#C85A32",
+    fontHeading: "display" as const,
+    fontBody: "sans" as const,
+  };
   const sections = document.sections || [];
+
+  const bodyFontClass =
+    theme.fontBody === "serif"
+      ? "font-serif"
+      : "font-sans";
 
   return (
     <div
@@ -45,7 +59,7 @@ export default async function WebsitePreviewPage({ params }: PreviewPageProps) {
         backgroundColor: theme.canvasBg || "#FDFBF7",
         color: theme.textPrimary || "#1F1C18",
       }}
-      className="min-h-screen flex flex-col font-sans selection:bg-brand selection:text-brand-foreground"
+      className={`min-h-screen flex flex-col ${bodyFontClass} selection:bg-brand selection:text-brand-foreground`}
     >
       {/* Visitor-facing Render of all active sections */}
       <main className="flex-1">

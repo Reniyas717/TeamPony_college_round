@@ -115,7 +115,8 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
   };
 
   // 3. Save draft to backend
-  const handleSaveDraft = async () => {
+  // 3. Save draft to backend
+  const handleSaveDraft = React.useCallback(async () => {
     if (!currentWebsite) return;
     setIsSaving(true);
     try {
@@ -144,7 +145,7 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [currentWebsite, document]);
 
   // 4. Toggle publish status
   const handlePublishToggle = async () => {
@@ -181,24 +182,98 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
     }
   };
 
+  // 6. Update website slug
+  const handleUpdateSlug = (newSlug: string) => {
+    if (!currentWebsite) return;
+    setCurrentWebsite({ ...currentWebsite, slug: newSlug });
+    setIsDirty(true);
+  };
+
   // Undo / Redo
-  const handleUndo = () => {
+  const handleUndo = React.useCallback(() => {
     if (historyIndex > 0) {
       const prevDoc = history[historyIndex - 1];
       setHistoryIndex((prev) => prev - 1);
       setDocument(prevDoc);
       setIsDirty(true);
     }
-  };
+  }, [historyIndex, history]);
 
-  const handleRedo = () => {
+  const handleRedo = React.useCallback(() => {
     if (historyIndex < history.length - 1) {
       const nextDoc = history[historyIndex + 1];
       setHistoryIndex((prev) => prev + 1);
       setDocument(nextDoc);
       setIsDirty(true);
     }
-  };
+  }, [historyIndex, history]);
+
+  // Global Keyboard Shortcuts (Ctrl+S, Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z)
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (view !== "editor") return;
+
+      const isMac = typeof navigator !== "undefined" && navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+      const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
+
+      if (!cmdOrCtrl) return;
+
+      const key = e.key.toLowerCase();
+
+      // Ctrl+S / Cmd+S: Save Draft
+      if (key === "s") {
+        e.preventDefault();
+        handleSaveDraft();
+        return;
+      }
+
+      // Check if focus is inside an input or textarea for undo/redo
+      const activeEl = window.document.activeElement;
+      const isInput =
+        activeEl?.tagName === "INPUT" ||
+        activeEl?.tagName === "TEXTAREA" ||
+        (activeEl as HTMLElement)?.isContentEditable;
+
+      if (isInput) return;
+
+      // Ctrl+Z / Cmd+Z: Undo
+      if (key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      }
+      // Ctrl+Y or Ctrl+Shift+Z: Redo
+      else if (key === "y" || (key === "z" && e.shiftKey)) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [view, handleSaveDraft, handleUndo, handleRedo]);
+
+  // Debounced Auto-Save Draft after 15 seconds of inactivity when dirty
+  React.useEffect(() => {
+    if (!isDirty || isSaving || view !== "editor") return;
+
+    const timer = setTimeout(() => {
+      handleSaveDraft();
+    }, 15000);
+
+    return () => clearTimeout(timer);
+  }, [isDirty, isSaving, view, handleSaveDraft]);
+
+  // Warn before closing tab if there are unsaved changes
+  React.useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty]);
 
   // Section operations
   const handleMoveUp = (index: number) => {
@@ -308,11 +383,11 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
 
   const handleUpdateItem = (itemId: string, patch: Partial<SectionItem>) => {
     if (!selectedSectionId) return;
-    const newSections = document.sections.map((s) =>
+    const newSections = (document.sections || []).map((s) =>
       s.id === selectedSectionId
         ? {
             ...s,
-            items: s.items.map((it) => (it.id === itemId ? { ...it, ...patch } : it)),
+            items: (s.items || []).map((it) => (it.id === itemId ? { ...it, ...patch } : it)),
           }
         : s
     );
@@ -321,9 +396,9 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
 
   const handleDeleteItem = (itemId: string) => {
     if (!selectedSectionId) return;
-    const newSections = document.sections.map((s) =>
+    const newSections = (document.sections || []).map((s) =>
       s.id === selectedSectionId
-        ? { ...s, items: s.items.filter((it) => it.id !== itemId) }
+        ? { ...s, items: (s.items || []).filter((it) => it.id !== itemId) }
         : s
     );
     updateDocWithHistory({ ...document, sections: newSections });
@@ -338,7 +413,7 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
       href: "#",
       variant: "primary",
     };
-    const newSections = document.sections.map((s) =>
+    const newSections = (document.sections || []).map((s) =>
       s.id === selectedSectionId ? { ...s, buttons: [...(s.buttons || []), newBtn] } : s
     );
     updateDocWithHistory({ ...document, sections: newSections });
@@ -346,11 +421,11 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
 
   const handleUpdateButton = (buttonId: string, patch: Partial<SectionButton>) => {
     if (!selectedSectionId) return;
-    const newSections = document.sections.map((s) =>
+    const newSections = (document.sections || []).map((s) =>
       s.id === selectedSectionId
         ? {
             ...s,
-            buttons: s.buttons.map((b) => (b.id === buttonId ? { ...b, ...patch } : b)),
+            buttons: (s.buttons || []).map((b) => (b.id === buttonId ? { ...b, ...patch } : b)),
           }
         : s
     );
@@ -359,16 +434,16 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
 
   const handleDeleteButton = (buttonId: string) => {
     if (!selectedSectionId) return;
-    const newSections = document.sections.map((s) =>
+    const newSections = (document.sections || []).map((s) =>
       s.id === selectedSectionId
-        ? { ...s, buttons: s.buttons.filter((b) => b.id !== buttonId) }
+        ? { ...s, buttons: (s.buttons || []).filter((b) => b.id !== buttonId) }
         : s
     );
     updateDocWithHistory({ ...document, sections: newSections });
   };
 
   // Find currently selected section
-  const selectedSection = document.sections.find((s) => s.id === selectedSectionId) || null;
+  const selectedSection = (document.sections || []).find((s) => s.id === selectedSectionId) || null;
 
   return (
     <div className="flex-1 flex flex-col h-full min-w-0">
@@ -388,6 +463,7 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
           {/* Top Editor Header */}
           <EditorHeader
             title={currentWebsite?.title || "My Website"}
+            slug={currentWebsite?.slug}
             isPublished={currentWebsite?.is_published || false}
             isDirty={isDirty}
             isSaving={isSaving}
@@ -450,6 +526,8 @@ export default function StudioClient({ initialWebsites }: StudioClientProps) {
             <EditorInspector
               document={document}
               selectedSection={selectedSection}
+              websiteSlug={currentWebsite?.slug || ""}
+              onUpdateSlug={handleUpdateSlug}
               onUpdateSectionField={handleUpdateSectionField}
               onUpdateSectionStyle={handleUpdateSectionStyle}
               onUpdateItem={handleUpdateItem}

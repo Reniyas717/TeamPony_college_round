@@ -13,8 +13,10 @@ import {
   ArrowRight,
   TickCircle,
   ShieldSecurity,
-  TrendUp
+  TrendUp,
+  Chart21,
 } from "iconsax-react";
+import { useAnalyticsDashboard } from "@/hooks/use-analytics";
 
 interface DashboardClientProps {
   user: {
@@ -26,7 +28,18 @@ interface DashboardClientProps {
 }
 
 export default function DashboardClient({ user }: DashboardClientProps) {
+  const { data: analyticsData } = useAnalyticsDashboard();
+
   const modules = [
+    {
+      id: "analytics",
+      title: "Analytics & Performance",
+      description: "Track revenue growth, contact acquisition, funnel conversion, and video summaries.",
+      icon: Chart21,
+      meta: "Live Performance",
+      action: "View Analytics",
+      href: "/dashboard/analytics",
+    },
     {
       id: "intelligence",
       title: "Customer Journey Studio",
@@ -129,37 +142,50 @@ export default function DashboardClient({ user }: DashboardClientProps) {
 
       {/* Architectural Metric Strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="p-5 flex flex-col gap-1 bg-card/60 rounded-sm">
+        <Link href="/dashboard/billing" className="p-5 flex flex-col gap-1 bg-card/60 hover:bg-card/90 transition rounded-sm border border-border/30">
           <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">
             Revenue (MRR)
           </p>
-          <p className="font-display text-2xl font-bold tabular-nums">₹0.00</p>
-          <p className="text-xs text-muted-foreground mt-0.5">Synced with Stripe</p>
-        </div>
+          <p className="font-display text-2xl font-bold tabular-nums">
+            {analyticsData?.summaryMetrics?.find((m) => m.id === "mrr")?.value ?? "₹0.00"}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {analyticsData ? "Current Monthly Revenue" : "Loading..."}
+          </p>
+        </Link>
 
-        <div className="p-5 flex flex-col gap-1 bg-card/60 rounded-sm">
+        <Link href="/dashboard/crm" className="p-5 flex flex-col gap-1 bg-card/60 hover:bg-card/90 transition rounded-sm border border-border/30">
           <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">
             CRM Contacts
           </p>
-          <p className="font-display text-2xl font-bold tabular-nums">0 Leads</p>
-          <p className="text-xs text-muted-foreground mt-0.5">Ready for capture</p>
-        </div>
+          <p className="font-display text-2xl font-bold tabular-nums">
+            {analyticsData?.summaryMetrics?.find((m) => m.id === "contacts")?.value ?? "0 Contacts"}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {analyticsData ? "Total Active Contacts" : "Loading..."}
+          </p>
+        </Link>
 
-        <div className="p-5 flex flex-col gap-1 bg-card/60 rounded-sm">
+        <Link href="/dashboard/approvals" className="p-5 flex flex-col gap-1 bg-card/60 hover:bg-card/90 transition rounded-sm border border-border/30">
           <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">
             AI Approval Queue
           </p>
           <p className="font-display text-2xl font-bold tabular-nums">0 Pending</p>
-          <p className="text-xs text-muted-foreground mt-0.5">Queue is clear</p>
-        </div>
+          <p className="text-xs text-muted-foreground mt-0.5">Gatekeeper checks active</p>
+        </Link>
 
-        <div className="p-5 flex flex-col gap-1 bg-card/60 rounded-sm">
-          <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">
-            Tenant Isolation
+        <Link href="/dashboard/analytics" className="p-5 flex flex-col gap-1 bg-card/60 hover:bg-card/90 transition rounded-sm border border-border/30 group">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">
+              Analytics
+            </p>
+            <span className="w-1.5 h-1.5 rounded-xs bg-emerald-500" />
+          </div>
+          <p className="font-display text-2xl font-bold text-brand group-hover:text-brand-text transition-colors">
+            {analyticsData ? "Live" : "Loading"}
           </p>
-          <p className="font-display text-2xl font-bold">Single-Owner</p>
-          <p className="text-xs text-muted-foreground mt-0.5">PostgreSQL RLS scope</p>
-        </div>
+          <p className="text-xs text-muted-foreground mt-0.5">View Analytics</p>
+        </Link>
       </div>
 
       {/* Two-Column Operating Matrix */}

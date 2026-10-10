@@ -34,6 +34,16 @@ export function EditorCanvas({
   onUpdateSectionField,
 }: EditorCanvasProps) {
   const sections = document.sections || [];
+  const theme = document.theme || {
+    fontHeading: "display" as const,
+    fontBody: "sans" as const,
+    accentColor: "#C85A32",
+    canvasBg: "#FDFBF7",
+    surfaceBg: "#F4EFE6",
+    textPrimary: "#1F1C18",
+    textMuted: "#797268",
+    borderColor: "rgba(31, 28, 24, 0.12)",
+  };
 
   // Width styling based on selected device preview mode
   const getDeviceContainerStyle = () => {
@@ -41,6 +51,7 @@ export function EditorCanvas({
       case "mobile":
         return {
           width: "375px",
+          maxWidth: "100%",
           minHeight: "780px",
           borderRadius: "32px",
           border: "8px solid #1F1C18",
@@ -49,6 +60,7 @@ export function EditorCanvas({
       case "tablet":
         return {
           width: "768px",
+          maxWidth: "100%",
           minHeight: "900px",
           borderRadius: "20px",
           border: "8px solid #2D2A26",
@@ -116,7 +128,8 @@ export function EditorCanvas({
               <React.Fragment key={section.id}>
                 <SectionRenderer
                   section={section}
-                  theme={document.theme}
+                  theme={theme}
+                  deviceMode={deviceMode}
                   isEditorMode={true}
                   isSelected={selectedSectionId === section.id}
                   onSelect={() => onSelectSection(section.id)}

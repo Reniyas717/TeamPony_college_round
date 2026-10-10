@@ -8,10 +8,13 @@ import {
   SectionButton,
 } from "@/lib/validations/website";
 import { Magicpen, Add, Trash, Eye, EyeSlash } from "iconsax-react";
+import { ImageUploader } from "./image-uploader";
 
 interface EditorInspectorProps {
   document: WebsiteDocument;
   selectedSection: WebsiteSection | null;
+  websiteSlug?: string;
+  onUpdateSlug?: (slug: string) => void;
   onUpdateSectionField: (field: keyof WebsiteSection, value: unknown) => void;
   onUpdateSectionStyle: (stylePatch: Partial<WebsiteSection["style"]>) => void;
   onUpdateItem: (itemId: string, patch: Partial<SectionItem>) => void;
@@ -27,6 +30,8 @@ interface EditorInspectorProps {
 export function EditorInspector({
   document,
   selectedSection,
+  websiteSlug,
+  onUpdateSlug,
   onUpdateSectionField,
   onUpdateSectionStyle,
   onUpdateItem,
@@ -54,6 +59,31 @@ export function EditorInspector({
         </div>
 
         <div className="space-y-4">
+          {onUpdateSlug && (
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
+                Public URL Slug
+              </label>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-mono text-muted-foreground shrink-0">/site/</span>
+                <input
+                  type="text"
+                  value={websiteSlug || ""}
+                  onChange={(e) =>
+                    onUpdateSlug(
+                      e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "").substring(0, 48)
+                    )
+                  }
+                  placeholder="custom-slug"
+                  className="w-full px-3 py-1.5 rounded-sm border border-border/60 bg-card text-foreground text-xs font-mono focus:outline-hidden focus:ring-1 focus:ring-brand-text"
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground font-mono">
+                Accessible to live visitors once published.
+              </p>
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
               SEO Document Title
@@ -84,7 +114,8 @@ export function EditorInspector({
     );
   }
 
-  const hasItems = selectedSection.items && selectedSection.items.length > 0;
+  const hasItems = Boolean(selectedSection.items && selectedSection.items.length > 0);
+  const activeTab = inspectorTab === "items" && !hasItems ? "content" : inspectorTab;
 
   return (
     <aside className="w-80 bg-sidebar border-l border-border/40 flex flex-col shrink-0 h-full overflow-hidden text-xs">
@@ -117,7 +148,7 @@ export function EditorInspector({
           type="button"
           onClick={() => setInspectorTab("content")}
           className={`px-3 py-1.5 border-b-2 text-[11px] font-medium transition-colors cursor-pointer ${
-            inspectorTab === "content"
+            activeTab === "content"
               ? "border-brand-text text-foreground font-semibold"
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
@@ -128,7 +159,7 @@ export function EditorInspector({
           type="button"
           onClick={() => setInspectorTab("style")}
           className={`px-3 py-1.5 border-b-2 text-[11px] font-medium transition-colors cursor-pointer ${
-            inspectorTab === "style"
+            activeTab === "style"
               ? "border-brand-text text-foreground font-semibold"
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
@@ -140,18 +171,18 @@ export function EditorInspector({
             type="button"
             onClick={() => setInspectorTab("items")}
             className={`px-3 py-1.5 border-b-2 text-[11px] font-medium transition-colors cursor-pointer ${
-              inspectorTab === "items"
+              activeTab === "items"
                 ? "border-brand-text text-foreground font-semibold"
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            Items ({selectedSection.items.length})
+            Items ({selectedSection.items?.length || 0})
           </button>
         )}
       </div>
 
       {/* Tab: Content */}
-      {inspectorTab === "content" && (
+      {activeTab === "content" && (
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           <div className="space-y-1.5">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
@@ -220,33 +251,40 @@ export function EditorInspector({
           )}
 
           {/* Media fields */}
-          <div className="pt-3 border-t border-border/40 space-y-3">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
-              Imagery & Media
-            </span>
+          {(selectedSection.type === "hero" || selectedSection.type === "manifesto" || selectedSection.imageUrl !== undefined) && (
+            <div className="pt-3 border-t border-border/40 space-y-4">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
+                Imagery & Media (Supabase Storage)
+              </span>
 
-            <div className="space-y-1.5">
-              <label className="text-[11px] text-muted-foreground block">Primary Image URL</label>
-              <input
-                type="text"
+              <ImageUploader
+                label="Primary Section Image"
                 value={selectedSection.imageUrl || ""}
-                onChange={(e) => onUpdateSectionField("imageUrl", e.target.value)}
-                placeholder="https://images.unsplash.com/..."
-                className="w-full px-3 py-1.5 rounded-sm border border-border/60 bg-card text-foreground text-xs focus:ring-1 focus:ring-brand-text font-mono text-[11px]"
+                onChange={(url) => onUpdateSectionField("imageUrl", url)}
+                helperText="Upload to Supabase Storage or replace image"
               />
-            </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[11px] text-muted-foreground block">Image Alt Text (Accessibility)</label>
-              <input
-                type="text"
-                value={selectedSection.imageAlt || ""}
-                onChange={(e) => onUpdateSectionField("imageAlt", e.target.value)}
-                placeholder="Describe image content..."
-                className="w-full px-3 py-1.5 rounded-sm border border-border/60 bg-card text-foreground text-xs focus:ring-1 focus:ring-brand-text"
-              />
+              {(selectedSection.type === "hero" || selectedSection.secondaryImageUrl !== undefined) && (
+                <ImageUploader
+                  label="Secondary Accent Image"
+                  value={selectedSection.secondaryImageUrl || ""}
+                  onChange={(url) => onUpdateSectionField("secondaryImageUrl", url)}
+                  helperText="Upload secondary image to Supabase Storage"
+                />
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] text-muted-foreground block">Image Alt Text (Accessibility)</label>
+                <input
+                  type="text"
+                  value={selectedSection.imageAlt || ""}
+                  onChange={(e) => onUpdateSectionField("imageAlt", e.target.value)}
+                  placeholder="Describe image content..."
+                  className="w-full px-3 py-1.5 rounded-sm border border-border/60 bg-card text-foreground text-xs focus:ring-1 focus:ring-brand-text"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Actions & Buttons */}
           <div className="pt-3 border-t border-border/40 space-y-3">
@@ -316,7 +354,7 @@ export function EditorInspector({
       )}
 
       {/* Tab: Layout & Style */}
-      {inspectorTab === "style" && (
+      {activeTab === "style" && (
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {/* Visitor Visibility Setting */}
           <div className="p-3 bg-card/60 border border-border/40 rounded-sm flex items-center justify-between">
@@ -340,84 +378,91 @@ export function EditorInspector({
             </button>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
-              Section Background Tone
-            </label>
-            <select
-              value={selectedSection.style.background}
-              onChange={(e) =>
-                onUpdateSectionStyle({ background: e.target.value as WebsiteSection["style"]["background"] })
-              }
-              className="w-full px-3 py-2 rounded-sm border border-border/60 bg-card text-foreground text-xs"
-            >
-              <option value="default">Default Canvas Tone</option>
-              <option value="subtle">Subtle Elevated Surface</option>
-              <option value="contrast">High-Contrast Charcoal</option>
-              <option value="dark">Deep OLED Dark</option>
-              <option value="brand">Brand Accent Fill</option>
-            </select>
-          </div>
+          {(() => {
+            const sectionStyle = selectedSection.style || { background: "default", paddingY: "standard", align: "left" };
+            return (
+              <>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
+                    Section Background Tone
+                  </label>
+                  <select
+                    value={sectionStyle.background}
+                    onChange={(e) =>
+                      onUpdateSectionStyle({ background: e.target.value as WebsiteSection["style"]["background"] })
+                    }
+                    className="w-full px-3 py-2 rounded-sm border border-border/60 bg-card text-foreground text-xs"
+                  >
+                    <option value="default">Default Canvas Tone</option>
+                    <option value="subtle">Subtle Elevated Surface</option>
+                    <option value="contrast">High-Contrast Charcoal</option>
+                    <option value="dark">Deep OLED Dark</option>
+                    <option value="brand">Brand Accent Fill</option>
+                  </select>
+                </div>
 
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
-              Vertical Padding (Breathing Room)
-            </label>
-            <div className="grid grid-cols-2 gap-1.5">
-              {[
-                { id: "compact", label: "Compact (32px)" },
-                { id: "standard", label: "Standard (64px)" },
-                { id: "spacious", label: "Spacious (112px)" },
-                { id: "none", label: "Flush (0px)" },
-              ].map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() =>
-                    onUpdateSectionStyle({ paddingY: p.id as WebsiteSection["style"]["paddingY"] })
-                  }
-                  className={`p-2 rounded-sm border text-[11px] font-medium text-left cursor-pointer ${
-                    selectedSection.style.paddingY === p.id
-                      ? "border-brand-text bg-accent text-foreground font-semibold"
-                      : "border-border/40 bg-card text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
+                    Vertical Padding (Breathing Room)
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                      { id: "compact", label: "Compact (32px)" },
+                      { id: "standard", label: "Standard (64px)" },
+                      { id: "spacious", label: "Spacious (112px)" },
+                      { id: "none", label: "Flush (0px)" },
+                    ].map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() =>
+                          onUpdateSectionStyle({ paddingY: p.id as WebsiteSection["style"]["paddingY"] })
+                        }
+                        className={`p-2 rounded-sm border text-[11px] font-medium text-left cursor-pointer ${
+                          sectionStyle.paddingY === p.id
+                            ? "border-brand-text bg-accent text-foreground font-semibold"
+                            : "border-border/40 bg-card text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
-              Content Alignment
-            </label>
-            <div className="grid grid-cols-3 gap-1.5">
-              {[
-                { id: "left", label: "Left" },
-                { id: "center", label: "Center" },
-                { id: "right", label: "Right" },
-              ].map((al) => (
-                <button
-                  key={al.id}
-                  type="button"
-                  onClick={() => onUpdateSectionStyle({ align: al.id as WebsiteSection["style"]["align"] })}
-                  className={`p-2 rounded-sm border text-[11px] font-medium text-center cursor-pointer ${
-                    selectedSection.style.align === al.id
-                      ? "border-brand-text bg-accent text-foreground font-semibold"
-                      : "border-border/40 bg-card text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {al.label}
-                </button>
-              ))}
-            </div>
-          </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
+                    Content Alignment
+                  </label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[
+                      { id: "left", label: "Left" },
+                      { id: "center", label: "Center" },
+                      { id: "right", label: "Right" },
+                    ].map((al) => (
+                      <button
+                        key={al.id}
+                        type="button"
+                        onClick={() => onUpdateSectionStyle({ align: al.id as WebsiteSection["style"]["align"] })}
+                        className={`p-2 rounded-sm border text-[11px] font-medium text-center cursor-pointer ${
+                          sectionStyle.align === al.id
+                            ? "border-brand-text bg-accent text-foreground font-semibold"
+                            : "border-border/40 bg-card text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {al.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
 
       {/* Tab: Multi-Items Manager */}
-      {inspectorTab === "items" && (
+      {activeTab === "items" && (
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           <div className="flex items-center justify-between pb-2 border-b border-border/40">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -434,7 +479,7 @@ export function EditorInspector({
           </div>
 
           <div className="space-y-3">
-            {selectedSection.items.map((item, idx) => (
+            {(selectedSection.items || []).map((item, idx) => (
               <div key={item.id} className="p-3 rounded-sm border border-border/40 bg-card/60 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[10px] text-muted-foreground font-bold">Item 0{idx + 1}</span>
@@ -474,14 +519,33 @@ export function EditorInspector({
                       className="w-full px-2 py-1 rounded-xs border border-border/60 bg-background text-xs resize-none"
                     />
                   )}
-                  {item.imageUrl !== undefined && (
-                    <input
-                      type="text"
-                      value={item.imageUrl || ""}
-                      onChange={(e) => onUpdateItem(item.id, { imageUrl: e.target.value })}
-                      placeholder="Image URL"
-                      className="w-full px-2 py-1 rounded-xs border border-border/60 bg-background text-xs font-mono text-[10px]"
-                    />
+                  {(selectedSection.type === "gallery" || selectedSection.type === "case-studies" || item.imageUrl !== undefined) && (
+                    <div className="pt-1">
+                      <ImageUploader
+                        label="Card Item Image"
+                        value={item.imageUrl || ""}
+                        onChange={(url) => onUpdateItem(item.id, { imageUrl: url })}
+                        helperText="Upload item image to Supabase Storage"
+                      />
+                    </div>
+                  )}
+                  {selectedSection.type === "pricing" && (
+                    <div className="space-y-1 pt-1">
+                      <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
+                        Plan Features (One per line)
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={(item.features || []).join("\n")}
+                        onChange={(e) =>
+                          onUpdateItem(item.id, {
+                            features: e.target.value.split("\n").filter((f) => f.trim().length > 0),
+                          })
+                        }
+                        placeholder="1 Verified Business&#10;Up to 500 CRM Contacts&#10;Priority 24/7 SLA Support"
+                        className="w-full px-2 py-1 rounded-xs border border-border/60 bg-background text-xs font-mono text-[11px] resize-none"
+                      />
+                    </div>
                   )}
                   {item.badge !== undefined && (
                     <input

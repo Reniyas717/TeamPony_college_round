@@ -68,6 +68,20 @@ function websiteRpcError(
 }
 
 export class WebsiteService {
+  /** Return a published website by slug for its public visitor route. */
+  static async getPublishedWebsiteBySlug(slug: string): Promise<WebsiteRecord | null> {
+    const client = await (await import("@/lib/supabase/server")).createClient();
+    const { data, error } = await client
+      .from("websites")
+      .select("*")
+      .eq("slug", slug.trim().toLowerCase())
+      .eq("is_published", true)
+      .maybeSingle();
+
+    if (error) throw databaseError(`get published website: ${error.message}`);
+    return data as WebsiteRecord | null;
+  }
+
   /**
    * The dashboard and preview server components still pass their existing business ID
    * while their route files remain outside this scoped change. The ID is only a
