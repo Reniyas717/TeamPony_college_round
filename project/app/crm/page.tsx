@@ -1,14 +1,16 @@
-import * as React from "react";
+import type { Metadata } from "next";
+import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import { AuthService } from "@/services/auth.service";
 import CrmClient from "./crm-client";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "CRM | Nexus",
   description: "Manage your business contacts and pipeline.",
 };
 
-async function CrmContent() {
+export default async function CrmPage() {
+  await connection();
   const user = await AuthService.getCurrentUser();
 
   if (!user) {
@@ -16,18 +18,4 @@ async function CrmContent() {
   }
 
   return <CrmClient />;
-}
-
-export default function CrmPage() {
-  return (
-    <React.Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
-          <p className="text-sm font-semibold text-muted-foreground animate-pulse">Loading CRM Workspace...</p>
-        </div>
-      }
-    >
-      <CrmContent />
-    </React.Suspense>
-  );
 }
