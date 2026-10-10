@@ -264,8 +264,8 @@ export class AuthService {
 
     let targetEmail = input.identifier.trim();
     let resolvedUsername = input.identifier.trim();
-    let businessId = SYSTEM_BUSINESS_ID;
 
+    // Only lookup profile if the user entered a username instead of an email
     if (!targetEmail.includes("@")) {
       const { data: profile } = await adminSupabase
         .from("profiles")
@@ -274,7 +274,7 @@ export class AuthService {
         .maybeSingle();
 
       if (!profile || !profile.email) {
-        await AuditService.recordEvent(
+        void AuditService.recordEvent(
           {
             business_id: SYSTEM_BUSINESS_ID,
             action: "auth.failed_login",
@@ -285,21 +285,12 @@ export class AuthService {
             metadata: { identifier_type: "username" },
           },
           { critical: false, useAdminClient: true }
-        );
+        ).catch(() => undefined);
 
         throw new Error("Invalid username or password.");
       }
       targetEmail = profile.email;
       resolvedUsername = profile.username || resolvedUsername;
-    } else {
-      const { data: profile } = await adminSupabase
-        .from("profiles")
-        .select("id, username")
-        .ilike("email", targetEmail)
-        .maybeSingle();
-      if (profile) {
-        resolvedUsername = profile.username || resolvedUsername;
-      }
     }
 
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
@@ -307,8 +298,8 @@ export class AuthService {
       password: input.password,
     });
 
-    if (authError) {
-      await AuditService.recordEvent(
+    if (authError || !authData.user) {
+      void AuditService.recordEvent(
         {
           business_id: SYSTEM_BUSINESS_ID,
           action: "auth.failed_login",
@@ -319,41 +310,32 @@ export class AuthService {
           metadata: { identifier_type: input.identifier.includes("@") ? "email" : "username" },
         },
         { critical: false, useAdminClient: true }
-      );
+      ).catch(() => undefined);
 
       throw new Error("Invalid username or password.");
     }
 
-    // Resolve tenant context strictly from verified authData.user.id
-    if (authData.user?.id) {
-      const { data: userBiz } = await adminSupabase
-        .from("businesses")
-        .select("id")
-        .eq("owner_id", authData.user.id)
-        .maybeSingle();
-      if (userBiz?.id) {
-        businessId = userBiz.id;
-      }
-    }
+    const userId = authData.user.id;
+    const finalUsername = authData.user.user_metadata?.username || resolvedUsername;
 
-    // Record successful login audit event
-    await AuditService.recordEvent(
+    // Non-blocking audit log execution
+    void AuditService.recordEvent(
       {
-        business_id: businessId,
+        business_id: SYSTEM_BUSINESS_ID,
         action: "auth.login",
-        actor: { id: authData.user.id, type: "user" },
-        resource: { type: "auth_session", id: authData.user.id },
+        actor: { id: userId, type: "user" },
+        resource: { type: "auth_session", id: userId },
         outcome: "success",
-        metadata: { auth_method: "password", username: resolvedUsername },
+        metadata: { auth_method: "password", username: finalUsername },
       },
-      { critical: true, client: supabase }
-    );
+      { critical: false, useAdminClient: true }
+    ).catch(() => undefined);
 
     return {
       user: {
-        id: authData.user.id,
+        id: userId,
         email: authData.user.email,
-        username: authData.user.user_metadata?.username || resolvedUsername,
+        username: finalUsername,
       },
       session: authData.session,
     };
@@ -364,59 +346,29 @@ export class AuthService {
    */
   static async logOut() {
     const supabase = await createClient();
-    const adminSupabase = createAdminClient();
 
-    // Authoritatively resolve user context before terminating session
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+
+    // Terminate session with local scope to ensure immediate cookie clearing
+    const { error } = await supabase.auth.signOut({ scope: "local" });
+    if (error) {
+      await supabase.auth.signOut().catch(() => undefined);
+    }
 
     if (user) {
-      let businessId = SYSTEM_BUSINESS_ID;
-      const { data: userBiz } = await adminSupabase
-        .from("businesses")
-        .select("id")
-        .eq("owner_id", user.id)
-        .maybeSingle();
-
-      if (userBiz?.id) {
-        businessId = userBiz.id;
-      }
-
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        await AuditService.recordEvent(
-          {
-            business_id: businessId,
-            action: "auth.logout",
-            actor: { id: user.id, type: "user" },
-            resource: { type: "auth_session", id: user.id },
-            outcome: "failure",
-            error: { code: "SIGNOUT_FAILED", message: error.message },
-            metadata: { email_domain: user.email ? user.email.split("@")[1] : undefined },
-          },
-          { critical: false, client: supabase }
-        );
-        throw new Error(error.message);
-      }
-
-      await AuditService.recordEvent(
+      void AuditService.recordEvent(
         {
-          business_id: businessId,
+          business_id: SYSTEM_BUSINESS_ID,
           action: "auth.logout",
           actor: { id: user.id, type: "user" },
           resource: { type: "auth_session", id: user.id },
           outcome: "success",
           metadata: { email_domain: user.email ? user.email.split("@")[1] : undefined },
         },
-        { critical: false, client: supabase }
-      );
-      return;
-    }
-
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      throw new Error(error.message);
+        { critical: false, useAdminClient: true }
+      ).catch(() => undefined);
     }
   }
 

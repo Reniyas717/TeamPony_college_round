@@ -48,30 +48,50 @@ export default function DashboardLayoutClient({
     setLoggingOut(true);
     try {
       await fetch("/api/auth/session", { method: "POST" });
-      router.push("/login");
-      router.refresh();
     } catch {
-      setLoggingOut(false);
+      // Ignore network errors on logout to allow clean redirect
+    } finally {
+      window.location.href = "/login";
     }
   };
 
-  const navItems = [
-    { href: "/dashboard", label: "Overview", icon: Activity },
-    { href: "/dashboard/analytics", label: "Analytics & ML", icon: Chart21 },
-    { href: "/dashboard/intelligence", label: "Customer Journey", icon: TrendUp },
-    { href: "/dashboard/workflows", label: "AI Workflows", icon: Routing },
-    { href: "/dashboard/crm", label: "Intelligent CRM", icon: SecurityUser },
-    { href: "/dashboard/billing", label: "Billing & Plans", icon: CardIcon },
-    { href: "/dashboard/website", label: "Website Builder", icon: Global },
-    { href: "/dashboard/marketing", label: "Campaigns", icon: DirectSend },
-    { href: "/dashboard/webinars", label: "Webinars", icon: VideoPlay },
-    { href: "/dashboard/agent", label: "AI Business Agent", icon: Magicpen },
-    { href: "/dashboard/approvals", label: "Approval Queue", icon: TickCircle },
-    { href: "/dashboard/audit-logs", label: "Audit Logs", icon: ShieldSecurity },
+  const navGroups = [
+    {
+      label: "Workspace",
+      items: [
+        { href: "/dashboard", label: "Overview", icon: Activity },
+        { href: "/dashboard/crm", label: "Intelligent CRM", icon: SecurityUser },
+        { href: "/dashboard/billing", label: "Billing & Plans", icon: CardIcon },
+      ]
+    },
+    {
+      label: "Growth",
+      items: [
+        { href: "/dashboard/website", label: "Website Builder", icon: Global },
+        { href: "/dashboard/marketing", label: "Campaigns", icon: DirectSend },
+        { href: "/dashboard/webinars", label: "Webinars", icon: VideoPlay },
+        { href: "/dashboard/intelligence", label: "Customer Journey", icon: TrendUp },
+      ]
+    },
+    {
+      label: "Intelligence",
+      items: [
+        { href: "/dashboard/analytics", label: "Analytics & ML", icon: Chart21 },
+        { href: "/dashboard/agent", label: "AI Business Agent", icon: Magicpen },
+        { href: "/dashboard/workflows", label: "AI Workflows", icon: Routing },
+        { href: "/dashboard/approvals", label: "Approval Queue", icon: TickCircle },
+      ]
+    },
+    {
+      label: "System",
+      items: [
+        { href: "/dashboard/audit-logs", label: "Audit Logs", icon: ShieldSecurity },
+      ]
+    }
   ];
 
   // Derive current section label for breadcrumb
-  const currentItem = navItems.find((item) =>
+  const currentItem = navGroups.flatMap(g => g.items).find((item) =>
     item.href === "/dashboard"
       ? pathname === "/dashboard"
       : pathname.startsWith(item.href)
@@ -130,36 +150,45 @@ export default function DashboardLayoutClient({
 
 
         {/* Navigation Items (Distinct routes with instant loading feedback) */}
-        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
-          {navItems.map((item) => {
-            const IconComp = item.icon;
-            const isActive =
-              item.href === "/dashboard"
-                ? pathname === "/dashboard"
-                : pathname.startsWith(item.href);
+        <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-5">
+          {navGroups.map((group, groupIdx) => (
+            <div key={groupIdx} className="space-y-1">
+              {sidebarOpen && (
+                <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                  {group.label}
+                </p>
+              )}
+              {group.items.map((item) => {
+                const IconComp = item.icon;
+                const isActive =
+                  item.href === "/dashboard"
+                    ? pathname === "/dashboard"
+                    : pathname.startsWith(item.href);
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={handleNavigate}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-sm text-xs font-medium transition-colors cursor-pointer ${
-                  isActive
-                    ? "bg-accent text-foreground font-semibold shadow-xs"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                } ${!sidebarOpen ? "justify-center px-0" : ""}`}
-                title={item.label}
-              >
-                <IconComp
-                  size="18"
-                  className={isActive ? "text-brand" : "text-muted-foreground"}
-                />
-                {sidebarOpen && (
-                  <span className="truncate">{item.label}</span>
-                )}
-              </Link>
-            );
-          })}
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={handleNavigate}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-sm text-xs font-medium transition-colors cursor-pointer ${
+                      isActive
+                        ? "bg-accent text-foreground font-semibold shadow-xs"
+                        : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                    } ${!sidebarOpen ? "justify-center px-0" : ""}`}
+                    title={item.label}
+                  >
+                    <IconComp
+                      size="18"
+                      className={isActive ? "text-brand" : "text-muted-foreground"}
+                    />
+                    {sidebarOpen && (
+                      <span className="truncate">{item.label}</span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         {/* Sidebar Footer User Info & Sign Out (Permanently pinned at bottom) */}
