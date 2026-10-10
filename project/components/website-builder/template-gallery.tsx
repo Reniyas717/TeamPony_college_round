@@ -41,12 +41,27 @@ export function TemplateGallery({
   onStartAiAssist,
 }: TemplateGalleryProps) {
   const [previewTemplate, setPreviewTemplate] = React.useState<TemplateDefinition | null>(null);
+  const [selectedCategory, setSelectedCategory] = React.useState<string>("All");
+  const [searchQuery, setSearchQuery] = React.useState<string>("");
 
-  const templateList = [
+  const allTemplates = [
     TEMPLATES["editorial-luxury"],
     TEMPLATES["modern-saas"],
     TEMPLATES["creative-studio"],
   ];
+
+  const categories = ["All", "Architecture & Atelier", "Software & Technology", "Brutalism & Direction"];
+
+  const filteredTemplates = allTemplates.filter((tpl) => {
+    const matchesCategory = selectedCategory === "All" || tpl.category === selectedCategory;
+    const matchesSearch =
+      !searchQuery.trim() ||
+      tpl.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tpl.tagline.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tpl.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tpl.category.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
 
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-12">
@@ -245,95 +260,132 @@ export function TemplateGallery({
 
       {/* 4. Substantial Visual Template Gallery */}
       <div id="templates-section" className="space-y-6 pt-6">
-        <div>
-          <span className="text-xs font-mono font-semibold uppercase text-brand-text tracking-wider">
-            Template Architecture
-          </span>
-          <h2 className="font-display text-2xl font-bold tracking-tight text-foreground mt-0.5">
-            Three Art-Directed Starting Points
-          </h2>
-          <p className="text-xs sm:text-sm text-muted-foreground max-w-2xl mt-1">
-            Each template features distinct layout proportions, typography hierarchy, imagery, and section sequences.
-          </p>
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <span className="text-xs font-mono font-semibold uppercase text-brand-text tracking-wider">
+              Template Architecture
+            </span>
+            <h2 className="font-display text-2xl font-bold tracking-tight text-foreground mt-0.5">
+              Dynamic Art-Directed Starting Points
+            </h2>
+            <p className="text-xs sm:text-sm text-muted-foreground max-w-2xl mt-1">
+              Select, filter, or customize any template with custom assets stored on Supabase Storage.
+            </p>
+          </div>
+
+          {/* Search input */}
+          <div className="w-full md:w-64">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search templates or styles..."
+              className="w-full px-3 py-1.5 rounded-sm border border-border/60 bg-card text-foreground text-xs focus:ring-1 focus:ring-brand-text"
+            />
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {templateList.map((tpl) => (
-            <div
-              key={tpl.id}
-              className="bg-card/70 border border-border/50 rounded-sm overflow-hidden flex flex-col justify-between group shadow-sm hover:shadow-md transition-all duration-200"
+        {/* Dynamic Category Filter Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap cursor-pointer transition-colors ${
+                selectedCategory === cat
+                  ? "bg-brand text-brand-foreground shadow-xs"
+                  : "bg-muted/60 text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
             >
-              {/* Preview Image with Hover Overlay */}
-              <div className="relative h-64 sm:h-72 w-full overflow-hidden bg-muted">
-                <img
-                  src={tpl.previewImage}
-                  alt={tpl.name}
-                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-                <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-5 text-white">
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-300">
-                    {tpl.category}
-                  </span>
-                  <h3 className="font-display text-xl font-bold">{tpl.name}</h3>
-                  <p className="text-xs text-zinc-300 italic mt-0.5">{tpl.tagline}</p>
+              {cat}
+            </button>
+          ))}
+        </div>
+
+        {filteredTemplates.length === 0 ? (
+          <div className="p-8 text-center border border-dashed rounded-sm text-muted-foreground text-xs">
+            No templates match your search &ldquo;{searchQuery}&rdquo;. Try another filter or create a blank website.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {filteredTemplates.map((tpl) => (
+              <div
+                key={tpl.id}
+                className="bg-card/70 border border-border/50 rounded-sm overflow-hidden flex flex-col justify-between group shadow-sm hover:shadow-md transition-all duration-200"
+              >
+                {/* Preview Image with Hover Overlay */}
+                <div className="relative h-64 sm:h-72 w-full overflow-hidden bg-muted">
+                  <img
+                    src={tpl.previewImage}
+                    alt={tpl.name}
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-5 text-white">
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-300">
+                      {tpl.category}
+                    </span>
+                    <h3 className="font-display text-xl font-bold">{tpl.name}</h3>
+                    <p className="text-xs text-zinc-300 italic mt-0.5">{tpl.tagline}</p>
+                  </div>
                 </div>
-              </div>
 
-              {/* Template Body */}
-              <div className="p-6 space-y-4 flex-1 flex flex-col justify-between">
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {tpl.description}
-                </p>
+                {/* Template Body */}
+                <div className="p-6 space-y-4 flex-1 flex flex-col justify-between">
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {tpl.description}
+                  </p>
 
-                <div className="space-y-2 pt-2 border-t border-border/30">
-                  <div className="flex items-center justify-between text-[11px] font-mono text-muted-foreground">
-                    <span>Accent Tone</span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-3 h-3 rounded-full" style={{ backgroundColor: tpl.accentColor }} />
-                      <span>{tpl.accentColor}</span>
+                  <div className="space-y-2 pt-2 border-t border-border/30">
+                    <div className="flex items-center justify-between text-[11px] font-mono text-muted-foreground">
+                      <span>Accent Tone</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: tpl.accentColor }} />
+                        <span>{tpl.accentColor}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] font-mono text-muted-foreground">
+                      <span>Included Sections</span>
+                      <span>{(tpl.initialDocument.sections || []).length} Sections</span>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-[11px] font-mono text-muted-foreground">
-                    <span>Included Sections</span>
-                    <span>{(tpl.initialDocument.sections || []).length} Sections</span>
+                  {/* Actions */}
+                  <div className="pt-2 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewTemplate(tpl)}
+                      className="py-2 px-3 rounded-sm border border-border bg-card hover:bg-muted text-foreground text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                    >
+                      <Eye size="14" />
+                      <span>Preview</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={Boolean(creatingTemplate)}
+                      onClick={() => onSelectTemplate(tpl.id)}
+                      className="py-2 px-3 rounded-sm bg-brand text-brand-foreground hover:opacity-90 disabled:opacity-50 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed shadow-xs transition-opacity"
+                    >
+                      {creatingTemplate === tpl.id ? (
+                        <>
+                          <Refresh size="14" className="animate-spin" />
+                          <span>Creating...</span>
+                        </>
+                      ) : (
+                        <>
+                          <TickCircle size="14" />
+                          <span>Use Template</span>
+                        </>
+                      )}
+                    </button>
                   </div>
                 </div>
-
-                {/* Actions */}
-                <div className="pt-2 grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPreviewTemplate(tpl)}
-                    className="py-2 px-3 rounded-sm border border-border bg-card hover:bg-muted text-foreground text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-colors"
-                  >
-                    <Eye size="14" />
-                    <span>Preview</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={Boolean(creatingTemplate)}
-                    onClick={() => onSelectTemplate(tpl.id)}
-                    className="py-2 px-3 rounded-sm bg-brand text-brand-foreground hover:opacity-90 disabled:opacity-50 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed shadow-xs transition-opacity"
-                  >
-                    {creatingTemplate === tpl.id ? (
-                      <>
-                        <Refresh size="14" className="animate-spin" />
-                        <span>Creating...</span>
-                      </>
-                    ) : (
-                      <>
-                        <TickCircle size="14" />
-                        <span>Use Template</span>
-                      </>
-                    )}
-                  </button>
-                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 5. Fullscreen Template Inspection Modal */}

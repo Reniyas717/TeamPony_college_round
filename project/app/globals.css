@@ -314,3 +314,72 @@
   scrollbar-width: none;
 }
 
+/* ==========================================================================
+   PRINT SPECIFICATION & REPORTING STYLES
+   Ensures dashboards, invoices, and analytics produce crisp, clean,
+   high-contrast executive reports without UI chrome or page-break splits.
+   ========================================================================== */
+@media print {
+  /* Hide UI shells, navigation, sidebars, interactive controls, and videos */
+  aside,
+  header,
+  nav,
+  button,
+  [role="switch"],
+  .no-print,
+  body::after {
+    display: none !important;
+  }
+
+  /* Reset layout constraints so the document flows naturally on paper */
+  html,
+  body,
+  main,
+  #root,
+  .overflow-hidden,
+  .overflow-y-auto {
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+    background: #ffffff !important;
+    color: #111827 !important;
+  }
+
+  /* Expand print report container */
+  .max-w-7xl,
+  .max-w-6xl {
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Ensure card backgrounds and borders print cleanly with background graphics */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .bg-card,
+  .bg-card\/70,
+  .bg-card\/80,
+  .bg-card\/90 {
+    background-color: #fafafa !important;
+    border-color: #e5e7eb !important;
+  }
+
+  /* Prevent awkward page cuts in charts and cards */
+  .grid > *,
+  section,
+  .p-5,
+  .rounded-xl,
+  .rounded-lg {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Ensure SVGs print crisp */
+  svg {
+    max-width: 100% !important;
+  }
+}
+

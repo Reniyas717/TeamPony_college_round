@@ -48,13 +48,18 @@ export default async function WebsitePreviewPage({ params }: PreviewPageProps) {
   };
   const sections = document.sections || [];
 
+  const bodyFontClass =
+    theme.fontBody === "serif"
+      ? "font-serif"
+      : "font-sans";
+
   return (
     <div
       style={{
         backgroundColor: theme.canvasBg || "#FDFBF7",
         color: theme.textPrimary || "#1F1C18",
       }}
-      className="min-h-screen flex flex-col font-sans selection:bg-brand selection:text-brand-foreground"
+      className={`min-h-screen flex flex-col ${bodyFontClass} selection:bg-brand selection:text-brand-foreground`}
     >
       {/* Visitor-facing Render of all active sections */}
       <main className="flex-1">

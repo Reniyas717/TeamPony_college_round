@@ -17,6 +17,7 @@ import {
   ShieldSecurity,
   Routing,
   TrendUp,
+  Chart21,
 } from "iconsax-react";
 
 interface DashboardLayoutClientProps {
@@ -38,22 +39,9 @@ export default function DashboardLayoutClient({
   const [loggingOut, setLoggingOut] = React.useState(false);
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
-  const [isNavigating, startTransition] = React.useTransition();
-  const [navTarget, setNavTarget] = React.useState<string | null>(null);
 
-  // Active navigation target is derived purely from transition state and current pathname
-  const activeNavTarget = isNavigating && navTarget !== pathname ? navTarget : null;
-
-  const handleNavigate = (href: string) => {
-    if (pathname === href) {
-      setMobileMenuOpen(false);
-      return;
-    }
-    setNavTarget(href);
+  const handleNavigate = () => {
     setMobileMenuOpen(false);
-    startTransition(() => {
-      router.push(href);
-    });
   };
 
   const handleLogout = async () => {
@@ -69,6 +57,7 @@ export default function DashboardLayoutClient({
 
   const navItems = [
     { href: "/dashboard", label: "Overview", icon: Activity },
+    { href: "/dashboard/analytics", label: "Analytics & ML", icon: Chart21 },
     { href: "/dashboard/intelligence", label: "Customer Journey", icon: TrendUp },
     { href: "/dashboard/workflows", label: "AI Workflows", icon: Routing },
     { href: "/dashboard/crm", label: "Intelligent CRM", icon: SecurityUser },
@@ -91,12 +80,6 @@ export default function DashboardLayoutClient({
 
   return (
     <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">
-      {/* Top Global Navigation Loading Indicator */}
-      {Boolean(activeNavTarget) && (
-        <div className="fixed top-0 left-0 right-0 h-[2px] z-100 bg-brand/20 overflow-hidden">
-          <div className="h-full bg-brand animate-pulse w-full origin-left" />
-        </div>
-      )}
 
       {/* Mobile Drawer Backdrop */}
       {mobileMenuOpen && (
@@ -154,34 +137,25 @@ export default function DashboardLayoutClient({
               item.href === "/dashboard"
                 ? pathname === "/dashboard"
                 : pathname.startsWith(item.href);
-            const isTarget = activeNavTarget === item.href;
 
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleNavigate(item.href);
-                }}
+                onClick={handleNavigate}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-sm text-xs font-medium transition-colors cursor-pointer ${
                   isActive
                     ? "bg-accent text-foreground font-semibold shadow-xs"
                     : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                } ${isTarget ? "bg-accent/70 opacity-80" : ""} ${!sidebarOpen ? "justify-center px-0" : ""}`}
+                } ${!sidebarOpen ? "justify-center px-0" : ""}`}
                 title={item.label}
               >
                 <IconComp
                   size="18"
-                  className={isActive || isTarget ? "text-brand-text" : "text-muted-foreground"}
+                  className={isActive ? "text-brand" : "text-muted-foreground"}
                 />
                 {sidebarOpen && (
-                  <div className="flex-1 flex items-center justify-between min-w-0">
-                    <span className="truncate">{item.label}</span>
-                    {isTarget && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-brand-text animate-ping shrink-0" />
-                    )}
-                  </div>
+                  <span className="truncate">{item.label}</span>
                 )}
               </Link>
             );

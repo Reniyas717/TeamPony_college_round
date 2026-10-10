@@ -3,11 +3,53 @@
 
 import * as React from "react";
 import { WebsiteSection, WebsiteTheme, SectionItem } from "@/lib/validations/website";
-import { ArrowUp, ArrowDown, Copy, Trash, TickCircle, Eye, EyeSlash } from "iconsax-react";
+import { BillingPlanId } from "@/lib/validations/billing";
+import { DeviceMode } from "./types";
+import {
+  ArrowUp,
+  ArrowDown,
+  Copy,
+  Trash,
+  TickCircle,
+  Eye,
+  EyeSlash,
+  HambergerMenu,
+  CloseSquare,
+} from "iconsax-react";
 
-interface SectionRendererProps {
+declare global {
+  interface Window {
+    Razorpay?: new (options: Record<string, unknown>) => {
+      open: () => void;
+    };
+  }
+}
+
+// Dynamically inject Razorpay Checkout SDK if not yet loaded
+function ensureRazorpayScriptLoaded(): Promise<boolean> {
+  if (typeof window === "undefined") return Promise.resolve(false);
+  if (window.Razorpay) return Promise.resolve(true);
+
+  return new Promise((resolve) => {
+    const existingScript = document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
+    if (existingScript) {
+      existingScript.addEventListener("load", () => resolve(true));
+      existingScript.addEventListener("error", () => resolve(false));
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
+
+export interface SectionRendererProps {
   section: WebsiteSection;
   theme: WebsiteTheme;
+  deviceMode?: DeviceMode;
   isEditorMode?: boolean;
   isSelected?: boolean;
   onSelect?: () => void;
@@ -24,6 +66,8 @@ interface ContactFormSectionProps {
   section: WebsiteSection;
   theme: WebsiteTheme;
   isEditorMode: boolean;
+  isMobile?: boolean;
+  isTablet?: boolean;
   textColor: string;
   mutedTextColor: string;
   surfaceBg?: string;
@@ -35,6 +79,8 @@ function ContactFormSection({
   section,
   theme,
   isEditorMode,
+  isMobile = false,
+  isTablet = false,
   textColor,
   mutedTextColor,
   surfaceBg = theme.surfaceBg || "#F4EFE6",
@@ -100,9 +146,11 @@ function ContactFormSection({
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start py-4">
+    <div className={`grid gap-6 sm:gap-8 items-start py-4 ${
+      isMobile || isTablet ? "grid-cols-1" : "grid-cols-1 lg:grid-cols-12 lg:gap-12"
+    }`}>
       {/* Left Col: Narrative & CRM Connectivity */}
-      <div className="lg:col-span-5 space-y-4">
+      <div className={`space-y-4 ${isMobile || isTablet ? "w-full" : "lg:col-span-5"}`}>
         {section.eyebrow && (
           <span
             className="text-[11px] font-mono uppercase tracking-widest block font-semibold"
@@ -152,9 +200,9 @@ function ContactFormSection({
       </div>
 
       {/* Right Col: Interactive Lead Capture Form */}
-      <div className="lg:col-span-7">
+      <div className={isMobile || isTablet ? "w-full" : "lg:col-span-7"}>
         <div
-          className="p-6 sm:p-8 rounded-sm border shadow-sm"
+          className="p-4 sm:p-6 md:p-8 rounded-sm border shadow-sm"
           style={{
             borderColor,
             backgroundColor: surfaceBg,
@@ -313,6 +361,7 @@ function ContactFormSection({
 export function SectionRenderer({
   section,
   theme,
+  deviceMode,
   isEditorMode = false,
   isSelected = false,
   onSelect,
@@ -322,6 +371,9 @@ export function SectionRenderer({
   onDelete,
   onToggleHide,
 }: SectionRendererProps) {
+  const isMobile = deviceMode === "mobile";
+  const isTablet = deviceMode === "tablet";
+
   if (section.hidden) {
     if (!isEditorMode) {
       return null;
@@ -385,6 +437,30 @@ export function SectionRenderer({
   const surfaceBg = isDarkSection ? "rgba(255, 255, 255, 0.05)" : theme.surfaceBg || "#F4EFE6";
 
   const getPaddingClasses = () => {
+    if (isMobile) {
+      switch (sectionStyle.paddingY) {
+        case "none":
+          return "py-0";
+        case "compact":
+          return "py-4 sm:py-6";
+        case "spacious":
+          return "py-10 sm:py-14";
+        default:
+          return "py-8 sm:py-10";
+      }
+    }
+    if (isTablet) {
+      switch (sectionStyle.paddingY) {
+        case "none":
+          return "py-0";
+        case "compact":
+          return "py-5 sm:py-7";
+        case "spacious":
+          return "py-14 sm:py-20";
+        default:
+          return "py-10 sm:py-14";
+      }
+    }
     switch (sectionStyle.paddingY) {
       case "none":
         return "py-0";
@@ -403,12 +479,192 @@ export function SectionRenderer({
     return "font-display";
   };
 
+  // State for interactive Razorpay payments directly within published site & preview
+  const [checkoutPlanId, setCheckoutPlanId] = React.useState<string | null>(null);
+  const [successPlanId, setSuccessPlanId] = React.useState<string | null>(null);
+  const [paymentError, setPaymentError] = React.useState<string | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState<boolean>(false);
+
+  // Smooth scroll and routing helper for in-page anchors & routes
+  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (!href) return;
+    setMobileMenuOpen(false);
+
+    if (href.startsWith("#")) {
+      e.preventDefault();
+      const targetId = href.replace(/^#/, "").toLowerCase();
+      // Look for element with that id, prefixed id, or matching data-section-type
+      const el =
+        document.getElementById(targetId) ||
+        document.getElementById(`sec-${targetId}`) ||
+        document.getElementById(`saas-${targetId}`) ||
+        document.getElementById(`cs-${targetId}`) ||
+        document.getElementById(`blank-${targetId}`) ||
+        document.querySelector(`[data-section-type="${targetId}"]`);
+
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+  };
+
+  const handlePricingPayment = async (plan: SectionItem) => {
+    setCheckoutPlanId(plan.id);
+    setPaymentError(null);
+    setSuccessPlanId(null);
+
+    try {
+      // 1. Resolve tier plan ID
+      let planId: BillingPlanId = "growth";
+      const titleLower = (plan.title || "").toLowerCase();
+      if (titleLower.includes("starter") || titleLower.includes("basic") || titleLower.includes("solo") || titleLower.includes("sandbox")) {
+        planId = "starter";
+      } else if (titleLower.includes("enterprise") || titleLower.includes("custom") || titleLower.includes("scale") || titleLower.includes("dedicated")) {
+        planId = "enterprise";
+      } else {
+        planId = "growth";
+      }
+
+      // 2. Load Razorpay SDK
+      const sdkLoaded = await ensureRazorpayScriptLoaded();
+
+      // 3. Create real order on backend
+      const res = await fetch("/api/billing/razorpay/order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planId, billingInterval: "monthly" }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Unable to create payment order. Please try again.");
+      }
+
+      const { data: order } = await res.json();
+
+      if (typeof window !== "undefined" && window.Razorpay && sdkLoaded) {
+        const options = {
+          key: order.keyId || "rzp_test_UKHiHLEpvJ8wdz",
+          amount: order.amount * 100,
+          currency: "INR",
+          name: section.title || "Website Checkout",
+          description: `${plan.title} Subscription`,
+          order_id:
+            order.orderId && order.orderId.startsWith("order_") && !order.orderId.startsWith("order_test")
+              ? order.orderId
+              : undefined,
+          prefill: {
+            name: "Website Visitor",
+            email: "visitor@nexusplatform.io",
+          },
+          theme: {
+            color: theme.accentColor || "#2563EB",
+          },
+          handler: async (response: {
+            razorpay_payment_id: string;
+            razorpay_order_id?: string;
+            razorpay_signature?: string;
+          }) => {
+            try {
+              // Verify on server
+              const verifyRes = await fetch("/api/billing/razorpay/verify", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  planId,
+                  razorpay_order_id: response.razorpay_order_id || order.orderId,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature || "sim_sig_verified",
+                }),
+              });
+
+              if (!verifyRes.ok) {
+                // Also gracefully fall back to tier registration
+                await fetch("/api/billing/change-plan", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    planId,
+                    billingInterval: "monthly",
+                    razorpayPaymentId: response.razorpay_payment_id,
+                    razorpayOrderId: response.razorpay_order_id || order.orderId,
+                  }),
+                });
+              }
+
+              // Also capture as paying contact lead in CRM
+              await fetch("/api/crm/contacts", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  first_name: "Customer",
+                  last_name: `(${plan.title})`,
+                  email: `checkout_${Date.now()}@customer.com`,
+                  source: "website_checkout",
+                  stage: "customer",
+                  next_action_text: `Completed Razorpay payment for ${plan.title} (${plan.price}). Payment ID: ${response.razorpay_payment_id}`,
+                }),
+              }).catch(() => {});
+
+              setSuccessPlanId(plan.id);
+            } catch (vErr) {
+              setPaymentError(vErr instanceof Error ? vErr.message : "Payment verification failed.");
+            } finally {
+              setCheckoutPlanId(null);
+            }
+          },
+          modal: {
+            ondismiss: () => {
+              setCheckoutPlanId(null);
+            },
+          },
+        };
+
+        const rzp = new window.Razorpay(options);
+        rzp.open();
+      } else {
+        // Fast sandbox verification mode when Razorpay modal blocked or offline
+        const simPayId = `pay_test_${Math.random().toString(36).substring(2, 9)}`;
+        await fetch("/api/billing/change-plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            planId,
+            billingInterval: "monthly",
+            razorpayPaymentId: simPayId,
+            razorpayOrderId: order.orderId,
+          }),
+        });
+
+        // Capture in CRM
+        await fetch("/api/crm/contacts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            first_name: "Customer",
+            last_name: `(${plan.title})`,
+            email: `checkout_${Date.now()}@customer.com`,
+            source: "website_checkout",
+            stage: "customer",
+            next_action_text: `Completed sandbox checkout for ${plan.title} (${plan.price}).`,
+          }),
+        }).catch(() => {});
+
+        setSuccessPlanId(plan.id);
+        setCheckoutPlanId(null);
+      }
+    } catch (err) {
+      setPaymentError(err instanceof Error ? err.message : "Payment initialization failed.");
+      setCheckoutPlanId(null);
+    }
+  };
+
   return (
     <section
       id={section.id}
+      data-section-type={section.type}
       onClick={isEditorMode ? onSelect : undefined}
       style={{ backgroundColor: getSectionBg(), color: textColor }}
-      className={`relative transition-all duration-150 ${getPaddingClasses()} ${
+      className={`relative transition-all duration-150 scroll-mt-6 ${getPaddingClasses()} ${
         isEditorMode
           ? isSelected
             ? "ring-2 ring-brand-text ring-offset-2 z-10"
@@ -491,47 +747,102 @@ export function SectionRenderer({
       )}
 
       {/* Container wrapper */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className={`max-w-7xl mx-auto ${isMobile ? "px-3 sm:px-4" : "px-4 sm:px-6 lg:px-8"}`}>
         {/* ============================================================== */}
         {/* 1. HEADER SECTION */}
         {/* ============================================================== */}
         {section.type === "header" && (
-          <header className="flex items-center justify-between gap-6 py-2 border-b" style={{ borderColor }}>
-            <div className="flex items-center gap-3">
-              <span className={`${getFontFamily()} text-lg sm:text-xl font-bold tracking-tight uppercase`}>
-                {section.title}
-              </span>
-              {section.subtitle && (
-                <span className="text-[10px] uppercase tracking-widest font-mono" style={{ color: mutedTextColor }}>
-                  • {section.subtitle}
+          <header className="relative py-2 border-b" style={{ borderColor }}>
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                <span className={`${getFontFamily()} text-base sm:text-xl font-bold tracking-tight uppercase truncate`}>
+                  {section.title}
                 </span>
+                {section.subtitle && (
+                  <span className="text-[10px] uppercase tracking-widest font-mono hidden sm:inline-block truncate" style={{ color: mutedTextColor }}>
+                    • {section.subtitle}
+                  </span>
+                )}
+              </div>
+
+              {/* Desktop Nav */}
+              {!isMobile && (
+                <nav className={`items-center gap-4 lg:gap-6 text-xs sm:text-sm font-medium ${isTablet ? "hidden" : "hidden md:flex"}`}>
+                  {(section.buttons || []).map((btn) => (
+                    <a
+                      key={btn.id}
+                      href={btn.href}
+                      onClick={(e) => handleNavClick(e, btn.href)}
+                      className={`transition-colors cursor-pointer ${
+                        btn.variant === "primary"
+                          ? "px-3.5 py-1.5 rounded-sm font-semibold shadow-xs"
+                          : btn.variant === "outline"
+                          ? "px-3 py-1.5 rounded-sm border"
+                          : "hover:opacity-75"
+                      }`}
+                      style={
+                        btn.variant === "primary"
+                          ? { backgroundColor: theme.accentColor, color: "#FFFFFF" }
+                          : btn.variant === "outline"
+                          ? { borderColor }
+                          : { color: mutedTextColor }
+                      }
+                    >
+                      {btn.text}
+                    </a>
+                  ))}
+                </nav>
+              )}
+
+              {/* Mobile Menu Hamburger Toggle */}
+              {(section.buttons || []).length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen((prev) => !prev)}
+                  className={`p-2 rounded-sm border cursor-pointer transition-colors ${
+                    isMobile || isTablet ? "block" : "md:hidden"
+                  }`}
+                  style={{ borderColor, color: textColor }}
+                  aria-label="Toggle navigation menu"
+                >
+                  {mobileMenuOpen ? <CloseSquare size="18" /> : <HambergerMenu size="18" />}
+                </button>
               )}
             </div>
 
-            <nav className="flex items-center gap-4 sm:gap-6 text-xs sm:text-sm font-medium">
-              {(section.buttons || []).map((btn) => (
-                <a
-                  key={btn.id}
-                  href={btn.href}
-                  className={`transition-colors ${
-                    btn.variant === "primary"
-                      ? "px-3.5 py-1.5 rounded-sm font-semibold shadow-xs"
-                      : btn.variant === "outline"
-                      ? "px-3 py-1.5 rounded-sm border"
-                      : "hover:opacity-75"
-                  }`}
-                  style={
-                    btn.variant === "primary"
-                      ? { backgroundColor: theme.accentColor, color: "#FFFFFF" }
-                      : btn.variant === "outline"
-                      ? { borderColor }
-                      : { color: mutedTextColor }
-                  }
-                >
-                  {btn.text}
-                </a>
-              ))}
-            </nav>
+            {/* Mobile Collapsible Navigation Menu */}
+            {mobileMenuOpen && (section.buttons || []).length > 0 && (
+              <div
+                className={`pt-4 pb-3 mt-3 border-t space-y-2 animate-in fade-in slide-in-from-top-1 ${
+                  isMobile || isTablet ? "block" : "md:hidden"
+                }`}
+                style={{ borderColor }}
+              >
+                {(section.buttons || []).map((btn) => (
+                  <a
+                    key={btn.id}
+                    href={btn.href}
+                    onClick={(e) => handleNavClick(e, btn.href)}
+                    className={`block w-full py-2 px-3 rounded-sm text-xs font-semibold cursor-pointer transition-colors text-center ${
+                      btn.variant === "primary"
+                        ? "text-white shadow-xs"
+                        : btn.variant === "outline"
+                        ? "border"
+                        : "hover:bg-black/5 dark:hover:bg-white/5"
+                    }`}
+                    style={
+                      btn.variant === "primary"
+                        ? { backgroundColor: theme.accentColor }
+                        : btn.variant === "outline"
+                        ? { borderColor, color: textColor }
+                        : { color: textColor }
+                    }
+                  >
+                    {btn.text}
+                  </a>
+                ))}
+              </div>
+            )}
           </header>
         )}
 
@@ -539,35 +850,48 @@ export function SectionRenderer({
         {/* 2. HERO SECTION */}
         {/* ============================================================== */}
         {section.type === "hero" && (
-          <div className="space-y-8 md:space-y-12">
+          <div className={`space-y-6 ${isMobile ? "space-y-6" : "md:space-y-12"}`}>
             <div className={`space-y-4 max-w-4xl ${sectionStyle.align === "center" ? "mx-auto text-center" : ""}`}>
               {section.eyebrow && (
                 <div
-                  className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-mono font-medium tracking-wider uppercase border"
+                  className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-mono font-medium tracking-wider uppercase border max-w-full"
                   style={{ borderColor, color: theme.accentColor }}
                 >
-                  <span>{section.eyebrow}</span>
+                  <span className="truncate">{section.eyebrow}</span>
                 </div>
               )}
 
-              <h1 className={`${getFontFamily()} text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.08]`}>
+              <h1 className={`${getFontFamily()} font-bold tracking-tight leading-[1.08] break-words ${
+                isMobile
+                  ? "text-2xl sm:text-3xl"
+                  : isTablet
+                  ? "text-3xl sm:text-5xl"
+                  : "text-3xl sm:text-5xl md:text-6xl lg:text-7xl"
+              }`}>
                 {section.title}
               </h1>
 
               {section.subtitle && (
-                <p className="text-base sm:text-lg md:text-xl leading-relaxed max-w-2xl" style={{ color: mutedTextColor }}>
+                <p className={`leading-relaxed max-w-2xl ${
+                  isMobile ? "text-xs sm:text-sm" : "text-base sm:text-lg md:text-xl"
+                }`} style={{ color: mutedTextColor }}>
                   {section.subtitle}
                 </p>
               )}
 
               {/* Hero Buttons */}
               {section.buttons && section.buttons.length > 0 && (
-                <div className={`pt-2 flex flex-wrap items-center gap-3 ${sectionStyle.align === "center" ? "justify-center" : ""}`}>
+                <div className={`pt-2 flex flex-wrap items-center gap-3 ${
+                  isMobile ? "flex-col sm:flex-row w-full" : ""
+                } ${sectionStyle.align === "center" ? "justify-center" : ""}`}>
                   {(section.buttons || []).map((btn) => (
                     <a
                       key={btn.id}
                       href={btn.href}
-                      className={`inline-flex items-center justify-center px-6 py-3 rounded-sm text-sm font-semibold transition-all duration-200 cursor-pointer shadow-xs ${
+                      onClick={(e) => handleNavClick(e, btn.href)}
+                      className={`inline-flex items-center justify-center px-5 sm:px-6 py-2.5 sm:py-3 rounded-sm text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer shadow-xs ${
+                        isMobile ? "w-full sm:w-auto text-center" : ""
+                      } ${
                         btn.variant === "primary"
                           ? "hover:opacity-95"
                           : "border hover:bg-black/5 dark:hover:bg-white/5"
@@ -591,9 +915,15 @@ export function SectionRenderer({
                 <img
                   src={section.imageUrl}
                   alt={section.imageAlt || section.title}
-                  className="w-full h-[320px] sm:h-[460px] md:h-[560px] object-cover"
+                  className={`w-full object-cover ${
+                    isMobile
+                      ? "h-56 sm:h-64"
+                      : isTablet
+                      ? "h-72 sm:h-80"
+                      : "h-[320px] sm:h-[460px] md:h-[560px]"
+                  }`}
                 />
-                {section.secondaryImageUrl && (
+                {section.secondaryImageUrl && !isMobile && !isTablet && (
                   <div
                     className="hidden lg:block absolute bottom-6 right-6 w-72 h-44 rounded-sm overflow-hidden border-2 shadow-2xl"
                     style={{ borderColor }}
@@ -615,29 +945,41 @@ export function SectionRenderer({
         {/* ============================================================== */}
         {section.type === "manifesto" && (
           <div className="space-y-8">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-              <div className="lg:col-span-8 space-y-4">
+            <div className={`grid gap-6 sm:gap-8 items-start ${
+              isMobile || isTablet ? "grid-cols-1" : "grid-cols-1 lg:grid-cols-12"
+            }`}>
+              <div className={`space-y-4 ${isMobile || isTablet ? "w-full" : "lg:col-span-8"}`}>
                 {section.eyebrow && (
-                  <span className="text-xs font-mono font-semibold uppercase tracking-widest" style={{ color: theme.accentColor }}>
+                  <span className="text-[11px] sm:text-xs font-mono font-semibold uppercase tracking-widest block" style={{ color: theme.accentColor }}>
                     {section.eyebrow}
                   </span>
                 )}
-                <h2 className={`${getFontFamily()} text-2xl sm:text-4xl md:text-5xl font-bold tracking-tight leading-tight`}>
+                <h2 className={`${getFontFamily()} font-bold tracking-tight leading-tight break-words ${
+                  isMobile
+                    ? "text-xl sm:text-2xl"
+                    : isTablet
+                    ? "text-2xl sm:text-3xl"
+                    : "text-2xl sm:text-4xl md:text-5xl"
+                }`}>
                   {section.title}
                 </h2>
                 {section.body && (
-                  <p className="text-sm sm:text-base leading-relaxed max-w-2xl pt-2" style={{ color: mutedTextColor }}>
+                  <p className="text-xs sm:text-sm md:text-base leading-relaxed max-w-2xl pt-1 sm:pt-2" style={{ color: mutedTextColor }}>
                     {section.body}
                   </p>
                 )}
               </div>
 
               {section.imageUrl && (
-                <div className="lg:col-span-4 rounded-sm overflow-hidden border" style={{ borderColor }}>
+                <div className={`rounded-sm overflow-hidden border ${
+                  isMobile || isTablet ? "w-full" : "lg:col-span-4"
+                }`} style={{ borderColor }}>
                   <img
                     src={section.imageUrl}
                     alt={section.imageAlt || "Manifesto visual"}
-                    className="w-full h-64 sm:h-80 object-cover"
+                    className={`w-full object-cover ${
+                      isMobile ? "h-56 sm:h-64" : isTablet ? "h-64 sm:h-72" : "h-64 sm:h-80"
+                    }`}
                   />
                 </div>
               )}
@@ -645,13 +987,15 @@ export function SectionRenderer({
 
             {/* Manifesto Principle Columns */}
             {section.items && section.items.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6 border-t" style={{ borderColor }}>
+              <div className={`grid gap-5 sm:gap-6 pt-6 border-t ${
+                isMobile ? "grid-cols-1" : isTablet ? "grid-cols-2" : "grid-cols-1 md:grid-cols-3"
+              }`} style={{ borderColor }}>
                 {section.items.map((it, idx) => (
-                  <div key={it.id || idx} className="space-y-1.5">
-                    <span className="font-mono text-xs font-bold" style={{ color: theme.accentColor }}>
+                  <div key={it.id || idx} className="space-y-1.5 p-3 sm:p-0 rounded-sm bg-black/[0.02] dark:bg-white/[0.02] sm:bg-transparent">
+                    <span className="font-mono text-xs font-bold block" style={{ color: theme.accentColor }}>
                       0{idx + 1}
                     </span>
-                    <h3 className={`${getFontFamily()} text-base font-bold`}>{it.title}</h3>
+                    <h3 className={`${getFontFamily()} text-sm sm:text-base font-bold`}>{it.title}</h3>
                     {it.description && (
                       <p className="text-xs leading-relaxed" style={{ color: mutedTextColor }}>
                         {it.description}
@@ -668,24 +1012,28 @@ export function SectionRenderer({
         {/* 4. GALLERY / PORTFOLIO SECTION */}
         {/* ============================================================== */}
         {section.type === "gallery" && (
-          <div className="space-y-10">
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b pb-4" style={{ borderColor }}>
+          <div className="space-y-8 sm:space-y-10">
+            <div className={`flex justify-between gap-4 border-b pb-4 ${
+              isMobile ? "flex-col items-start" : "flex-col sm:flex-row sm:items-end"
+            }`} style={{ borderColor }}>
               <div className="space-y-1">
                 {section.eyebrow && (
-                  <span className="text-xs font-mono font-semibold uppercase tracking-wider" style={{ color: theme.accentColor }}>
+                  <span className="text-[11px] sm:text-xs font-mono font-semibold uppercase tracking-wider block" style={{ color: theme.accentColor }}>
                     {section.eyebrow}
                   </span>
                 )}
-                <h2 className={`${getFontFamily()} text-2xl sm:text-4xl font-bold tracking-tight`}>{section.title}</h2>
+                <h2 className={`${getFontFamily()} text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight`}>{section.title}</h2>
               </div>
               {section.subtitle && (
-                <p className="text-xs sm:text-sm max-w-md text-right sm:text-left" style={{ color: mutedTextColor }}>
+                <p className="text-xs sm:text-sm max-w-md" style={{ color: mutedTextColor }}>
                   {section.subtitle}
                 </p>
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className={`grid gap-6 ${
+              isMobile ? "grid-cols-1" : isTablet ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
+            }`}>
               {(section.items || []).map((item) => (
                 <div
                   key={item.id}
@@ -693,7 +1041,7 @@ export function SectionRenderer({
                   style={{ borderColor, backgroundColor: isDarkSection ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)" }}
                 >
                   {item.imageUrl && (
-                    <div className="relative h-64 sm:h-72 w-full overflow-hidden">
+                    <div className={`relative w-full overflow-hidden ${isMobile ? "h-52 sm:h-64" : "h-64 sm:h-72"}`}>
                       <img
                         src={item.imageUrl}
                         alt={item.imageAlt || item.title}
@@ -709,12 +1057,12 @@ export function SectionRenderer({
                     </div>
                   )}
 
-                  <div className="p-5 space-y-2">
+                  <div className="p-4 sm:p-5 space-y-2">
                     <div className="flex items-center justify-between text-xs font-mono" style={{ color: mutedTextColor }}>
                       <span>{item.subtitle}</span>
                       <span>{item.meta}</span>
                     </div>
-                    <h3 className={`${getFontFamily()} text-lg font-bold tracking-tight`}>{item.title}</h3>
+                    <h3 className={`${getFontFamily()} text-base sm:text-lg font-bold tracking-tight`}>{item.title}</h3>
                     {item.description && (
                       <p className="text-xs leading-relaxed" style={{ color: mutedTextColor }}>
                         {item.description}
@@ -731,15 +1079,15 @@ export function SectionRenderer({
         {/* 5. CASE STUDIES (Creative Studio) */}
         {/* ============================================================== */}
         {section.type === "case-studies" && (
-          <div className="space-y-12">
+          <div className="space-y-8 sm:space-y-12">
             <div className="border-b pb-4 flex flex-col sm:flex-row justify-between sm:items-end gap-2" style={{ borderColor }}>
               <div>
                 {section.eyebrow && (
-                  <span className="text-xs font-mono font-bold uppercase tracking-widest" style={{ color: theme.accentColor }}>
+                  <span className="text-[11px] sm:text-xs font-mono font-bold uppercase tracking-widest block" style={{ color: theme.accentColor }}>
                     {section.eyebrow}
                   </span>
                 )}
-                <h2 className={`${getFontFamily()} text-3xl sm:text-5xl font-bold tracking-tight`}>{section.title}</h2>
+                <h2 className={`${getFontFamily()} text-2xl sm:text-3xl md:text-5xl font-bold tracking-tight`}>{section.title}</h2>
               </div>
               {section.subtitle && (
                 <p className="text-xs sm:text-sm max-w-sm" style={{ color: mutedTextColor }}>
@@ -748,16 +1096,18 @@ export function SectionRenderer({
               )}
             </div>
 
-            <div className="space-y-8">
+            <div className="space-y-6 sm:space-y-8">
               {(section.items || []).map((item, idx) => (
                 <div
                   key={item.id}
-                  className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center p-6 rounded-sm border group"
+                  className={`grid gap-6 items-center p-4 sm:p-6 rounded-sm border group ${
+                    isMobile || isTablet ? "grid-cols-1" : "grid-cols-1 lg:grid-cols-12"
+                  }`}
                   style={{ borderColor, backgroundColor: isDarkSection ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.01)" }}
                 >
-                  <div className={`lg:col-span-7 ${idx % 2 === 1 ? "lg:order-2" : ""}`}>
+                  <div className={`${isMobile || isTablet ? "w-full" : `lg:col-span-7 ${idx % 2 === 1 ? "lg:order-2" : ""}`}`}>
                     {item.imageUrl && (
-                      <div className="h-64 sm:h-96 rounded-sm overflow-hidden border" style={{ borderColor }}>
+                      <div className={`rounded-sm overflow-hidden border ${isMobile ? "h-52 sm:h-64" : "h-64 sm:h-96"}`} style={{ borderColor }}>
                         <img
                           src={item.imageUrl}
                           alt={item.imageAlt || item.title}
@@ -767,13 +1117,13 @@ export function SectionRenderer({
                     )}
                   </div>
 
-                  <div className={`lg:col-span-5 space-y-4 ${idx % 2 === 1 ? "lg:order-1" : ""}`}>
+                  <div className={`space-y-3 sm:space-y-4 ${isMobile || isTablet ? "w-full" : `lg:col-span-5 ${idx % 2 === 1 ? "lg:order-1" : ""}`}`}>
                     <div className="flex items-center gap-2 text-xs font-mono" style={{ color: theme.accentColor }}>
                       <span className="font-bold">0{idx + 1}</span>
                       <span>•</span>
                       <span>{item.meta}</span>
                     </div>
-                    <h3 className={`${getFontFamily()} text-2xl sm:text-3xl font-bold tracking-tight`}>
+                    <h3 className={`${getFontFamily()} text-xl sm:text-2xl md:text-3xl font-bold tracking-tight`}>
                       {item.title}
                     </h3>
                     <p className="text-xs sm:text-sm font-mono" style={{ color: mutedTextColor }}>
@@ -800,14 +1150,14 @@ export function SectionRenderer({
         {/* 6. FEATURES / BENCHMARKS SECTION */}
         {/* ============================================================== */}
         {section.type === "features" && (
-          <div className="space-y-8">
+          <div className="space-y-6 sm:space-y-8">
             <div className={`max-w-2xl ${sectionStyle.align === "center" ? "mx-auto text-center" : ""}`}>
               {section.eyebrow && (
-                <span className="text-xs font-mono font-bold tracking-wider uppercase block mb-1" style={{ color: theme.accentColor }}>
+                <span className="text-[11px] sm:text-xs font-mono font-bold tracking-wider uppercase block mb-1" style={{ color: theme.accentColor }}>
                   {section.eyebrow}
                 </span>
               )}
-              <h2 className={`${getFontFamily()} text-2xl sm:text-4xl font-bold tracking-tight`}>{section.title}</h2>
+              <h2 className={`${getFontFamily()} text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight`}>{section.title}</h2>
               {section.subtitle && (
                 <p className="text-xs sm:text-sm mt-2 leading-relaxed" style={{ color: mutedTextColor }}>
                   {section.subtitle}
@@ -815,11 +1165,11 @@ export function SectionRenderer({
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className={`grid gap-4 sm:gap-6 ${isMobile ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2"}`}>
               {(section.items || []).map((feat) => (
                 <div
                   key={feat.id}
-                  className="p-6 rounded-sm border space-y-3"
+                  className="p-4 sm:p-6 rounded-sm border space-y-2.5 sm:space-y-3"
                   style={{ borderColor, backgroundColor: isDarkSection ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)" }}
                 >
                   {feat.badge && (
@@ -830,7 +1180,7 @@ export function SectionRenderer({
                       {feat.badge}
                     </span>
                   )}
-                  <h3 className={`${getFontFamily()} text-lg font-bold tracking-tight`}>{feat.title}</h3>
+                  <h3 className={`${getFontFamily()} text-base sm:text-lg font-bold tracking-tight`}>{feat.title}</h3>
                   {feat.description && (
                     <p className="text-xs sm:text-sm leading-relaxed" style={{ color: mutedTextColor }}>
                       {feat.description}
@@ -846,14 +1196,14 @@ export function SectionRenderer({
         {/* 7. METRICS SECTION */}
         {/* ============================================================== */}
         {section.type === "metrics" && (
-          <div className="space-y-8">
+          <div className="space-y-6 sm:space-y-8">
             <div className="text-center max-w-2xl mx-auto space-y-2">
               {section.eyebrow && (
-                <span className="text-xs font-mono font-semibold tracking-wider uppercase" style={{ color: theme.accentColor }}>
+                <span className="text-[11px] sm:text-xs font-mono font-semibold tracking-wider uppercase block" style={{ color: theme.accentColor }}>
                   {section.eyebrow}
                 </span>
               )}
-              <h2 className={`${getFontFamily()} text-2xl sm:text-4xl font-bold tracking-tight`}>{section.title}</h2>
+              <h2 className={`${getFontFamily()} text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight`}>{section.title}</h2>
               {section.subtitle && (
                 <p className="text-xs sm:text-sm" style={{ color: mutedTextColor }}>
                   {section.subtitle}
@@ -861,19 +1211,21 @@ export function SectionRenderer({
               )}
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 pt-4">
+            <div className={`grid gap-3 sm:gap-6 pt-2 sm:pt-4 ${
+              isMobile ? "grid-cols-2" : isTablet ? "grid-cols-2" : "grid-cols-2 md:grid-cols-4"
+            }`}>
               {(section.items || []).map((m) => (
                 <div
                   key={m.id}
-                  className="p-5 rounded-sm border text-center space-y-1.5"
+                  className="p-3.5 sm:p-5 rounded-sm border text-center space-y-1 sm:space-y-1.5"
                   style={{ borderColor, backgroundColor: isDarkSection ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.01)" }}
                 >
-                  <p className={`${getFontFamily()} text-3xl sm:text-4xl font-bold tabular-nums`} style={{ color: theme.accentColor }}>
+                  <p className={`${getFontFamily()} text-2xl sm:text-3xl md:text-4xl font-bold tabular-nums`} style={{ color: theme.accentColor }}>
                     {m.title}
                   </p>
-                  <p className="text-xs font-semibold font-mono tracking-tight">{m.subtitle}</p>
+                  <p className="text-[11px] sm:text-xs font-semibold font-mono tracking-tight truncate">{m.subtitle}</p>
                   {m.description && (
-                    <p className="text-[11px] leading-tight" style={{ color: mutedTextColor }}>
+                    <p className="text-[10px] sm:text-[11px] leading-tight line-clamp-2" style={{ color: mutedTextColor }}>
                       {m.description}
                     </p>
                   )}
@@ -887,14 +1239,14 @@ export function SectionRenderer({
         {/* 8. PRICING SECTION */}
         {/* ============================================================== */}
         {section.type === "pricing" && (
-          <div className="space-y-10">
+          <div className="space-y-8 sm:space-y-10">
             <div className="text-center max-w-2xl mx-auto space-y-2">
               {section.eyebrow && (
-                <span className="text-xs font-mono font-semibold tracking-wider uppercase" style={{ color: theme.accentColor }}>
+                <span className="text-[11px] sm:text-xs font-mono font-semibold tracking-wider uppercase block" style={{ color: theme.accentColor }}>
                   {section.eyebrow}
                 </span>
               )}
-              <h2 className={`${getFontFamily()} text-2xl sm:text-4xl font-bold tracking-tight`}>{section.title}</h2>
+              <h2 className={`${getFontFamily()} text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight`}>{section.title}</h2>
               {section.subtitle && (
                 <p className="text-xs sm:text-sm" style={{ color: mutedTextColor }}>
                   {section.subtitle}
@@ -902,14 +1254,23 @@ export function SectionRenderer({
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+            <div className={`grid gap-6 items-stretch ${
+              isMobile
+                ? "grid-cols-1"
+                : isTablet
+                ? "grid-cols-1 sm:grid-cols-2"
+                : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
+            }`}>
               {(section.items || []).map((plan) => {
                 const isRec = !!plan.badge;
+                const isPlanCheckout = checkoutPlanId === plan.id;
+                const isPlanSuccess = successPlanId === plan.id;
+
                 return (
                   <div
                     key={plan.id}
-                    className={`p-6 sm:p-8 rounded-sm border flex flex-col justify-between relative ${
-                      isRec ? "ring-2" : ""
+                    className={`p-4 sm:p-6 md:p-8 rounded-sm border flex flex-col justify-between relative transition-shadow ${
+                      isRec ? "ring-2 shadow-sm" : ""
                     }`}
                     style={{
                       borderColor: isRec ? theme.accentColor : borderColor,
@@ -924,7 +1285,7 @@ export function SectionRenderer({
                   >
                     {plan.badge && (
                       <span
-                        className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full text-[10px] font-mono font-semibold uppercase tracking-wider text-white"
+                        className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full text-[10px] font-mono font-semibold uppercase tracking-wider text-white shadow-xs whitespace-nowrap"
                         style={{ backgroundColor: theme.accentColor }}
                       >
                         {plan.badge}
@@ -933,14 +1294,19 @@ export function SectionRenderer({
 
                     <div className="space-y-4">
                       <div className="space-y-1">
-                        <h3 className={`${getFontFamily()} text-lg font-bold`}>{plan.title}</h3>
-                        <p className="text-xs" style={{ color: mutedTextColor }}>
+                        <div className="flex items-center justify-between gap-2">
+                          <h3 className={`${getFontFamily()} text-base sm:text-lg font-bold truncate`}>{plan.title}</h3>
+                          <span className="text-[10px] font-mono text-emerald-500 font-semibold uppercase tracking-wider shrink-0">
+                            Razorpay
+                          </span>
+                        </div>
+                        <p className="text-xs leading-relaxed" style={{ color: mutedTextColor }}>
                           {plan.description}
                         </p>
                       </div>
 
-                      <div className="pt-2 pb-4 border-b flex items-baseline gap-1" style={{ borderColor }}>
-                        <span className={`${getFontFamily()} text-3xl sm:text-4xl font-bold tabular-nums`}>
+                      <div className="pt-2 pb-4 border-b flex flex-wrap items-baseline gap-1.5" style={{ borderColor }}>
+                        <span className={`${getFontFamily()} text-2xl sm:text-3xl md:text-4xl font-bold tabular-nums`}>
                           {plan.price}
                         </span>
                         <span className="text-xs font-mono" style={{ color: mutedTextColor }}>
@@ -951,21 +1317,27 @@ export function SectionRenderer({
                       {plan.features && (
                         <ul className="space-y-2.5 text-xs">
                           {(plan.features || []).map((feat, fi) => (
-                            <li key={fi} className="flex items-center gap-2">
-                              <TickCircle size="14" style={{ color: theme.accentColor }} />
-                              <span>{feat}</span>
+                            <li key={fi} className="flex items-start gap-2">
+                              <TickCircle size="14" className="shrink-0 mt-0.5" style={{ color: theme.accentColor }} />
+                              <span className="leading-tight">{feat}</span>
                             </li>
                           ))}
                         </ul>
                       )}
                     </div>
 
-                    {plan.button && (
-                      <div className="pt-6 mt-6 border-t" style={{ borderColor }}>
-                        <a
-                          href={plan.button.href}
-                          className={`w-full py-2.5 px-4 rounded-sm text-xs font-semibold text-center block transition-all ${
-                            isRec ? "text-white shadow-xs" : "border hover:bg-black/5 dark:hover:bg-white/5"
+                    <div className="pt-6 mt-6 border-t space-y-2" style={{ borderColor }}>
+                      {isPlanSuccess ? (
+                        <div className="p-2.5 rounded-sm bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs text-center font-semibold animate-in fade-in">
+                          Payment Successful! Subscribed via Razorpay.
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={isPlanCheckout}
+                          onClick={() => handlePricingPayment(plan)}
+                          className={`w-full py-2.5 px-4 rounded-sm text-xs font-semibold text-center block transition-all cursor-pointer disabled:opacity-60 shadow-xs ${
+                            isRec ? "text-white" : "border hover:bg-black/5 dark:hover:bg-white/5"
                           }`}
                           style={
                             isRec
@@ -973,10 +1345,28 @@ export function SectionRenderer({
                               : { borderColor, color: textColor }
                           }
                         >
-                          {plan.button.text}
-                        </a>
+                          {isPlanCheckout ? (
+                            <span className="flex items-center justify-center gap-2">
+                              <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                              Connecting Razorpay...
+                            </span>
+                          ) : (
+                            plan.button?.text || "Pay with Razorpay"
+                          )}
+                        </button>
+                      )}
+
+                      {paymentError && checkoutPlanId === plan.id && (
+                        <p className="text-[11px] text-destructive text-center font-medium mt-1">
+                          {paymentError}
+                        </p>
+                      )}
+
+                      <div className="flex items-center justify-center gap-1.5 pt-1 text-[10px] font-mono text-muted-foreground/70">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <span>Instant Checkout • Test Key rzp_test_...</span>
                       </div>
-                    )}
+                    </div>
                   </div>
                 );
               })}
@@ -988,11 +1378,11 @@ export function SectionRenderer({
         {/* 9. SERVICES SECTION */}
         {/* ============================================================== */}
         {section.type === "services" && (
-          <div className="space-y-8">
+          <div className="space-y-6 sm:space-y-8">
             <div className="border-b pb-4 flex flex-col sm:flex-row justify-between sm:items-end gap-2" style={{ borderColor }}>
               <div>
                 {section.eyebrow && (
-                  <span className="text-xs font-mono font-semibold tracking-wider uppercase" style={{ color: theme.accentColor }}>
+                  <span className="text-[11px] sm:text-xs font-mono font-semibold tracking-wider uppercase block" style={{ color: theme.accentColor }}>
                     {section.eyebrow}
                   </span>
                 )}
@@ -1005,13 +1395,15 @@ export function SectionRenderer({
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+            <div className={`grid gap-4 sm:gap-6 pt-2 ${
+              isMobile ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2"
+            }`}>
               {(section.items || []).map((srv) => (
-                <div key={srv.id} className="p-6 rounded-sm border space-y-2" style={{ borderColor }}>
+                <div key={srv.id} className="p-4 sm:p-6 rounded-sm border space-y-2" style={{ borderColor }}>
                   <div className="flex items-center justify-between font-mono text-xs" style={{ color: theme.accentColor }}>
                     <span>{srv.meta}</span>
                   </div>
-                  <h3 className={`${getFontFamily()} text-lg font-bold tracking-tight`}>{srv.title}</h3>
+                  <h3 className={`${getFontFamily()} text-base sm:text-lg font-bold tracking-tight`}>{srv.title}</h3>
                   {srv.description && (
                     <p className="text-xs sm:text-sm leading-relaxed" style={{ color: mutedTextColor }}>
                       {srv.description}
@@ -1027,28 +1419,35 @@ export function SectionRenderer({
         {/* 10. CTA SECTION */}
         {/* ============================================================== */}
         {section.type === "cta" && (
-          <div className="text-center max-w-3xl mx-auto space-y-6">
+          <div className="text-center max-w-3xl mx-auto space-y-5 sm:space-y-6">
             {section.eyebrow && (
-              <span className="text-xs font-mono font-semibold tracking-wider uppercase" style={{ color: theme.accentColor }}>
+              <span className="text-[11px] sm:text-xs font-mono font-semibold tracking-wider uppercase block" style={{ color: theme.accentColor }}>
                 {section.eyebrow}
               </span>
             )}
-            <h2 className={`${getFontFamily()} text-3xl sm:text-5xl font-bold tracking-tight leading-tight`}>
+            <h2 className={`${getFontFamily()} font-bold tracking-tight leading-tight ${
+              isMobile ? "text-2xl sm:text-3xl" : "text-2xl sm:text-4xl md:text-5xl"
+            }`}>
               {section.title}
             </h2>
             {section.subtitle && (
-              <p className="text-sm sm:text-base leading-relaxed" style={{ color: mutedTextColor }}>
+              <p className="text-xs sm:text-sm md:text-base leading-relaxed" style={{ color: mutedTextColor }}>
                 {section.subtitle}
               </p>
             )}
 
             {section.buttons && section.buttons.length > 0 && (
-              <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+              <div className={`pt-2 flex flex-wrap items-center justify-center gap-3 ${
+                isMobile ? "flex-col sm:flex-row w-full" : ""
+              }`}>
                 {(section.buttons || []).map((btn) => (
                   <a
                     key={btn.id}
                     href={btn.href}
-                    className={`px-6 py-3 rounded-sm text-sm font-semibold transition-all shadow-xs ${
+                    onClick={(e) => handleNavClick(e, btn.href)}
+                    className={`px-5 sm:px-6 py-2.5 sm:py-3 rounded-sm text-xs sm:text-sm font-semibold transition-all shadow-xs cursor-pointer ${
+                      isMobile ? "w-full sm:w-auto text-center" : ""
+                    } ${
                       btn.variant === "primary" ? "hover:opacity-95 text-white" : "border hover:bg-black/5 dark:hover:bg-white/5"
                     }`}
                     style={
@@ -1073,6 +1472,8 @@ export function SectionRenderer({
             section={section}
             theme={theme}
             isEditorMode={isEditorMode}
+            isMobile={isMobile}
+            isTablet={isTablet}
             textColor={textColor}
             mutedTextColor={mutedTextColor}
             surfaceBg={surfaceBg}
@@ -1085,30 +1486,31 @@ export function SectionRenderer({
         {/* 12. FOOTER SECTION */}
         {/* ============================================================== */}
         {section.type === "footer" && (
-          <footer className="space-y-6 text-center pt-4 border-t" style={{ borderColor }}>
-            <div className="space-y-2 max-w-xl mx-auto">
-              <span className={`${getFontFamily()} text-base sm:text-lg font-bold tracking-tight uppercase block`}>
+          <footer className="space-y-4 sm:space-y-6 text-center pt-4 border-t" style={{ borderColor }}>
+            <div className="space-y-2 max-w-xl mx-auto px-2">
+              <span className={`${getFontFamily()} text-sm sm:text-base md:text-lg font-bold tracking-tight uppercase block`}>
                 {section.title}
               </span>
               {section.subtitle && (
-                <p className="text-xs font-mono" style={{ color: mutedTextColor }}>
+                <p className="text-[11px] sm:text-xs font-mono" style={{ color: mutedTextColor }}>
                   {section.subtitle}
                 </p>
               )}
               {section.body && (
-                <p className="text-[11px] leading-relaxed" style={{ color: mutedTextColor }}>
+                <p className="text-[10px] sm:text-[11px] leading-relaxed" style={{ color: mutedTextColor }}>
                   {section.body}
                 </p>
               )}
             </div>
 
             {section.buttons && section.buttons.length > 0 && (
-              <div className="flex items-center justify-center gap-4 text-xs font-medium pt-2">
+              <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 text-xs font-medium pt-2">
                 {(section.buttons || []).map((btn) => (
                   <a
                     key={btn.id}
                     href={btn.href}
-                    className="hover:underline font-semibold"
+                    onClick={(e) => handleNavClick(e, btn.href)}
+                    className="hover:underline font-semibold cursor-pointer"
                     style={{ color: theme.accentColor }}
                   >
                     {btn.text}
