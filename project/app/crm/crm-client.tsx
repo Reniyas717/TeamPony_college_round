@@ -12,7 +12,7 @@ import { CreateContactDrawer } from "@/components/crm/create-contact-drawer";
 import { ContactDetailDrawer } from "@/components/crm/contact-detail-drawer";
 import { Button } from "@/components/ui/button";
 
-export default function CrmClient() {
+export function CrmClient() {
   const [view, setView] = useState<"list" | "board">("list");
   const [filters, setFilters] = useState<ContactFilters>({ limit: 50, offset: 0 });
   
@@ -91,3 +91,5 @@ export default function CrmClient() {
     </div>
   );
 }
+
+export default CrmClient;
