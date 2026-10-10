@@ -54,7 +54,7 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                 <select 
                   className="h-8 px-2 py-1 text-sm rounded-sm border border-input bg-background font-semibold"
                   value={contact.stage}
-                  onChange={(e) => handleStageChange(e.target.value)}
+                  onChange={(e) => handleStageChange(e.target.value as Contact['stage'])}
                 >
                   <option value="lead">Lead</option>
                   <option value="contacted">Contacted</option>
