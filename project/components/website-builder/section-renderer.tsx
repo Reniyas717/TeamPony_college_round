@@ -4,7 +4,17 @@
 import * as React from "react";
 import { WebsiteSection, WebsiteTheme, SectionItem } from "@/lib/validations/website";
 import { BillingPlanId } from "@/lib/validations/billing";
-import { ArrowUp, ArrowDown, Copy, Trash, TickCircle, Eye, EyeSlash } from "iconsax-react";
+import {
+  ArrowUp,
+  ArrowDown,
+  Copy,
+  Trash,
+  TickCircle,
+  Eye,
+  EyeSlash,
+  HambergerMenu,
+  CloseSquare,
+} from "iconsax-react";
 
 declare global {
   interface Window {
@@ -437,6 +447,30 @@ export function SectionRenderer({
   const [checkoutPlanId, setCheckoutPlanId] = React.useState<string | null>(null);
   const [successPlanId, setSuccessPlanId] = React.useState<string | null>(null);
   const [paymentError, setPaymentError] = React.useState<string | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState<boolean>(false);
+
+  // Smooth scroll and routing helper for in-page anchors & routes
+  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (!href) return;
+    setMobileMenuOpen(false);
+
+    if (href.startsWith("#")) {
+      e.preventDefault();
+      const targetId = href.replace(/^#/, "").toLowerCase();
+      // Look for element with that id, prefixed id, or matching data-section-type
+      const el =
+        document.getElementById(targetId) ||
+        document.getElementById(`sec-${targetId}`) ||
+        document.getElementById(`saas-${targetId}`) ||
+        document.getElementById(`cs-${targetId}`) ||
+        document.getElementById(`blank-${targetId}`) ||
+        document.querySelector(`[data-section-type="${targetId}"]`);
+
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+  };
 
   const handlePricingPayment = async (plan: SectionItem) => {
     setCheckoutPlanId(plan.id);
@@ -591,9 +625,10 @@ export function SectionRenderer({
   return (
     <section
       id={section.id}
+      data-section-type={section.type}
       onClick={isEditorMode ? onSelect : undefined}
       style={{ backgroundColor: getSectionBg(), color: textColor }}
-      className={`relative transition-all duration-150 ${getPaddingClasses()} ${
+      className={`relative transition-all duration-150 scroll-mt-6 ${getPaddingClasses()} ${
         isEditorMode
           ? isSelected
             ? "ring-2 ring-brand-text ring-offset-2 z-10"
@@ -681,42 +716,91 @@ export function SectionRenderer({
         {/* 1. HEADER SECTION */}
         {/* ============================================================== */}
         {section.type === "header" && (
-          <header className="flex items-center justify-between gap-6 py-2 border-b" style={{ borderColor }}>
-            <div className="flex items-center gap-3">
-              <span className={`${getFontFamily()} text-lg sm:text-xl font-bold tracking-tight uppercase`}>
-                {section.title}
-              </span>
-              {section.subtitle && (
-                <span className="text-[10px] uppercase tracking-widest font-mono" style={{ color: mutedTextColor }}>
-                  • {section.subtitle}
+          <header className="relative py-2 border-b" style={{ borderColor }}>
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                <span className={`${getFontFamily()} text-base sm:text-xl font-bold tracking-tight uppercase truncate`}>
+                  {section.title}
                 </span>
+                {section.subtitle && (
+                  <span className="text-[10px] uppercase tracking-widest font-mono hidden sm:inline-block" style={{ color: mutedTextColor }}>
+                    • {section.subtitle}
+                  </span>
+                )}
+              </div>
+
+              {/* Desktop Nav */}
+              <nav className="hidden md:flex items-center gap-4 lg:gap-6 text-xs sm:text-sm font-medium">
+                {(section.buttons || []).map((btn) => (
+                  <a
+                    key={btn.id}
+                    href={btn.href}
+                    onClick={(e) => handleNavClick(e, btn.href)}
+                    className={`transition-colors cursor-pointer ${
+                      btn.variant === "primary"
+                        ? "px-3.5 py-1.5 rounded-sm font-semibold shadow-xs"
+                        : btn.variant === "outline"
+                        ? "px-3 py-1.5 rounded-sm border"
+                        : "hover:opacity-75"
+                    }`}
+                    style={
+                      btn.variant === "primary"
+                        ? { backgroundColor: theme.accentColor, color: "#FFFFFF" }
+                        : btn.variant === "outline"
+                        ? { borderColor }
+                        : { color: mutedTextColor }
+                    }
+                  >
+                    {btn.text}
+                  </a>
+                ))}
+              </nav>
+
+              {/* Mobile Menu Hamburger Toggle */}
+              {(section.buttons || []).length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen((prev) => !prev)}
+                  className="md:hidden p-2 rounded-sm border cursor-pointer transition-colors"
+                  style={{ borderColor, color: textColor }}
+                  aria-label="Toggle navigation menu"
+                >
+                  {mobileMenuOpen ? <CloseSquare size="18" /> : <HambergerMenu size="18" />}
+                </button>
               )}
             </div>
 
-            <nav className="flex items-center gap-4 sm:gap-6 text-xs sm:text-sm font-medium">
-              {(section.buttons || []).map((btn) => (
-                <a
-                  key={btn.id}
-                  href={btn.href}
-                  className={`transition-colors ${
-                    btn.variant === "primary"
-                      ? "px-3.5 py-1.5 rounded-sm font-semibold shadow-xs"
-                      : btn.variant === "outline"
-                      ? "px-3 py-1.5 rounded-sm border"
-                      : "hover:opacity-75"
-                  }`}
-                  style={
-                    btn.variant === "primary"
-                      ? { backgroundColor: theme.accentColor, color: "#FFFFFF" }
-                      : btn.variant === "outline"
-                      ? { borderColor }
-                      : { color: mutedTextColor }
-                  }
-                >
-                  {btn.text}
-                </a>
-              ))}
-            </nav>
+            {/* Mobile Collapsible Navigation Menu */}
+            {mobileMenuOpen && (section.buttons || []).length > 0 && (
+              <div
+                className="md:hidden pt-4 pb-3 mt-3 border-t space-y-2 animate-in fade-in slide-in-from-top-1"
+                style={{ borderColor }}
+              >
+                {(section.buttons || []).map((btn) => (
+                  <a
+                    key={btn.id}
+                    href={btn.href}
+                    onClick={(e) => handleNavClick(e, btn.href)}
+                    className={`block w-full py-2 px-3 rounded-sm text-xs font-semibold cursor-pointer transition-colors text-center ${
+                      btn.variant === "primary"
+                        ? "text-white shadow-xs"
+                        : btn.variant === "outline"
+                        ? "border"
+                        : "hover:bg-black/5 dark:hover:bg-white/5"
+                    }`}
+                    style={
+                      btn.variant === "primary"
+                        ? { backgroundColor: theme.accentColor }
+                        : btn.variant === "outline"
+                        ? { borderColor, color: textColor }
+                        : { color: textColor }
+                    }
+                  >
+                    {btn.text}
+                  </a>
+                ))}
+              </div>
+            )}
           </header>
         )}
 
@@ -752,6 +836,7 @@ export function SectionRenderer({
                     <a
                       key={btn.id}
                       href={btn.href}
+                      onClick={(e) => handleNavClick(e, btn.href)}
                       className={`inline-flex items-center justify-center px-6 py-3 rounded-sm text-sm font-semibold transition-all duration-200 cursor-pointer shadow-xs ${
                         btn.variant === "primary"
                           ? "hover:opacity-95"
@@ -1087,7 +1172,7 @@ export function SectionRenderer({
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
               {(section.items || []).map((plan) => {
                 const isRec = !!plan.badge;
                 const isPlanCheckout = checkoutPlanId === plan.id;
@@ -1096,7 +1181,7 @@ export function SectionRenderer({
                 return (
                   <div
                     key={plan.id}
-                    className={`p-6 sm:p-8 rounded-sm border flex flex-col justify-between relative transition-shadow ${
+                    className={`p-5 sm:p-7 md:p-8 rounded-sm border flex flex-col justify-between relative transition-shadow ${
                       isRec ? "ring-2 shadow-sm" : ""
                     }`}
                     style={{
@@ -1112,7 +1197,7 @@ export function SectionRenderer({
                   >
                     {plan.badge && (
                       <span
-                        className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full text-[10px] font-mono font-semibold uppercase tracking-wider text-white shadow-xs"
+                        className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full text-[10px] font-mono font-semibold uppercase tracking-wider text-white shadow-xs whitespace-nowrap"
                         style={{ backgroundColor: theme.accentColor }}
                       >
                         {plan.badge}
@@ -1121,19 +1206,19 @@ export function SectionRenderer({
 
                     <div className="space-y-4">
                       <div className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <h3 className={`${getFontFamily()} text-lg font-bold`}>{plan.title}</h3>
-                          <span className="text-[10px] font-mono text-emerald-500 font-semibold uppercase tracking-wider">
+                        <div className="flex items-center justify-between gap-2">
+                          <h3 className={`${getFontFamily()} text-base sm:text-lg font-bold truncate`}>{plan.title}</h3>
+                          <span className="text-[10px] font-mono text-emerald-500 font-semibold uppercase tracking-wider shrink-0">
                             Razorpay
                           </span>
                         </div>
-                        <p className="text-xs" style={{ color: mutedTextColor }}>
+                        <p className="text-xs leading-relaxed" style={{ color: mutedTextColor }}>
                           {plan.description}
                         </p>
                       </div>
 
-                      <div className="pt-2 pb-4 border-b flex items-baseline gap-1" style={{ borderColor }}>
-                        <span className={`${getFontFamily()} text-3xl sm:text-4xl font-bold tabular-nums`}>
+                      <div className="pt-2 pb-4 border-b flex flex-wrap items-baseline gap-1.5" style={{ borderColor }}>
+                        <span className={`${getFontFamily()} text-2xl sm:text-3xl md:text-4xl font-bold tabular-nums`}>
                           {plan.price}
                         </span>
                         <span className="text-xs font-mono" style={{ color: mutedTextColor }}>
@@ -1144,9 +1229,9 @@ export function SectionRenderer({
                       {plan.features && (
                         <ul className="space-y-2.5 text-xs">
                           {(plan.features || []).map((feat, fi) => (
-                            <li key={fi} className="flex items-center gap-2">
-                              <TickCircle size="14" style={{ color: theme.accentColor }} />
-                              <span>{feat}</span>
+                            <li key={fi} className="flex items-start gap-2">
+                              <TickCircle size="14" className="shrink-0 mt-0.5" style={{ color: theme.accentColor }} />
+                              <span className="leading-tight">{feat}</span>
                             </li>
                           ))}
                         </ul>
@@ -1265,7 +1350,8 @@ export function SectionRenderer({
                   <a
                     key={btn.id}
                     href={btn.href}
-                    className={`px-6 py-3 rounded-sm text-sm font-semibold transition-all shadow-xs ${
+                    onClick={(e) => handleNavClick(e, btn.href)}
+                    className={`px-6 py-3 rounded-sm text-sm font-semibold transition-all shadow-xs cursor-pointer ${
                       btn.variant === "primary" ? "hover:opacity-95 text-white" : "border hover:bg-black/5 dark:hover:bg-white/5"
                     }`}
                     style={
@@ -1325,7 +1411,8 @@ export function SectionRenderer({
                   <a
                     key={btn.id}
                     href={btn.href}
-                    className="hover:underline font-semibold"
+                    onClick={(e) => handleNavClick(e, btn.href)}
+                    className="hover:underline font-semibold cursor-pointer"
                     style={{ color: theme.accentColor }}
                   >
                     {btn.text}

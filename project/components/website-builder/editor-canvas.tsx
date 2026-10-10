@@ -51,6 +51,7 @@ export function EditorCanvas({
       case "mobile":
         return {
           width: "375px",
+          maxWidth: "100%",
           minHeight: "780px",
           borderRadius: "32px",
           border: "8px solid #1F1C18",
@@ -59,6 +60,7 @@ export function EditorCanvas({
       case "tablet":
         return {
           width: "768px",
+          maxWidth: "100%",
           minHeight: "900px",
           borderRadius: "20px",
           border: "8px solid #2D2A26",

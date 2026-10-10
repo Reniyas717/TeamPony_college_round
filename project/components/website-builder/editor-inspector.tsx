@@ -8,6 +8,7 @@ import {
   SectionButton,
 } from "@/lib/validations/website";
 import { Magicpen, Add, Trash, Eye, EyeSlash } from "iconsax-react";
+import { ImageUploader } from "./image-uploader";
 
 interface EditorInspectorProps {
   document: WebsiteDocument;
@@ -221,21 +222,26 @@ export function EditorInspector({
           )}
 
           {/* Media fields */}
-          <div className="pt-3 border-t border-border/40 space-y-3">
+          <div className="pt-3 border-t border-border/40 space-y-4">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
-              Imagery & Media
+              Imagery & Media (Supabase Storage)
             </span>
 
-            <div className="space-y-1.5">
-              <label className="text-[11px] text-muted-foreground block">Primary Image URL</label>
-              <input
-                type="text"
-                value={selectedSection.imageUrl || ""}
-                onChange={(e) => onUpdateSectionField("imageUrl", e.target.value)}
-                placeholder="https://images.unsplash.com/..."
-                className="w-full px-3 py-1.5 rounded-sm border border-border/60 bg-card text-foreground text-xs focus:ring-1 focus:ring-brand-text font-mono text-[11px]"
+            <ImageUploader
+              label="Primary Section Image"
+              value={selectedSection.imageUrl || ""}
+              onChange={(url) => onUpdateSectionField("imageUrl", url)}
+              helperText="Upload to Supabase Storage or replace image"
+            />
+
+            {selectedSection.secondaryImageUrl !== undefined && (
+              <ImageUploader
+                label="Secondary Accent Image"
+                value={selectedSection.secondaryImageUrl || ""}
+                onChange={(url) => onUpdateSectionField("secondaryImageUrl", url)}
+                helperText="Upload secondary image to Supabase Storage"
               />
-            </div>
+            )}
 
             <div className="space-y-1.5">
               <label className="text-[11px] text-muted-foreground block">Image Alt Text (Accessibility)</label>
@@ -483,13 +489,14 @@ export function EditorInspector({
                     />
                   )}
                   {item.imageUrl !== undefined && (
-                    <input
-                      type="text"
-                      value={item.imageUrl || ""}
-                      onChange={(e) => onUpdateItem(item.id, { imageUrl: e.target.value })}
-                      placeholder="Image URL"
-                      className="w-full px-2 py-1 rounded-xs border border-border/60 bg-background text-xs font-mono text-[10px]"
-                    />
+                    <div className="pt-1">
+                      <ImageUploader
+                        label="Card Item Image"
+                        value={item.imageUrl || ""}
+                        onChange={(url) => onUpdateItem(item.id, { imageUrl: url })}
+                        helperText="Upload item image to Supabase Storage"
+                      />
+                    </div>
                   )}
                   {item.badge !== undefined && (
                     <input
