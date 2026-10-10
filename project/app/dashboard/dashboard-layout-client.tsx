@@ -150,7 +150,7 @@ export default function DashboardLayoutClient({
 
 
         {/* Navigation Items (Distinct routes with instant loading feedback) */}
-        <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-5">
+        <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           {navGroups.map((group, groupIdx) => (
             <div key={groupIdx} className="space-y-1">
               {sidebarOpen && (
