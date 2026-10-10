@@ -1252,6 +1252,7 @@ Banned unless a documented product requirement justifies an exception (§2.3):
 - **"Box inside box" design:** Never nest a bordered background card directly inside another background card. Use typography hierarchy, subtle top/bottom borders (`divide-y`), or negative space to group content instead.
 - **Thick side-border accents:** Do not use thick colored vertical strips (e.g., `border-l-4` or absolute positioned accent strips) to indicate status or active states. Accentuate via typography, icons, text color, or a delicate top rule.
 - **Missing hand cursor (`cursor: pointer`):** All buttons, links, clickable rows, and interactive controls must turn the cursor to a pointer hand. An arrow cursor on any clickable element is strictly prohibited.
+- **Decorative, uninformative pill badges:** Never scatter generic colored status pills (e.g. "Active", "Ready", "Operational", "Synced", "Tenant Scope Active") across headers, cards, or metrics as visual filler. Badges are strictly reserved for actionable or critical counts (e.g. pending approvals > 0, failed payments). If an item is functioning normally, convey state through clean typography or omit the badge entirely.
 - Nested borders without hierarchy; borders around everything.
 - Dense dashboards with no grouping; oversized headings inside operational UI; Display font on tables/forms/dense nav.
 - Unreadable or shrunken-desktop tables on mobile; critical functionality hidden or clipped on small screens; horizontal page overflow.
