@@ -14,8 +14,8 @@ export function FunnelBanner({ stats }: { stats?: CrmStats }) {
         denominator={`of ${stats.conversionRate.qualifiedOfTotal.total}`}
       />
       <StatCard 
-        label="Pipeline Value" 
-        value={new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(stats.totalPipelineValue)} 
+        label="Churned Leads" 
+        value={stats.stageCounts?.churned || 0} 
       />
       <StatCard 
         label="Customers (Total)" 

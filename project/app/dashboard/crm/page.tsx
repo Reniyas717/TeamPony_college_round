@@ -55,7 +55,6 @@ export default function CrmPage() {
   const [newEmail, setNewEmail] = React.useState("");
   const [newCompany, setNewCompany] = React.useState("");
   const [newStage, setNewStage] = React.useState<ContactStage>("lead");
-  const [newValue, setNewValue] = React.useState("0");
   const [formError, setFormError] = React.useState<string | null>(null);
 
   const contacts = React.useMemo(() => contactsData || [], [contactsData]);
@@ -75,37 +74,31 @@ export default function CrmPage() {
     });
   }, [contacts, searchQuery, selectedStageFilter]);
 
-  // Compute stage pipeline statistics
+  // Compute lead engagement & churn statistics
   const stageStats = [
     {
       id: "lead",
-      name: "New Leads",
+      name: "New Inquiries",
       count: contacts.filter((c) => c.stage === "lead").length,
-      value: `₹${contacts.filter((c) => c.stage === "lead").reduce((acc, c) => acc + (c.value || 0), 0).toLocaleString("en-IN")}`,
+      desc: "Awaiting outreach",
     },
     {
       id: "contacted",
       name: "Contacted",
       count: contacts.filter((c) => c.stage === "contacted").length,
-      value: `₹${contacts.filter((c) => c.stage === "contacted").reduce((acc, c) => acc + (c.value || 0), 0).toLocaleString("en-IN")}`,
+      desc: "Awaiting reply (Yes/No)",
     },
     {
       id: "qualified",
-      name: "Qualified",
-      count: contacts.filter((c) => c.stage === "qualified").length,
-      value: `₹${contacts.filter((c) => c.stage === "qualified").reduce((acc, c) => acc + (c.value || 0), 0).toLocaleString("en-IN")}`,
+      name: "Qualified (Said Yes)",
+      count: contacts.filter((c) => ["qualified", "proposal", "customer"].includes(c.stage)).length,
+      desc: "Confirmed interest",
     },
     {
-      id: "proposal",
-      name: "Proposal Sent",
-      count: contacts.filter((c) => c.stage === "proposal").length,
-      value: `₹${contacts.filter((c) => c.stage === "proposal").reduce((acc, c) => acc + (c.value || 0), 0).toLocaleString("en-IN")}`,
-    },
-    {
-      id: "customer",
-      name: "Won Customers",
-      count: contacts.filter((c) => c.stage === "customer").length,
-      value: `₹${contacts.filter((c) => c.stage === "customer").reduce((acc, c) => acc + (c.value || 0), 0).toLocaleString("en-IN")}`,
+      id: "churned",
+      name: "Churned (Said No)",
+      count: contacts.filter((c) => c.stage === "churned").length,
+      desc: "Declined or opted out",
     },
   ];
 
@@ -123,7 +116,7 @@ export default function CrmPage() {
         email: newEmail.trim(),
         company: newCompany.trim() || undefined,
         stage: newStage,
-        value: Number(newValue) || 0,
+        value: 0,
         source: "manual",
         tags: [],
       });
@@ -133,7 +126,6 @@ export default function CrmPage() {
       setNewLastName("");
       setNewEmail("");
       setNewCompany("");
-      setNewValue("0");
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : "Failed to create contact");
     }
@@ -204,8 +196,8 @@ export default function CrmPage() {
                 </p>
                 <p className="text-xl font-bold font-display mt-1 text-foreground">{stage.count}</p>
               </div>
-              <p className="text-xs font-mono text-brand-text mt-3 pt-2 border-t border-border/20">
-                {stage.value}
+              <p className="text-[11px] text-muted-foreground mt-3 pt-2 border-t border-border/20">
+                {stage.desc}
               </p>
             </div>
           );
@@ -256,7 +248,7 @@ export default function CrmPage() {
                 <th className="py-3 px-4">Contact</th>
                 <th className="py-3 px-4">Company</th>
                 <th className="py-3 px-4">Pipeline Stage</th>
-                <th className="py-3 px-4">Deal Value</th>
+                <th className="py-3 px-4">Response / Churn Decision</th>
                 <th className="py-3 px-4">Source</th>
                 <th className="py-3 px-4">Last Activity</th>
                 <th className="py-3 px-4 text-right">Actions</th>
@@ -295,8 +287,24 @@ export default function CrmPage() {
                         {STAGE_LABELS[contact.stage] || contact.stage}
                       </span>
                     </td>
-                    <td className="py-3 px-4 font-mono font-semibold text-foreground">
-                      {contact.value > 0 ? `₹${contact.value.toLocaleString("en-IN")}` : "₹0"}
+                    <td className="py-3 px-4">
+                      {contact.stage === "churned" ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-status-danger-bg/20 text-status-danger-fg border border-status-danger-border text-[11px] font-semibold">
+                          <span>❌</span> Churned (Said No)
+                        </span>
+                      ) : ["qualified", "proposal", "customer"].includes(contact.stage) ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-status-success-bg/20 text-status-success-fg border border-status-success-border text-[11px] font-semibold">
+                          <span>✅</span> Qualified (Said Yes)
+                        </span>
+                      ) : contact.stage === "contacted" ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-primary/10 text-primary border border-primary/20 text-[11px] font-medium">
+                          <span>⏳</span> Awaiting Reply
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-muted text-muted-foreground text-[11px] font-medium">
+                          <span>📥</span> New Inquiry
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-4">
                       {contact.source === "website_form" ? (
@@ -441,34 +449,22 @@ export default function CrmPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[10px] font-semibold uppercase text-muted-foreground block mb-1">
-                    Stage
-                  </label>
-                  <select
-                    value={newStage}
-                    onChange={(e) => setNewStage(e.target.value as ContactStage)}
-                    className="w-full px-2.5 py-1.5 rounded-sm border bg-background text-foreground text-xs"
-                  >
-                    <option value="lead">New Leads</option>
-                    <option value="contacted">Contacted</option>
-                    <option value="qualified">Qualified</option>
-                    <option value="proposal">Proposal Sent</option>
-                    <option value="customer">Won Customers</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] font-semibold uppercase text-muted-foreground block mb-1">
-                    Deal Value (₹)
-                  </label>
-                  <input
-                    type="number"
-                    value={newValue}
-                    onChange={(e) => setNewValue(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-sm border bg-background text-foreground text-xs font-mono"
-                  />
-                </div>
+              <div>
+                <label className="text-[10px] font-semibold uppercase text-muted-foreground block mb-1">
+                  Stage
+                </label>
+                <select
+                  value={newStage}
+                  onChange={(e) => setNewStage(e.target.value as ContactStage)}
+                  className="w-full px-2.5 py-1.5 rounded-sm border bg-background text-foreground text-xs"
+                >
+                  <option value="lead">New Leads</option>
+                  <option value="contacted">Contacted</option>
+                  <option value="qualified">Qualified</option>
+                  <option value="proposal">Proposal Sent</option>
+                  <option value="customer">Won Customers</option>
+                  <option value="churned">Churned</option>
+                </select>
               </div>
 
               <div className="pt-2 flex justify-end gap-2">

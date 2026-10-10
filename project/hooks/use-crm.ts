@@ -273,3 +273,42 @@ export function useSendMessage() {
     },
   });
 }
+
+/**
+ * Mutation: Process incoming lead response (email or message)
+ * Decides whether lead is qualified or churned based on positive/negative response
+ */
+export function useProcessLeadResponse() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      contactId,
+      channel = "email",
+      responseText,
+    }: {
+      contactId: string;
+      channel?: "email" | "whatsapp" | "message";
+      responseText: string;
+    }) => {
+      const res = await fetch(`/api/crm/contacts/${contactId}/response`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel, responseText }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error?.message || "Failed to process lead response");
+      }
+
+      const json = await res.json();
+      return json.data;
+    },
+    onSuccess: (_data, { contactId }) => {
+      queryClient.invalidateQueries({ queryKey: contactKeys.activities(contactId) });
+      queryClient.invalidateQueries({ queryKey: contactKeys.detail(contactId) });
+      queryClient.invalidateQueries({ queryKey: contactKeys.lists() });
+    },
+  });
+}
