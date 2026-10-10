@@ -619,7 +619,7 @@ export default function MarketingClient({
           const dispatchRes = await fetch(`/api/marketing/campaigns/${newCampaign.id}/dispatch`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ approved: true }),
+            body: JSON.stringify({ approved: true, campaign: newCampaign }),
           });
           const dispatchJson = await dispatchRes.json();
           if (!dispatchRes.ok) {
@@ -656,7 +656,7 @@ export default function MarketingClient({
         const res = await fetch(`/api/marketing/campaigns/${campaign.id}/dispatch`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ approved: true }),
+          body: JSON.stringify({ approved: true, campaign }),
         });
 
         const json = await res.json();

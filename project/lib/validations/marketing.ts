@@ -63,6 +63,7 @@ export const DispatchCampaignSchema = z.object({
   approved: z.boolean().default(false),
   idempotency_key: z.string().optional(),
   override_schedule: z.boolean().default(false),
+  campaign: z.any().optional(),
 });
 export type DispatchCampaignInput = z.infer<typeof DispatchCampaignSchema>;
 

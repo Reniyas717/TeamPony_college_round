@@ -26,7 +26,12 @@ export async function POST(
       );
     }
 
-    const result = await MarketingService.dispatchCampaign(id, parsed.data.approved, context);
+    const result = await MarketingService.dispatchCampaign(
+      id,
+      parsed.data.approved,
+      context,
+      parsed.data.campaign
+    );
     return NextResponse.json({ data: result });
   } catch (error) {
     console.error("[MARKETING-DISPATCH-ERROR]", error);

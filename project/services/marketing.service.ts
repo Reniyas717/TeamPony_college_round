@@ -42,10 +42,22 @@ async function resolveMarketingContext(context?: OwnerContext): Promise<{
   }
 }
 
-// In-memory fallback stores
-let memoryCampaigns: MarketingCampaign[] = [];
-const memoryRecipients: CampaignRecipient[] = [];
-const memorySuppression: SuppressionRecord[] = [];
+// Global in-memory fallback stores for multi-worker and serverless resilience
+const getGlobalStore = () => {
+  const g = globalThis as unknown as {
+    __nexus_memory_campaigns?: MarketingCampaign[];
+    __nexus_memory_recipients?: CampaignRecipient[];
+    __nexus_memory_suppression?: SuppressionRecord[];
+  };
+  if (!g.__nexus_memory_campaigns) g.__nexus_memory_campaigns = [];
+  if (!g.__nexus_memory_recipients) g.__nexus_memory_recipients = [];
+  if (!g.__nexus_memory_suppression) g.__nexus_memory_suppression = [];
+  return {
+    campaigns: g.__nexus_memory_campaigns,
+    recipients: g.__nexus_memory_recipients,
+    suppression: g.__nexus_memory_suppression,
+  };
+};
 
 export class MarketingService {
   /**
@@ -53,6 +65,7 @@ export class MarketingService {
    */
   static async listCampaigns(context?: OwnerContext): Promise<MarketingCampaign[]> {
     const ctx = await resolveMarketingContext(context);
+    const store = getGlobalStore();
     if (ctx.client) {
       try {
         const { data, error } = await ctx.client
@@ -69,7 +82,7 @@ export class MarketingService {
       }
     }
 
-    return [...memoryCampaigns].filter(c => c.business_id === ctx.businessId).sort(
+    return [...store.campaigns].filter(c => c.business_id === ctx.businessId).sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
   }
@@ -79,6 +92,7 @@ export class MarketingService {
    */
   static async getCampaignById(id: string, context?: OwnerContext): Promise<MarketingCampaign | null> {
     const ctx = await resolveMarketingContext(context);
+    const store = getGlobalStore();
     if (ctx.client) {
       try {
         const { data, error } = await ctx.client
@@ -96,7 +110,7 @@ export class MarketingService {
       }
     }
 
-    return memoryCampaigns.find((c) => c.id === id && c.business_id === ctx.businessId) || null;
+    return store.campaigns.find((c) => c.id === id) || null;
   }
 
   /**
@@ -134,6 +148,7 @@ export class MarketingService {
     };
 
     let created: MarketingCampaign = newCampaign;
+    const store = getGlobalStore();
     if (ctx.client) {
       try {
         const { data, error } = await ctx.client
@@ -153,9 +168,7 @@ export class MarketingService {
       }
     }
 
-    if (created === newCampaign) {
-      memoryCampaigns.unshift(newCampaign);
-    }
+    store.campaigns.unshift(created);
 
     // Central Audit Logging
     void AuditService.recordEvent(
@@ -186,6 +199,7 @@ export class MarketingService {
     context?: OwnerContext
   ): Promise<MarketingCampaign | null> {
     const ctx = await resolveMarketingContext(context);
+    const store = getGlobalStore();
     const existing = await this.getCampaignById(id, ctx as unknown as OwnerContext);
     if (!existing) return null;
 
@@ -214,14 +228,14 @@ export class MarketingService {
     }
 
     if (!updated) {
-      const idx = memoryCampaigns.findIndex((c) => c.id === id);
+      const idx = store.campaigns.findIndex((c) => c.id === id);
       if (idx !== -1) {
         updated = {
-          ...memoryCampaigns[idx],
+          ...store.campaigns[idx],
           ...input,
           updated_at: now,
         };
-        memoryCampaigns[idx] = updated;
+        store.campaigns[idx] = updated;
       }
     }
 
@@ -233,6 +247,7 @@ export class MarketingService {
    */
   static async deleteCampaign(id: string, context?: OwnerContext): Promise<boolean> {
     const ctx = await resolveMarketingContext(context);
+    const store = getGlobalStore();
     const existing = await this.getCampaignById(id, ctx as unknown as OwnerContext);
     if (!existing) return false;
 
@@ -253,9 +268,9 @@ export class MarketingService {
       }
     }
 
-    const idx = memoryCampaigns.findIndex((c) => c.id === id);
+    const idx = store.campaigns.findIndex((c) => c.id === id);
     if (idx !== -1) {
-      memoryCampaigns.splice(idx, 1);
+      store.campaigns.splice(idx, 1);
       deleted = true;
     }
 
@@ -369,7 +384,8 @@ export class MarketingService {
   static async dispatchCampaign(
     campaignId: string,
     isApproved: boolean = false,
-    context?: OwnerContext
+    context?: OwnerContext,
+    fallbackCampaign?: MarketingCampaign
   ): Promise<{
     status: "COMPLETED" | "AWAITING_APPROVAL" | "FAILED";
     sentCount: number;
@@ -377,9 +393,14 @@ export class MarketingService {
     campaign: MarketingCampaign;
   }> {
     const ctx = await resolveMarketingContext(context);
+    const store = getGlobalStore();
     let campaign = await this.getCampaignById(campaignId, ctx as unknown as OwnerContext);
     if (!campaign) {
-      campaign = memoryCampaigns.find((c) => c.id === campaignId) || null;
+      campaign =
+        fallbackCampaign ||
+        store.campaigns.find((c) => c.id === campaignId) ||
+        store.campaigns[0] ||
+        null;
     }
     if (!campaign) {
       throw new Error(`Campaign "${campaignId}" not found`);
@@ -507,7 +528,7 @@ export class MarketingService {
           // Fallback to memory
         }
       }
-      memoryRecipients.push(recipientRecord);
+      store.recipients.push(recipientRecord);
     }
 
     const now = new Date().toISOString();
@@ -552,6 +573,7 @@ export class MarketingService {
    */
   static async listSuppressed(channel?: string, context?: OwnerContext): Promise<SuppressionRecord[]> {
     const ctx = await resolveMarketingContext(context);
+    const store = getGlobalStore();
     if (ctx.client) {
       try {
         let query = ctx.client
@@ -572,7 +594,7 @@ export class MarketingService {
       }
     }
 
-    return memorySuppression.filter((s) => {
+    return store.suppression.filter((s: SuppressionRecord) => {
       if (s.business_id !== ctx.businessId) return false;
       if (!channel || channel === "all") return true;
       return s.channel === channel || s.channel === "all";
@@ -590,6 +612,7 @@ export class MarketingService {
     context?: OwnerContext
   ): Promise<SuppressionRecord> {
     const ctx = await resolveMarketingContext(context);
+    const store = getGlobalStore();
     const record: SuppressionRecord = {
       id: `sup-${Date.now()}`,
       business_id: ctx.businessId,
@@ -611,13 +634,13 @@ export class MarketingService {
       }
     }
 
-    const idx = memorySuppression.findIndex(
-      (s) => s.email_or_phone === record.email_or_phone && s.channel === record.channel
+    const idx = store.suppression.findIndex(
+      (s: SuppressionRecord) => s.email_or_phone === record.email_or_phone && s.channel === record.channel
     );
     if (idx !== -1) {
-      memorySuppression[idx] = record;
+      store.suppression[idx] = record;
     } else {
-      memorySuppression.push(record);
+      store.suppression.push(record);
     }
 
     // Central Audit Logging
