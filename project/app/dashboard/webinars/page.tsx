@@ -1,5 +1,5 @@
 import * as React from "react";
-import { requireWebinarOwner, WebinarTopBar } from "./owner-page";
+import { requireWebinarOwner } from "./owner-page";
 import { WebinarList } from "./webinar-list";
 import { getGoogleConnectionStatus } from "@/services/webinar/google-token-vault.service";
 
@@ -8,9 +8,9 @@ export default function WebinarsPage() {
 }
 
 async function WebinarsContent() {
-  const user = await requireWebinarOwner();
-  const google = await getGoogleConnectionStatus(user.businessId);
-  return <div className="min-h-screen bg-background text-foreground"><WebinarTopBar username={user.username} /><WebinarList googleConnected={google.connected && google.scope_granted} /></div>;
+  const { businessId } = await requireWebinarOwner();
+  const google = await getGoogleConnectionStatus(businessId);
+  return <div className="min-h-screen bg-background text-foreground"><WebinarList googleConnected={google.connected && google.scope_granted} /></div>;
 }
 
 function WebinarLoading() {
