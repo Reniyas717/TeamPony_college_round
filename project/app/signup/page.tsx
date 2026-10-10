@@ -8,6 +8,30 @@ import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { User, Sms, Lock, InfoCircle, ArrowRight } from "iconsax-react";
+import { createClient } from "@/lib/supabase/client";
+
+function GoogleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" width="18" height="18">
+      <path
+        fill="#EA4335"
+        d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.3 9 5 12 5z"
+      />
+      <path
+        fill="#4285F4"
+        d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12 0 14.5s.7 4.8 1.9 7.2l3.7-2.9z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 23.5c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.3-6.4-5.2L1.9 16.5C3.7 20.2 7.5 23.5 12 23.5z"
+      />
+    </svg>
+  );
+}
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -16,7 +40,31 @@ export default function SignUpPage() {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);
+  const [googleLoading, setGoogleLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  const handleGoogleSignUp = async () => {
+    setGoogleLoading(true);
+    setError(null);
+    try {
+      const supabase = createClient();
+      const redirectUrl = `${window.location.origin}/auth/callback?next=/dashboard`;
+      
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: redirectUrl,
+        },
+      });
+
+      if (oauthError) {
+        throw oauthError;
+      }
+    } catch (err: unknown) {
+      setError((err as Error).message || "Failed to initiate Google sign-up.");
+      setGoogleLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,7 +131,7 @@ export default function SignUpPage() {
               </div>
               <CardTitle className="text-page-sm font-bold tracking-tight">Create your Workspace</CardTitle>
               <CardDescription className="text-muted-foreground">
-                First time setup with username, email, and password
+                First time setup with username or continue with Google
               </CardDescription>
             </CardHeader>
 
@@ -95,6 +143,25 @@ export default function SignUpPage() {
                     <span>{error}</span>
                   </div>
                 )}
+
+                {/* Google OAuth Button */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleGoogleSignUp}
+                  disabled={googleLoading || loading}
+                  className="w-full h-11 text-base font-semibold gap-2.5 border-border-strong hover:bg-accent"
+                >
+                  <GoogleIcon />
+                  <span>{googleLoading ? "Connecting to Google..." : "Sign up with Google"}</span>
+                </Button>
+
+                <div className="relative flex items-center justify-center">
+                  <div className="w-full border-t border-border" />
+                  <span className="bg-card px-2 text-xs font-semibold uppercase text-muted-foreground tracking-wider relative">
+                    Or create with email
+                  </span>
+                </div>
 
                 <div className="space-y-1.5">
                   <label className="text-sm font-semibold text-foreground flex items-center justify-between" htmlFor="username">
@@ -111,7 +178,7 @@ export default function SignUpPage() {
                       onChange={(e) => setUsername(e.target.value)}
                       autoComplete="username"
                       required
-                      disabled={loading}
+                      disabled={loading || googleLoading}
                       className="pl-9"
                     />
                     <div className="absolute left-3 top-2.5 text-muted-foreground pointer-events-none">
@@ -134,7 +201,7 @@ export default function SignUpPage() {
                       onChange={(e) => setEmail(e.target.value)}
                       autoComplete="email"
                       required
-                      disabled={loading}
+                      disabled={loading || googleLoading}
                       className="pl-9"
                     />
                     <div className="absolute left-3 top-2.5 text-muted-foreground pointer-events-none">
@@ -157,7 +224,7 @@ export default function SignUpPage() {
                       onChange={(e) => setPassword(e.target.value)}
                       autoComplete="new-password"
                       required
-                      disabled={loading}
+                      disabled={loading || googleLoading}
                       className="pl-9"
                     />
                     <div className="absolute left-3 top-2.5 text-muted-foreground pointer-events-none">
@@ -172,7 +239,7 @@ export default function SignUpPage() {
                   type="submit"
                   variant="primary"
                   className="w-full h-11 text-base shadow-sm font-semibold"
-                  disabled={loading}
+                  disabled={loading || googleLoading}
                 >
                   {loading ? "Creating workspace..." : "Create workspace"}
                   {!loading && <ArrowRight size="18" className="ml-2" />}

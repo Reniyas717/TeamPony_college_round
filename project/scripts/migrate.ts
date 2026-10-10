@@ -13,7 +13,7 @@ async function applyMigration() {
   const sqlFilePath = resolve(process.cwd(), "supabase/migrations/20261010_initial_schema.sql");
   const sqlContent = readFileSync(sqlFilePath, "utf8");
 
-  console.log("Pushing database schema to Supabase at", supabaseUrl);
+  console.log(`Loaded schema (${sqlContent.length} bytes). Pushing database schema to Supabase at:`, supabaseUrl);
 
   // Split SQL queries safely by statement or run via pg / query endpoint
   // Using direct Supabase pg query endpoint if available, or direct connection

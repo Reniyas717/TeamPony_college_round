@@ -25,6 +25,7 @@ interface DashboardClientProps {
     id: string;
     email: string | undefined;
     username: string;
+    workspaceName?: string;
   };
 }
 
@@ -108,7 +109,7 @@ export default function DashboardClient({ user }: DashboardClientProps) {
             </Link>
             <div className="h-4 w-px bg-border hidden sm:block" />
             <div className="text-xs font-semibold px-2.5 py-1 rounded bg-secondary text-foreground hidden sm:inline-block">
-              {user.username}&apos;s Workspace
+              {user.workspaceName || `${user.username}'s Workspace`}
             </div>
           </div>
 

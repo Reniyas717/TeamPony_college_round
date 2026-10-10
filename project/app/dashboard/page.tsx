@@ -1,9 +1,11 @@
 import * as React from "react";
+import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import { AuthService } from "@/services/auth.service";
 import DashboardClient from "./dashboard-client";
 
 async function DashboardContent() {
+  await connection();
   const user = await AuthService.getCurrentUser();
 
   if (!user) {
