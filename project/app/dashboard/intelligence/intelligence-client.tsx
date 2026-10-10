@@ -2,9 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
 import {
   CustomerJourneyMap,
   JourneyMapStage,
@@ -18,21 +16,19 @@ import {
   Activity,
   ArrowRight,
   TickCircle,
-  CloseCircle,
   Global,
   VideoPlay,
   Card as CardIcon,
   DirectSend,
   SecurityUser,
   Magicpen,
-  LogoutCurve,
   Refresh,
   Edit2,
   Trash,
   Add,
   InfoCircle,
-  Hierarchy,
   Diagram,
+  Hierarchy,
   Code,
   Copy,
 } from "iconsax-react";
@@ -40,7 +36,7 @@ import {
 interface IntelligenceClientProps {
   initialJourneyMaps: CustomerJourneyMap[];
   initialTelemetry: NexusTelemetry;
-  user: {
+  user?: {
     username: string;
     email?: string;
     workspaceName?: string;
@@ -61,12 +57,7 @@ interface StrategyPlaybook {
 export default function IntelligenceClient({
   initialJourneyMaps,
   initialTelemetry,
-  user,
 }: IntelligenceClientProps) {
-  const router = useRouter();
-  const [loggingOut, setLoggingOut] = React.useState(false);
-  const [sidebarOpen, setSidebarOpen] = React.useState(true);
-  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
   // Journeys State
   const [maps, setMaps] = React.useState<CustomerJourneyMap[]>(initialJourneyMaps);
@@ -120,29 +111,6 @@ export default function IntelligenceClient({
   const [actionProcessingId, setActionProcessingId] = React.useState<string | null>(null);
 
   const activeStage = currentMap?.stages.find((s) => s.id === selectedStageId) || currentMap?.stages[0] || null;
-
-  const handleLogout = async () => {
-    setLoggingOut(true);
-    try {
-      await fetch("/api/auth/session", { method: "POST" });
-      router.push("/login");
-      router.refresh();
-    } catch {
-      setLoggingOut(false);
-    }
-  };
-
-  const navItems = [
-    { id: "overview", label: "Overview", icon: Activity, href: "/dashboard" },
-    { id: "intelligence", label: "Customer Journey", icon: TrendUp, href: "/dashboard/intelligence" },
-    { id: "crm", label: "Intelligent CRM", icon: SecurityUser, href: "/crm" },
-    { id: "billing", label: "Billing & Plans", icon: CardIcon },
-    { id: "website", label: "Website Builder", icon: Global },
-    { id: "marketing", label: "Campaigns", icon: DirectSend },
-    { id: "webinars", label: "Webinars", icon: VideoPlay },
-    { id: "agent", label: "AI Business Agent", icon: Magicpen },
-    { id: "approvals", label: "Approval Queue", icon: TickCircle },
-  ];
 
   // Curated Strategic Playbooks for Executive Generation
   const strategyPlaybooks: StrategyPlaybook[] = [
@@ -529,172 +497,9 @@ export default function IntelligenceClient({
   };
 
   return (
-    <div className="h-screen flex bg-background text-foreground overflow-hidden">
-      {/* Mobile Drawer Backdrop */}
-      {mobileMenuOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs lg:hidden"
-          onClick={() => setMobileMenuOpen(false)}
-        />
-      )}
-
-      {/* --- SIDEBAR --- */}
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-sidebar transition-all duration-300 ease-in-out lg:static shrink-0 ${
-          mobileMenuOpen ? "translate-x-0 w-64" : "-translate-x-full lg:translate-x-0"
-        } ${sidebarOpen ? "lg:w-64" : "lg:w-16"}`}
-      >
-        <div
-          className={`h-14 flex items-center bg-sidebar shrink-0 px-4 ${
-            sidebarOpen ? "justify-between" : "justify-center px-0"
-          }`}
-        >
-          <Link href="/" className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 bg-brand rounded-sm flex items-center justify-center shrink-0">
-              <span className="text-brand-foreground font-display font-bold text-lg leading-none">N</span>
-            </div>
-            {sidebarOpen && (
-              <div className="flex flex-col min-w-0">
-                <span className="font-display font-bold text-base tracking-tight leading-none">Nexus</span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider truncate mt-0.5 font-medium">
-                  Workspace
-                </span>
-              </div>
-            )}
-          </Link>
-
-          <button
-            type="button"
-            onClick={() => setMobileMenuOpen(false)}
-            className="lg:hidden p-1.5 rounded-sm text-muted-foreground hover:text-foreground cursor-pointer"
-            aria-label="Close navigation"
-          >
-            <CloseCircle size="18" />
-          </button>
-        </div>
-
-        {sidebarOpen && (
-          <div className="px-4 py-2 bg-muted/10 flex items-center justify-between shrink-0 mb-1 border-b border-border/40">
-            <div className="min-w-0">
-              <p className="text-xs font-semibold truncate text-foreground">{user.workspaceName || `${user.username}'s Workspace`}</p>
-              <p className="text-[10px] text-muted-foreground truncate font-mono">Single-Tenant DB</p>
-            </div>
-          </div>
-        )}
-
-        <div className="flex-1 overflow-y-auto no-scrollbar py-2 px-2 space-y-1">
-          {navItems.map((item) => {
-            const IconComp = item.icon;
-            const isActive = item.id === "intelligence";
-            if (item.href) {
-              return (
-                <Link
-                  key={item.id}
-                  href={item.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-sm text-xs font-medium transition-colors cursor-pointer ${
-                    isActive
-                      ? "bg-accent text-foreground font-semibold shadow-xs"
-                      : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                  } ${!sidebarOpen ? "justify-center px-0" : ""}`}
-                  title={item.label}
-                >
-                  <IconComp size="18" className={isActive ? "text-brand-text" : "text-muted-foreground"} />
-                  {sidebarOpen && <span className="truncate flex-1 text-left">{item.label}</span>}
-                </Link>
-              );
-            }
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-sm text-xs font-medium transition-colors cursor-pointer ${
-                  isActive
-                    ? "bg-accent text-foreground font-semibold shadow-xs"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                } ${!sidebarOpen ? "justify-center px-0" : ""}`}
-                title={item.label}
-              >
-                <IconComp size="18" className={isActive ? "text-brand-text" : "text-muted-foreground"} />
-                {sidebarOpen && <span className="truncate flex-1 text-left">{item.label}</span>}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="p-2.5 bg-sidebar shrink-0 border-t border-border/40">
-          {sidebarOpen ? (
-            <div className="flex items-center justify-between p-1.5 rounded-sm bg-muted/20">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold truncate text-foreground">{user.username}</p>
-                <p className="text-[10px] text-muted-foreground truncate">{user.email || "Active User"}</p>
-              </div>
-              <button
-                type="button"
-                onClick={handleLogout}
-                disabled={loggingOut}
-                className="p-1 text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
-                title="Sign out"
-                aria-label="Sign out"
-              >
-                <LogoutCurve size="16" />
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={loggingOut}
-              className="w-full flex items-center justify-center p-1.5 rounded-sm hover:bg-accent text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
-              title="Sign out"
-              aria-label="Sign out"
-            >
-              <LogoutCurve size="18" />
-            </button>
-          )}
-        </div>
-      </aside>
-
-      {/* --- WORKSTATION MAIN VIEWPORT --- */}
-      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        {/* Compact Workspace Header */}
-        <header className="shrink-0 h-14 bg-background/95 backdrop-blur-sm flex items-center justify-between px-4 sm:px-6 border-b border-border/40">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                if (window.innerWidth >= 1024) {
-                  setSidebarOpen(!sidebarOpen);
-                } else {
-                  setMobileMenuOpen(!mobileMenuOpen);
-                }
-              }}
-              className="p-1.5 rounded-sm text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors cursor-pointer"
-              title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-              aria-label="Toggle sidebar"
-            >
-              <Hierarchy size="18" />
-            </button>
-
-            <div className="h-4 w-px bg-muted/40" />
-
-            <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-              <span className="text-foreground font-semibold">{user.username}</span>
-              <span>/</span>
-              <span className="capitalize">Customer Journey Studio</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5">
-            <ThemeToggle />
-            <Button variant="outline" size="sm" asChild className="text-xs h-8">
-              <Link href="/dashboard">Return to Hub</Link>
-            </Button>
-          </div>
-        </header>
-
-        {/* WORKSPACE TOOLBAR & TELEMETRY STRIP */}
-        <div className="shrink-0 bg-card/60 border-b border-border px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3">
+    <div className="h-full flex flex-col min-w-0 overflow-hidden">
+      {/* WORKSPACE TOOLBAR & TELEMETRY STRIP */}
+      <div className="shrink-0 bg-card/60 border-b border-border px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3">
           {/* Left: Journey Title & Switcher */}
           <div className="flex items-center gap-3 min-w-0">
             {currentMap && !showNewGoalForm ? (
@@ -1723,6 +1528,5 @@ export default function IntelligenceClient({
           )}
         </div>
       </div>
-    </div>
   );
 }
