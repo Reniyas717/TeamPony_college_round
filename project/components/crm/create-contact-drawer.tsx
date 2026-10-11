@@ -49,8 +49,8 @@ export function CreateContactDrawer({ isOpen, onClose }: { isOpen: boolean; onCl
         
         <div className="flex items-center justify-between p-6 border-b border-border">
           <h2 className="text-xl font-display font-semibold text-foreground">Add Contact</h2>
-          <button onClick={onClose} className="p-2 text-muted-foreground hover:text-foreground rounded-full hover:bg-muted transition-colors">
-            ✕
+          <button onClick={onClose} className="p-2 text-muted-foreground hover:text-foreground rounded-full hover:bg-muted transition-colors cursor-pointer" aria-label="Close drawer">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
 

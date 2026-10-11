@@ -65,6 +65,7 @@ export function useContact(id: string | null) {
       return json.data;
     },
     enabled: Boolean(id),
+    refetchInterval: 2000,
   });
 }
 
@@ -84,6 +85,7 @@ export function useContactActivities(contactId: string | null) {
       return json.data;
     },
     enabled: Boolean(contactId),
+    refetchInterval: 2000,
   });
 }
 

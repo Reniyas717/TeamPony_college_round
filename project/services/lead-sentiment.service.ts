@@ -196,8 +196,8 @@ Respond ONLY with valid JSON:
       /\bstop\b/,
       /\bremove\b/,
       /\bcancel\b/,
-      /\bdon't contact\b/,
-      /\bdont contact\b/,
+      /\bdon'?t contact\b/,
+      /\bdo not contact\b/,
       /\bnot right now\b/,
       /\bnever\b/,
       /\bpass\b/,
@@ -207,7 +207,18 @@ Respond ONLY with valid JSON:
       /\bnah\b/,
       /\bnope\b/,
       /\bdo not need\b/,
-      /\bdont need\b/,
+      /\bdon'?t need\b/,
+      /\bdon'?t want\b/,
+      /\bdo not want\b/,
+      /\bnot anymore\b/,
+      /\bnot now\b/,
+      /\bno thanks\b/,
+      /\bno thank you\b/,
+      /\bdecline\b/,
+      /\bdeclined\b/,
+      /\bdisagree\b/,
+      /\bnot buying\b/,
+      /\bnot for me\b/,
     ];
 
     const positiveKeywords = [
@@ -230,6 +241,10 @@ Respond ONLY with valid JSON:
       /\bokay\b/,
       /\bpricing\b/,
       /\bdemo\b/,
+      /\bbook a demo\b/,
+      /\bbook demo\b/,
+      /\bconnect with\b/,
+      /\blook forward\b/,
     ];
 
     const hasNegative = negativeKeywords.some((r) => r.test(textLower));

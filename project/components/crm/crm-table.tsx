@@ -55,20 +55,20 @@ export function CrmTable({
                 </td>
                 <td className="px-4 py-3 text-right">
                   {contact.stage === 'churned' ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-status-danger-bg text-status-danger-fg border border-status-danger-border">
-                      ❌ Churned (No)
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-semibold bg-status-danger-bg text-status-danger-fg border border-status-danger-border">
+                      <span className="w-1.5 h-1.5 rounded-full bg-status-danger-fg" /> Churned (No)
                     </span>
                   ) : ['qualified', 'proposal', 'customer'].includes(contact.stage) ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-status-success-bg text-status-success-fg border border-status-success-border">
-                      ✅ Qualified (Yes)
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-semibold bg-status-success-bg text-status-success-fg border border-status-success-border">
+                      <span className="w-1.5 h-1.5 rounded-full bg-status-success-fg" /> Qualified (Yes)
                     </span>
                   ) : contact.stage === 'contacted' ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/20">
-                      ⏳ Awaiting Reply
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary" /> Awaiting Reply
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">
-                      📥 New Inquiry
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">
+                      <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground" /> New Inquiry
                     </span>
                   )}
                 </td>

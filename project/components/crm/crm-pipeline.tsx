@@ -42,13 +42,13 @@ export function CrmPipeline({
                 
                 <div className="text-xs font-semibold">
                   {contact.stage === 'churned' ? (
-                    <span className="text-status-danger-fg">❌ Churned (No)</span>
+                    <span className="text-status-danger-fg">Churned (No)</span>
                   ) : ['qualified', 'proposal', 'customer'].includes(contact.stage) ? (
-                    <span className="text-status-success-fg">✅ Interested (Yes)</span>
+                    <span className="text-status-success-fg">Interested (Yes)</span>
                   ) : contact.stage === 'contacted' ? (
-                    <span className="text-primary">⏳ Awaiting Reply</span>
+                    <span className="text-primary">Awaiting Reply</span>
                   ) : (
-                    <span className="text-muted-foreground">📥 New Inquiry</span>
+                    <span className="text-muted-foreground">New Inquiry</span>
                   )}
                 </div>
                 

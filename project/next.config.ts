@@ -15,6 +15,15 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  async redirects() {
+    return [
+      {
+        source: "/crm",
+        destination: "/dashboard/crm",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

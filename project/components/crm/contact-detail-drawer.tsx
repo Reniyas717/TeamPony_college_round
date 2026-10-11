@@ -43,18 +43,16 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
     setNoteText("");
   };
 
-  const handleSendOutreach = async (channel: "email" | "whatsapp") => {
+  const handleSendOutreach = async () => {
     if (!contact) return;
     try {
-      setOutreachStatus(`Dispatching ${channel === 'email' ? 'Email via Resend' : 'WhatsApp'}...`);
+      setOutreachStatus("Dispatching Email via Resend...");
       const defaultSubject = `Welcome to Nexus — Regarding your inquiry`;
-      const defaultText = customMsg.trim() || (channel === "email"
-        ? `Hi ${contact.first_name}, thank you for reaching out via our website! We reviewed your submission and are excited to assist you.`
-        : `Hello ${contact.first_name}! We received your inquiry on Nexus. When is a good time to connect?`);
+      const defaultText = customMsg.trim() || `Hi ${contact.first_name}, thank you for reaching out via our website! We reviewed your submission and are excited to assist you.`;
 
       await sendMessage({
         contactId: contact.id,
-        channel,
+        channel: "email",
         subject: defaultSubject,
         message: defaultText,
       });
@@ -62,7 +60,7 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
       // Automatically advance contact to contacted stage
       await updateContact({ id: contact.id, data: { stage: "contacted" } });
 
-      setOutreachStatus(`Dispatched ${channel.toUpperCase()}! Contact moved to Contacted.`);
+      setOutreachStatus("Dispatched Email via Resend! Contact moved to Contacted.");
       setCustomMsg("");
       setTimeout(() => setOutreachStatus(null), 5000);
     } catch (err: unknown) {
@@ -107,8 +105,8 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
             <p className="text-status-danger-fg">Contact not found</p>
           )}
 
-          <button onClick={onClose} className="p-2 text-muted-foreground hover:text-foreground rounded-full hover:bg-muted transition-colors">
-            ✕
+          <button onClick={onClose} className="p-2 text-muted-foreground hover:text-foreground rounded-full hover:bg-muted transition-colors cursor-pointer" aria-label="Close drawer">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
 
@@ -144,9 +142,25 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                       : 'bg-muted/30 border-border text-foreground'
               }`}>
                 <div className="flex items-center gap-3">
-                  <span className="text-xl">
-                    {contact.stage === 'churned' ? '❌' : ['qualified', 'proposal', 'customer'].includes(contact.stage) ? '✅' : contact.stage === 'contacted' ? '⏳' : '📥'}
-                  </span>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    contact.stage === 'churned'
+                      ? 'bg-status-danger-bg text-status-danger-fg'
+                      : ['qualified', 'proposal', 'customer'].includes(contact.stage)
+                        ? 'bg-status-success-bg text-status-success-fg'
+                        : contact.stage === 'contacted'
+                          ? 'bg-primary/20 text-primary'
+                          : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {contact.stage === 'churned' ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    ) : ['qualified', 'proposal', 'customer'].includes(contact.stage) ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    ) : contact.stage === 'contacted' ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+                    )}
+                  </div>
                   <div>
                     <h4 className="font-semibold text-sm">
                       {contact.stage === 'churned'
@@ -163,7 +177,7 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                         : ['qualified', 'proposal', 'customer'].includes(contact.stage)
                           ? 'Customer confirmed interest in discussion. Retained in active pipeline.'
                           : contact.stage === 'contacted'
-                            ? 'Email / WhatsApp dispatched. Waiting for Yes / No reply.'
+                            ? 'Email outreach dispatched. Waiting for Yes / No reply.'
                             : 'Inquiry captured from website builder form.'}
                     </p>
                   </div>
@@ -204,18 +218,18 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
               <div className="bg-card p-5 rounded-lg border border-border flex flex-col gap-4 shadow-xs">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="font-semibold text-base text-foreground">Direct Outreach (Email &amp; WhatsApp)</h3>
+                    <h3 className="font-semibold text-base text-foreground">Direct Email Outreach (Resend)</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Send initial message via Email (Resend) or WhatsApp (Twilio) to {contact.first_name}.
+                      Send personalized outreach email to {contact.first_name} with 1-click qualification links.
                     </p>
                   </div>
-                  <Badge variant="brand" className="text-xs">Outbound</Badge>
+                  <Badge variant="brand" className="text-xs">Outbound Email</Badge>
                 </div>
 
                 <div className="flex flex-col gap-2">
                   <textarea
                     className="w-full min-h-[70px] p-3 text-sm rounded-sm border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-                    placeholder={`Write custom message to ${contact.first_name} (optional)...`}
+                    placeholder={`Write custom email message to ${contact.first_name} (optional)...`}
                     value={customMsg}
                     onChange={(e) => setCustomMsg(e.target.value)}
                   />
@@ -226,26 +240,17 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                     variant="primary"
                     size="sm"
                     disabled={isSendingMessage}
-                    onClick={() => handleSendOutreach("email")}
-                    className="cursor-pointer"
+                    onClick={() => handleSendOutreach()}
+                    className="cursor-pointer gap-1.5"
                   >
-                    ✉️ {isSendingMessage ? "Dispatching..." : "Send Email via Resend"}
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isSendingMessage}
-                    onClick={() => handleSendOutreach("whatsapp")}
-                    className="cursor-pointer"
-                  >
-                    💬 {isSendingMessage ? "Dispatching..." : "Send WhatsApp"}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                    <span>{isSendingMessage ? "Dispatching..." : "Send Email via Resend"}</span>
                   </Button>
 
                   <button
                     type="button"
                     onClick={() => setActiveTab("timeline")}
-                    className="text-xs text-primary hover:underline ml-auto font-semibold"
+                    className="text-xs text-primary hover:underline ml-auto font-semibold cursor-pointer"
                   >
                     View Timeline &rarr;
                   </button>
