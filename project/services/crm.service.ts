@@ -247,9 +247,14 @@ export class CrmService {
   }
 
   static async getContactByPhone(phone: string, context?: CrmOwnerContext): Promise<Contact | null> {
+    const contacts = await this.getAllContactsByPhone(phone, context);
+    return contacts.length > 0 ? contacts[0] : null;
+  }
+
+  static async getAllContactsByPhone(phone: string, context?: CrmOwnerContext): Promise<Contact[]> {
     const ownerContext = requireCrmContext(context);
     const cleanDigits = phone.replace(/\D/g, "").slice(-10);
-    if (!cleanDigits) return null;
+    if (!cleanDigits) return [];
 
     const query = ownerContext.client
       .from("crm_contacts")
@@ -259,15 +264,13 @@ export class CrmService {
     }
     const { data, error } = await query.order("created_at", { ascending: false });
 
-    if (error || !data) return null;
-    const match = (data as Record<string, unknown>[]).find((c) => {
+    if (error || !data) return [];
+    const matches = (data as Record<string, unknown>[]).filter((c) => {
       const cDigits = String(c.phone || "").replace(/\D/g, "").slice(-10);
       return cDigits === cleanDigits;
     });
-    if (!match) return null;
 
-    const matchedBiz = String(match.business_id || ownerContext.businessId);
-    return mapContact(match, matchedBiz);
+    return matches.map((m) => mapContact(m, String(m.business_id || ownerContext.businessId)));
   }
 
   static async createContact(input: CreateContactInput, context?: CrmOwnerContext): Promise<Contact> {

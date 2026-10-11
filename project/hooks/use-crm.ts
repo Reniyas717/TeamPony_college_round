@@ -45,6 +45,7 @@ export function useContacts(filters?: ContactFilters) {
       const json = await res.json();
       return json.data;
     },
+    refetchInterval: 3000,
   });
 }
 
@@ -100,6 +101,7 @@ export function useCrmStats() {
       const json = await res.json();
       return json.data;
     },
+    refetchInterval: 3000,
   });
 }
 
