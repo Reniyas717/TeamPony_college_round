@@ -241,10 +241,11 @@ export function statusLabel(status: WebinarStatus) {
 }
 
 export function statusClass(status: WebinarStatus) {
-  if (status === "scheduled" || status === "live") return "bg-status-success-bg text-status-success-fg";
-  if (status === "cancelled") return "bg-status-danger-bg text-status-danger-fg";
-  if (status === "completed") return "bg-muted text-muted-foreground";
-  return "bg-status-warning-bg text-status-warning-fg";
+  if (status === "live") return "bg-status-success-bg text-status-success-fg border border-status-success-border font-bold";
+  if (status === "scheduled") return "bg-status-info-bg text-status-info-fg border border-status-info-border font-semibold";
+  if (status === "cancelled") return "bg-status-danger-bg text-status-danger-fg border border-status-danger-border font-semibold";
+  if (status === "completed") return "bg-muted text-muted-foreground border border-border font-medium";
+  return "bg-status-warning-bg text-status-warning-fg border border-status-warning-border font-semibold";
 }
 
 export async function createWebinarSeries(payload: { title: string; description?: string | null }) {

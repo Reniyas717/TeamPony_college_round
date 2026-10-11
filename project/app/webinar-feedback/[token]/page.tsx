@@ -2,20 +2,32 @@ import { FeedbackForm } from "./feedback-form";
 
 type Context = { params: Promise<{ token: string }> };
 
-// The token is resolved at request time and the form loads its public projection client-side.
 export const instant = false;
 
 export default async function WebinarFeedbackPage({ params }: Context) {
   const { token } = await params;
 
   return (
-    <main className="min-h-screen bg-background px-5 py-12 text-foreground sm:px-8">
-      <div className="mx-auto max-w-2xl space-y-8">
-        <header className="space-y-3">
-          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-brand-text">Nexus webinar</p>
-          <h1 className="font-display text-4xl font-semibold tracking-tight sm:text-5xl">Tell us how it went.</h1>
-          <p className="max-w-xl text-muted-foreground">Your feedback helps the business improve future sessions.</p>
-        </header>
+    <main className="min-h-screen bg-background text-foreground antialiased selection:bg-brand-subtle selection:text-brand-text">
+      {/* Top Editorial Brand Bar */}
+      <header className="border-b border-border/60 bg-card/60 backdrop-blur-md px-4 py-3.5 sm:px-8">
+        <div className="mx-auto flex max-w-4xl items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-7 w-7 items-center justify-center rounded-sm bg-brand font-display text-sm font-bold text-brand-foreground">
+              N
+            </span>
+            <span className="font-display text-sm font-bold tracking-tight text-foreground">
+              Nexus Feedback
+            </span>
+          </div>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
+            Verified Attendee
+          </span>
+        </div>
+      </header>
+
+      {/* Main Feedback Container */}
+      <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
         <FeedbackForm token={token} />
       </div>
     </main>

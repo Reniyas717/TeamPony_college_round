@@ -7,6 +7,6 @@ export default function WebinarDetailPage({ params }: { params: Promise<{ sessio
 }
 
 async function WebinarDetailContent({ params }: { params: Promise<{ sessionId: string }> }) {
-  const [user, route] = await Promise.all([requireWebinarOwner(), params]);
-  return <div className="min-h-screen bg-background text-foreground"><WebinarTopBar username={user.username} /><WebinarDetailView sessionId={route.sessionId} /></div>;
+  const [, route] = await Promise.all([requireWebinarOwner(), params]);
+  return <div className="w-full bg-background text-foreground"><WebinarDetailView sessionId={route.sessionId} /></div>;
 }

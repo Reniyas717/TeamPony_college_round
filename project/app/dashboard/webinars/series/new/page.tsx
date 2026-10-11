@@ -7,6 +7,6 @@ export default function NewSeriesPage() {
 }
 
 async function SeriesContent() {
-  const user = await requireWebinarOwner();
-  return <div className="min-h-screen bg-background text-foreground"><WebinarTopBar username={user.username} /><main className="mx-auto max-w-3xl px-4 py-8 sm:px-6"><NewSeriesForm /></main></div>;
+  await requireWebinarOwner();
+  return <div className="w-full bg-background text-foreground"><main className="mx-auto max-w-5xl px-4 py-8 sm:px-6"><NewSeriesForm /></main></div>;
 }
