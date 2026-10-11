@@ -1,7 +1,14 @@
-import { type NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
 export async function middleware(request: NextRequest) {
+  // If Twilio webhook posts to root / instead of /api/webhooks/twilio, rewrite it to twilio webhook
+  if (request.method === "POST" && request.nextUrl.pathname === "/") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/api/webhooks/twilio";
+    return NextResponse.rewrite(url);
+  }
+
   return await updateSession(request);
 }
 
