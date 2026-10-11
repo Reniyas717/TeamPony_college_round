@@ -47,6 +47,7 @@ export const CreateContactSchema = z.object({
   tags: z.array(z.string().trim()).default([]),
   next_action_text: z.string().trim().optional().or(z.literal("")),
   next_action_due_at: z.string().datetime().optional().nullable().or(z.literal("")),
+  business_id: z.string().uuid().optional(),
 });
 
 export const UpdateContactSchema = CreateContactSchema.partial();

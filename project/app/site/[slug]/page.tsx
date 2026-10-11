@@ -87,6 +87,7 @@ export default async function PublicWebsitePage({ params }: PublicSitePageProps)
             section={section}
             theme={theme}
             isEditorMode={false}
+            businessId={website.business_id}
           />
         ))}
       </main>
