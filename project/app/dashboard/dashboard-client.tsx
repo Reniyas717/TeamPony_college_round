@@ -51,7 +51,7 @@ export default function DashboardClient({ user }: DashboardClientProps) {
     },
     {
       id: "crm",
-      href: "/crm",
+      href: "/dashboard/crm",
       title: "Intelligent CRM",
       description: "Manage customer lifecycles, track touchpoints, and sync contacts with billing records.",
       icon: SecurityUser,
