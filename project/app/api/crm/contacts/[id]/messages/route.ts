@@ -115,10 +115,10 @@ export async function POST(request: Request, { params }: RouteParams) {
       </p>
       <div style="display: flex; gap: 12px; margin: 12px 0;">
         <a href="${yesUrl}" style="display: inline-block; background-color: #16a34a; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 600; font-size: 14px; margin-right: 12px;">
-          ✅ Yes, I'm Interested
+          Yes, I'm Interested
         </a>
         <a href="${noUrl}" style="display: inline-block; background-color: #dc2626; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 600; font-size: 14px;">
-          ❌ No, Not Interested
+          No, Not Interested
         </a>
       </div>
       <p style="font-size: 12px; color: #64748b; margin-bottom: 0; margin-top: 12px;">

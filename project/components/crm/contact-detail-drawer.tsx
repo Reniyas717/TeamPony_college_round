@@ -43,18 +43,16 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
     setNoteText("");
   };
 
-  const handleSendOutreach = async (channel: "email" | "whatsapp") => {
+  const handleSendOutreach = async () => {
     if (!contact) return;
     try {
-      setOutreachStatus(`Dispatching ${channel === 'email' ? 'Email via Resend' : 'WhatsApp'}...`);
+      setOutreachStatus("Dispatching Email via Resend...");
       const defaultSubject = `Welcome to Nexus — Regarding your inquiry`;
-      const defaultText = customMsg.trim() || (channel === "email"
-        ? `Hi ${contact.first_name}, thank you for reaching out via our website! We reviewed your submission and are excited to assist you.`
-        : `Hello ${contact.first_name}! We received your inquiry on Nexus. When is a good time to connect?`);
+      const defaultText = customMsg.trim() || `Hi ${contact.first_name}, thank you for reaching out via our website! We reviewed your submission and are excited to assist you.`;
 
       await sendMessage({
         contactId: contact.id,
-        channel,
+        channel: "email",
         subject: defaultSubject,
         message: defaultText,
       });
@@ -62,7 +60,7 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
       // Automatically advance contact to contacted stage
       await updateContact({ id: contact.id, data: { stage: "contacted" } });
 
-      setOutreachStatus(`Dispatched ${channel.toUpperCase()}! Contact moved to Contacted.`);
+      setOutreachStatus("Dispatched Email via Resend! Contact moved to Contacted.");
       setCustomMsg("");
       setTimeout(() => setOutreachStatus(null), 5000);
     } catch (err: unknown) {
@@ -179,7 +177,7 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                         : ['qualified', 'proposal', 'customer'].includes(contact.stage)
                           ? 'Customer confirmed interest in discussion. Retained in active pipeline.'
                           : contact.stage === 'contacted'
-                            ? 'Email / WhatsApp dispatched. Waiting for Yes / No reply.'
+                            ? 'Email outreach dispatched. Waiting for Yes / No reply.'
                             : 'Inquiry captured from website builder form.'}
                     </p>
                   </div>
@@ -220,18 +218,18 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
               <div className="bg-card p-5 rounded-lg border border-border flex flex-col gap-4 shadow-xs">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="font-semibold text-base text-foreground">Direct Outreach (Email &amp; WhatsApp)</h3>
+                    <h3 className="font-semibold text-base text-foreground">Direct Email Outreach (Resend)</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Send initial message via Email (Resend) or WhatsApp (Twilio) to {contact.first_name}.
+                      Send personalized outreach email to {contact.first_name} with 1-click qualification links.
                     </p>
                   </div>
-                  <Badge variant="brand" className="text-xs">Outbound</Badge>
+                  <Badge variant="brand" className="text-xs">Outbound Email</Badge>
                 </div>
 
                 <div className="flex flex-col gap-2">
                   <textarea
                     className="w-full min-h-[70px] p-3 text-sm rounded-sm border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-                    placeholder={`Write custom message to ${contact.first_name} (optional)...`}
+                    placeholder={`Write custom email message to ${contact.first_name} (optional)...`}
                     value={customMsg}
                     onChange={(e) => setCustomMsg(e.target.value)}
                   />
@@ -242,28 +240,17 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                     variant="primary"
                     size="sm"
                     disabled={isSendingMessage}
-                    onClick={() => handleSendOutreach("email")}
+                    onClick={() => handleSendOutreach()}
                     className="cursor-pointer gap-1.5"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
                     <span>{isSendingMessage ? "Dispatching..." : "Send Email via Resend"}</span>
                   </Button>
 
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isSendingMessage}
-                    onClick={() => handleSendOutreach("whatsapp")}
-                    className="cursor-pointer gap-1.5"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
-                    <span>{isSendingMessage ? "Dispatching..." : "Send WhatsApp"}</span>
-                  </Button>
-
                   <button
                     type="button"
                     onClick={() => setActiveTab("timeline")}
-                    className="text-xs text-primary hover:underline ml-auto font-semibold"
+                    className="text-xs text-primary hover:underline ml-auto font-semibold cursor-pointer"
                   >
                     View Timeline &rarr;
                   </button>
