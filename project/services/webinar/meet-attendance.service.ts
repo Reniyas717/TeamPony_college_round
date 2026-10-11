@@ -97,7 +97,7 @@ export function getMeetAttendanceProvider(businessId: string): MeetAttendancePro
         ...page,
         items: page.items.filter((item) => typeof item.name === "string").map((item) => {
           const user = item.user && typeof item.user === "object" ? item.user as Record<string, Record<string, unknown>> : {};
-          const signedIn = user.signedInUser;
+          const signedIn = user.signedinUser ?? user.signedInUser;
           const anonymous = user.anonymousUser;
           const phone = user.phoneUser;
           const identity = signedIn ?? anonymous ?? phone;
