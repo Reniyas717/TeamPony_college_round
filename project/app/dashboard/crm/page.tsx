@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { SecurityUser, UserAdd, Filter, SearchNormal1, DirectSend, Call, More, CloseCircle, Refresh } from "iconsax-react";
+import { SecurityUser, UserAdd, Filter, SearchNormal1, DirectSend, Call, More, CloseCircle, Refresh, Chart } from "iconsax-react";
 import { useContacts, useCreateContact } from "@/hooks/use-crm";
 import { ContactStage } from "@/lib/validations/crm";
 import { ContactDetailDrawer } from "@/components/crm/contact-detail-drawer";
@@ -153,7 +154,7 @@ export default function CrmPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <Button
             variant="outline"
             size="sm"
@@ -172,6 +173,17 @@ export default function CrmPage() {
           >
             <UserAdd size="16" className="text-brand-foreground" />
             <span>Add Contact</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="md"
+            asChild
+            className="gap-2 cursor-pointer bg-card hover:bg-muted/50 border border-border shadow-xs"
+          >
+            <Link href="/dashboard/crm/analytics">
+              <Chart size="16" className="text-foreground" />
+              <span>View CRM Analytics</span>
+            </Link>
           </Button>
         </div>
       </div>
