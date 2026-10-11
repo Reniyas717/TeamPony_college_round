@@ -1024,7 +1024,27 @@ export class JourneyMapService {
     if (error) safeError("MAP_LIST", error);
 
     const mapRows = (data ?? []) as unknown as DbMapRow[];
-    if (mapRows.length === 0) return [];
+    if (mapRows.length === 0) {
+      try {
+        const defaultMap = await this.generateJourneyMap(context, {
+          objective: "I want to convert more website visitors into trial signups.",
+        });
+        return [defaultMap];
+      } catch (err) {
+        console.warn("[JOURNEY-MAP-FALLBACK] Auto-seeding default journey via RPC failed, creating in-memory baseline:", err);
+        try {
+          const telemetry = await this.getTelemetry(context).catch(() => undefined);
+          const memoryDefault = buildJourneyFromObjective(
+            "I want to convert more website visitors into trial signups.",
+            context.businessId,
+            telemetry
+          );
+          return [memoryDefault];
+        } catch {
+          return [];
+        }
+      }
+    }
     const mapIds = mapRows.map((map) => map.id);
     const { data: stages, error: stageError } = await context.client
       .from("journey_map_stages")
