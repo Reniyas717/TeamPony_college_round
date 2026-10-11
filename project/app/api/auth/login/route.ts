@@ -35,12 +35,14 @@ export async function POST(request: Request) {
       },
       { status: 200 }
     );
-  } catch {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Invalid username or password";
+    console.error("[AUTH-LOGIN-POST-ERROR]", err);
     return NextResponse.json(
       {
         error: {
           code: "UNAUTHORIZED",
-          message: "Invalid username or password",
+          message,
         },
       },
       { status: 401 }

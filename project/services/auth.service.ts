@@ -173,32 +173,36 @@ export class AuthService {
       throw new Error("Account created, but sign-in could not be completed.");
     }
 
-    const context = await requireOwnerContext();
-    if (!existingBusiness) {
+    try {
+      const context = await requireOwnerContext();
+      if (!existingBusiness) {
+        await AuditService.recordBusinessEvent(context, {
+          action: "business.created",
+          resource: { type: "business", id: context.businessId },
+          outcome: "success",
+          metadata: { business_name: workspaceName, provisioning_source: "password_signup" },
+        });
+      }
       await AuditService.recordBusinessEvent(context, {
-        action: "business.created",
-        resource: { type: "business", id: context.businessId },
+        action: "auth.signup",
+        resource: { type: "auth_user", id: context.user.id },
         outcome: "success",
-        metadata: { business_name: workspaceName, provisioning_source: "password_signup" },
+        metadata: { method: "password" },
       });
+      await AuditService.recordBusinessEvent(context, {
+        action: "auth.login",
+        resource: { type: "auth_session", id: context.user.id },
+        outcome: "success",
+        metadata: { method: "password" },
+      });
+    } catch (auditErr) {
+      console.warn("[AUTH-SIGNUP-AUDIT-FAILED]", auditErr);
     }
-    await AuditService.recordBusinessEvent(context, {
-      action: "auth.signup",
-      resource: { type: "auth_user", id: context.user.id },
-      outcome: "success",
-      metadata: { method: "password" },
-    });
-    await AuditService.recordBusinessEvent(context, {
-      action: "auth.login",
-      resource: { type: "auth_session", id: context.user.id },
-      outcome: "success",
-      metadata: { method: "password" },
-    });
 
     return {
       user: {
-        id: context.user.id,
-        email: context.user.email,
+        id: userId,
+        email: email,
         username,
         workspaceName,
       },
@@ -242,19 +246,23 @@ export class AuthService {
       throw new Error("Invalid username or password.");
     }
 
-    const context = await requireOwnerContext();
-    await AuditService.recordBusinessEvent(context, {
-      action: "auth.login",
-      resource: { type: "auth_session", id: context.user.id },
-      outcome: "success",
-      metadata: { method: "password" },
-    });
+    try {
+      const context = await requireOwnerContext();
+      await AuditService.recordBusinessEvent(context, {
+        action: "auth.login",
+        resource: { type: "auth_session", id: context.user.id },
+        outcome: "success",
+        metadata: { method: "password" },
+      });
+    } catch (auditErr) {
+      console.warn("[AUTH-LOGIN-AUDIT-FAILED]", auditErr);
+    }
 
     return {
       user: {
-        id: context.user.id,
-        email: context.user.email,
-        username: context.user.user_metadata?.username || input.identifier.trim(),
+        id: authData.user.id,
+        email: authData.user.email,
+        username: authData.user.user_metadata?.username || input.identifier.trim(),
       },
       session: authData.session,
     };
@@ -265,23 +273,21 @@ export class AuthService {
    */
   static async logOut() {
     const supabase = await createClient();
-    const context = await requireOwnerContext();
-    const { error } = await supabase.auth.signOut();
-    if (error) {
+    try {
+      const context = await requireOwnerContext();
       await AuditService.recordBusinessEvent(context, {
         action: "auth.logout",
         resource: { type: "auth_session", id: context.user.id },
-        outcome: "failure",
-        error: { code: "SIGNOUT_FAILED", message: "Sign out failed." },
+        outcome: "success",
       });
-      throw new Error("Could not sign out.");
+    } catch (auditErr) {
+      console.warn("[AUTH-LOGOUT-AUDIT-FAILED]", auditErr);
     }
 
-    await AuditService.recordBusinessEvent(context, {
-      action: "auth.logout",
-      resource: { type: "auth_session", id: context.user.id },
-      outcome: "success",
-    });
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.warn("[AUTH-SIGNOUT-FAILED]", error);
+    }
   }
 
   /**
