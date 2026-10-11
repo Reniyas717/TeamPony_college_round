@@ -289,20 +289,20 @@ export default function CrmPage() {
                     </td>
                     <td className="py-3 px-4">
                       {contact.stage === "churned" ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-status-danger-bg/20 text-status-danger-fg border border-status-danger-border text-[11px] font-semibold">
-                          <span>❌</span> Churned (Said No)
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-status-danger-bg/20 text-status-danger-fg border border-status-danger-border text-[11px] font-semibold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-status-danger-fg" /> Churned (Said No)
                         </span>
                       ) : ["qualified", "proposal", "customer"].includes(contact.stage) ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-status-success-bg/20 text-status-success-fg border border-status-success-border text-[11px] font-semibold">
-                          <span>✅</span> Qualified (Said Yes)
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-status-success-bg/20 text-status-success-fg border border-status-success-border text-[11px] font-semibold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-status-success-fg" /> Qualified (Said Yes)
                         </span>
                       ) : contact.stage === "contacted" ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-primary/10 text-primary border border-primary/20 text-[11px] font-medium">
-                          <span>⏳</span> Awaiting Reply
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-primary/10 text-primary border border-primary/20 text-[11px] font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary" /> Awaiting Reply
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-muted text-muted-foreground text-[11px] font-medium">
-                          <span>📥</span> New Inquiry
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-muted text-muted-foreground text-[11px] font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground" /> New Inquiry
                         </span>
                       )}
                     </td>

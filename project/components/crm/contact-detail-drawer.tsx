@@ -107,8 +107,8 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
             <p className="text-status-danger-fg">Contact not found</p>
           )}
 
-          <button onClick={onClose} className="p-2 text-muted-foreground hover:text-foreground rounded-full hover:bg-muted transition-colors">
-            ✕
+          <button onClick={onClose} className="p-2 text-muted-foreground hover:text-foreground rounded-full hover:bg-muted transition-colors cursor-pointer" aria-label="Close drawer">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
 
@@ -144,9 +144,25 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                       : 'bg-muted/30 border-border text-foreground'
               }`}>
                 <div className="flex items-center gap-3">
-                  <span className="text-xl">
-                    {contact.stage === 'churned' ? '❌' : ['qualified', 'proposal', 'customer'].includes(contact.stage) ? '✅' : contact.stage === 'contacted' ? '⏳' : '📥'}
-                  </span>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    contact.stage === 'churned'
+                      ? 'bg-status-danger-bg text-status-danger-fg'
+                      : ['qualified', 'proposal', 'customer'].includes(contact.stage)
+                        ? 'bg-status-success-bg text-status-success-fg'
+                        : contact.stage === 'contacted'
+                          ? 'bg-primary/20 text-primary'
+                          : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {contact.stage === 'churned' ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    ) : ['qualified', 'proposal', 'customer'].includes(contact.stage) ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    ) : contact.stage === 'contacted' ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+                    )}
+                  </div>
                   <div>
                     <h4 className="font-semibold text-sm">
                       {contact.stage === 'churned'
@@ -227,9 +243,10 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                     size="sm"
                     disabled={isSendingMessage}
                     onClick={() => handleSendOutreach("email")}
-                    className="cursor-pointer"
+                    className="cursor-pointer gap-1.5"
                   >
-                    ✉️ {isSendingMessage ? "Dispatching..." : "Send Email via Resend"}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                    <span>{isSendingMessage ? "Dispatching..." : "Send Email via Resend"}</span>
                   </Button>
 
                   <Button
@@ -237,9 +254,10 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                     size="sm"
                     disabled={isSendingMessage}
                     onClick={() => handleSendOutreach("whatsapp")}
-                    className="cursor-pointer"
+                    className="cursor-pointer gap-1.5"
                   >
-                    💬 {isSendingMessage ? "Dispatching..." : "Send WhatsApp"}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+                    <span>{isSendingMessage ? "Dispatching..." : "Send WhatsApp"}</span>
                   </Button>
 
                   <button

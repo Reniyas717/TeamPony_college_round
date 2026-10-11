@@ -150,8 +150,10 @@ function CustomerResponseContent() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="bg-card border border-border p-8 rounded-xl shadow-lg max-w-md w-full text-center flex flex-col items-center gap-4 animate-pulse">
-          <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xl font-bold">
-            ⚡
+          <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-primary">
+            <svg className="w-6 h-6 animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+            </svg>
           </div>
           <h2 className="text-xl font-display font-semibold text-foreground">
             {submitting ? "Analyzing Your Response with AI..." : "Loading..."}
@@ -171,13 +173,22 @@ function CustomerResponseContent() {
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="bg-card border border-border p-8 md:p-10 rounded-2xl shadow-xl max-w-lg w-full text-center flex flex-col items-center gap-5 animate-in fade-in zoom-in-95 duration-300">
           <div
-            className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl shadow-sm ${
+            className={`w-16 h-16 rounded-full flex items-center justify-center shadow-sm ${
               isYes
                 ? "bg-status-success-bg/30 text-status-success-fg border border-status-success-border"
                 : "bg-status-danger-bg/30 text-status-danger-fg border border-status-danger-border"
             }`}
           >
-            {isYes ? "✅" : "👋"}
+            {isYes ? (
+              <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            ) : (
+              <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -227,8 +238,11 @@ function CustomerResponseContent() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="bg-card border border-border p-8 md:p-10 rounded-2xl shadow-xl max-w-lg w-full text-center flex flex-col items-center gap-6 animate-in fade-in duration-300">
-        <div className="w-14 h-14 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary text-2xl font-bold">
-          ✉️
+        <div className="w-14 h-14 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+          <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect width="20" height="16" x="2" y="4" rx="2" />
+            <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+          </svg>
         </div>
 
         <div className="space-y-2">
@@ -256,7 +270,10 @@ function CustomerResponseContent() {
             onClick={() => handleSelectChoice("yes")}
             className="flex-1 py-3.5 px-4 rounded-xl bg-status-success-bg text-status-success-fg border border-status-success-border hover:bg-status-success-bg/80 font-sans font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-sm hover:scale-[1.02] cursor-pointer"
           >
-            <span className="text-lg">✅</span> Yes, I&apos;m Interested!
+            <svg className="w-4 h-4 stroke-[2.5]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            <span>Yes, I&apos;m Interested!</span>
           </button>
 
           <button
@@ -264,7 +281,11 @@ function CustomerResponseContent() {
             onClick={() => handleSelectChoice("no")}
             className="flex-1 py-3.5 px-4 rounded-xl bg-status-danger-bg text-status-danger-fg border border-status-danger-border hover:bg-status-danger-bg/80 font-sans font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-sm hover:scale-[1.02] cursor-pointer"
           >
-            <span className="text-lg">❌</span> No, Not Interested
+            <svg className="w-4 h-4 stroke-[2.5]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+            <span>No, Not Interested</span>
           </button>
         </div>
 
@@ -285,7 +306,10 @@ function CustomerResponseContent() {
               disabled={!customResponse.trim()}
               className="w-full py-2.5 px-4 rounded-lg bg-primary text-primary-foreground font-semibold text-xs hover:bg-primary/90 disabled:opacity-50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
             >
-              <span>⚡</span> Send Custom Reply (AI Analyzed)
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+              <span>Send Custom Reply (AI Analyzed)</span>
             </button>
           </form>
         </div>
