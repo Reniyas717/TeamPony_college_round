@@ -1,11 +1,10 @@
 // Nexus Progressive Web App Service Worker
 // Cache version identifier
-const CACHE_NAME = 'nexus-cache-v1';
+const CACHE_NAME = 'nexus-cache-v2';
 
 // Static shell assets and critical resources to pre-cache on install
 const PRECACHE_ASSETS = [
   '/',
-  '/dashboard',
   '/offline',
   '/icons/icon-192x192.png',
   '/icons/icon-512x512.png',
@@ -42,6 +41,17 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
+
+  // In development, local environments, or HMR, bypass cache completely
+  if (
+    self.location.hostname === 'localhost' ||
+    self.location.hostname === '127.0.0.1' ||
+    url.pathname.includes('turbopack') ||
+    url.pathname.includes('hot-update') ||
+    url.pathname.includes('_next/static/development')
+  ) {
+    return;
+  }
 
   // Only handle GET requests and same-origin requests
   if (request.method !== 'GET' || url.origin !== self.location.origin) {

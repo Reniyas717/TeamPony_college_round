@@ -8,7 +8,24 @@ export function PwaRegister() {
       return;
     }
 
-    // Register service worker on window load
+    // In development or local environments, ensure service workers are unregistered and caches cleared
+    if (process.env.NODE_ENV !== 'production' || window.location.hostname === 'localhost') {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (const registration of registrations) {
+          registration.unregister();
+        }
+      });
+      if ('caches' in window) {
+        caches.keys().then((keys) => {
+          for (const key of keys) {
+            caches.delete(key);
+          }
+        });
+      }
+      return;
+    }
+
+    // Register service worker on window load in production only
     const handleLoad = () => {
       navigator.serviceWorker
         .register('/sw.js')

@@ -121,16 +121,28 @@ export class BillingService {
    */
   static async getSubscription(businessId: string): Promise<SubscriptionRecord> {
     try {
-      const supabase = await getSupabaseServerClient(false);
+      const supabase = await getSupabaseServerClient(true);
       if (supabase) {
         const { data, error } = await supabase
-          .from("subscriptions")
+          .from("billing_subscriptions")
           .select("*")
           .eq("business_id", businessId)
           .maybeSingle();
 
         if (!error && data) {
-          return data as SubscriptionRecord;
+          return {
+            id: data.id,
+            business_id: data.business_id,
+            plan_id: (data.plan_name?.toLowerCase().includes("pro") ? "pro" : data.plan_name?.toLowerCase().includes("enterprise") ? "enterprise" : "growth") as any,
+            plan_name: data.plan_name || BILLING_PLANS.growth.name,
+            status: (data.status || "active") as any,
+            price_inr: data.amount_cents ? Math.round(data.amount_cents / 100) : BILLING_PLANS.growth.priceInr,
+            billing_interval: (data.interval || "monthly") as any,
+            current_period_start: data.created_at || new Date().toISOString(),
+            current_period_end: data.current_period_end || new Date(Date.now() + 86400000 * 30).toISOString(),
+            created_at: data.created_at || new Date().toISOString(),
+            updated_at: data.updated_at || new Date().toISOString(),
+          };
         }
       }
     } catch {
@@ -365,11 +377,12 @@ export class BillingService {
     metric: "crm_contacts" | "webinar_minutes" | "emails_dispatched" | "ai_operations",
     increment: number
   ): Promise<WorkspaceUsageSummary> {
-    const current = memoryBilling.usage.get(businessId) || {
-      crm_contacts: 12,
-      webinar_minutes: 240,
-      emails_dispatched: 1840,
-      ai_operations: 420,
+    const currentUsage = await this.getUsage(businessId);
+    const current = {
+      crm_contacts: currentUsage.metrics.crm_contacts.quantity,
+      webinar_minutes: currentUsage.metrics.webinar_minutes.quantity,
+      emails_dispatched: currentUsage.metrics.emails_dispatched.quantity,
+      ai_operations: currentUsage.metrics.ai_operations.quantity,
     };
 
     current[metric] = (current[metric] || 0) + increment;
