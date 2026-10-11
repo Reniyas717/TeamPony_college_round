@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireOwnerContext } from "@/lib/supabase/owner-context";
 import type { WebinarFollowupDraftSchema, WebinarFollowupScheduleSchema } from "@/lib/validations/webinar-followup";
 import { recordWebinarAudit } from "./audit";
+import { getGoogleEmailSenderForBusiness, GoogleTokenVaultError } from "./google-token-vault.service";
 
 type DraftInput = Omit<z.infer<typeof WebinarFollowupDraftSchema>, "action">;
 type ScheduleInput = z.infer<typeof WebinarFollowupScheduleSchema>;
@@ -159,9 +160,17 @@ export async function saveWebinarFollowupDrafts(webinarId: string, input: DraftI
 export async function scheduleWebinarFollowup(webinarId: string, input: ScheduleInput) {
   const context = await ownerContext();
   const { businessId, supabase, user } = context;
-  const sendFrom = process.env.WEBINAR_EMAIL_FROM?.trim();
+  let sendFrom: string;
+  try { sendFrom = await getGoogleEmailSenderForBusiness(businessId); }
+  catch (error) {
+    const reconnectRequired = error instanceof GoogleTokenVaultError
+      && (error.code === "NOT_CONNECTED" || error.code === "RECONNECT_REQUIRED");
+    throw new WebinarFollowupError("CONFIGURATION_ERROR", reconnectRequired
+      ? "Reconnect Google and grant Gmail send permission before scheduling follow-ups."
+      : "Google email authorization is temporarily unavailable.");
+  }
   const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (!sendFrom || !appUrl) throw new WebinarFollowupError("CONFIGURATION_ERROR", "Email sender or public app URL is not configured.");
+  if (!appUrl) throw new WebinarFollowupError("CONFIGURATION_ERROR", "The public app URL is not configured.");
   const publicUrl = new URL(appUrl);
   if (publicUrl.protocol !== "https:" && publicUrl.hostname !== "localhost") throw new WebinarFollowupError("CONFIGURATION_ERROR", "Public app URL must use HTTPS.");
 
@@ -219,8 +228,6 @@ export async function scheduleWebinarFollowup(webinarId: string, input: Schedule
     .eq("business_id", businessId).eq("webinar_id", webinarId).maybeSingle();
   const approvalVersion = (existing?.approval_version ?? 0) + 1;
   const snapshotHash = createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
-  const { data: profile } = await supabase.from("profiles").select("email")
-    .eq("id", user.id).maybeSingle();
 
   const { error: approvalError } = await supabase.from("webinar_followups").upsert({
     business_id: businessId, webinar_id: webinarId, enabled: true, status: "scheduled",
@@ -262,7 +269,7 @@ export async function scheduleWebinarFollowup(webinarId: string, input: Schedule
       p_effect_key: `followup/${webinarId}/${approvalVersion}/${recipient.registration_id}`,
       p_to_email: recipient.email,
       p_from_email: sendFrom,
-      p_reply_to_email: profile?.email ?? null,
+      p_reply_to_email: sendFrom,
       p_subject: String(campaign.subject),
       p_html_body: htmlBody,
       p_text_body: textBody,

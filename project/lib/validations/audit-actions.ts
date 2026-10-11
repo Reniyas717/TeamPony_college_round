@@ -7,7 +7,7 @@ export const AUDIT_ACTIONS = [
   "crm.contact.created", "crm.contact.updated", "crm.contact.deleted", "crm.contact.stage_changed", "crm.activity.created", "crm.activity.updated", "crm.activity.deleted",
   "billing.subscription.created", "billing.subscription.updated", "billing.subscription.cancelled", "billing.invoice.paid", "billing.payment_failed",
   "website.created", "website.updated", "website.published", "website.unpublished", "website.deleted",
-  "marketing.campaign.created", "marketing.campaign.updated", "marketing.campaign.dispatched", "marketing.campaign.paused",
+  "marketing.campaign.created", "marketing.campaign.updated", "marketing.campaign.dispatched", "marketing.campaign.paused", "marketing.campaign.deleted", "marketing.consent.revoked",
   "webinar.created", "webinar.updated", "webinar.scheduled", "webinar.rescheduled", "webinar.cancelled", "webinar.deleted", "webinar.completed",
   "webinar.series.created", "webinar.series.updated", "webinar.series.deleted",
   "webinar.registration.created", "webinar.feedback.submitted", "webinar.feedback.marketing_opt_in",

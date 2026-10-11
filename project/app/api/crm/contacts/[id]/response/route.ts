@@ -65,6 +65,13 @@ export async function POST(request: Request, { params }: RouteParams) {
     const evaluation = await LeadSentimentService.evaluateSentiment(responseText);
     const { decision, isChurned, targetStage, reasoning, engine, confidence } = evaluation;
 
+    const admin = getSupabaseAdminClient();
+    const effectiveContext = (context || (admin ? {
+      client: admin,
+      user: { id: "system", email: "system@nexus.internal" },
+      businessId: contact.business_id,
+    } : undefined)) as any;
+
     // Update the contact's stage and save the response snippet
     const existingTags = Array.isArray(contact.tags) ? contact.tags : [];
     const cleanTags = existingTags.filter((t) => !t.startsWith("response:"));

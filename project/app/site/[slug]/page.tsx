@@ -1,7 +1,7 @@
 import * as React from "react";
+import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { connection } from "next/server";
 import { WebsiteService } from "@/services/website.service";
 import { SectionRenderer } from "@/components/website-builder/section-renderer";
@@ -111,9 +111,9 @@ export default async function PublicWebsitePage({ params }: PublicSitePageProps)
             <span>Nexus Studio</span>
           </Link>
           <span>•</span>
-          <a href="/login" className="hover:underline">
+          <Link href="/login" className="hover:underline">
             Owner Sign In
-          </a>
+          </Link>
         </div>
       </footer>
 

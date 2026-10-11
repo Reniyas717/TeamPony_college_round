@@ -27,7 +27,7 @@ type RegistrationFormData = {
 };
 
 type ApiResponse = {
-  data?: RegistrationFormData & { notifications?: { status?: string } };
+  data?: RegistrationFormData & { notifications?: { status?: string; deliveryStatus?: string } };
   error?: { message?: string };
 };
 
@@ -116,7 +116,7 @@ export function RegistrationForm({ slug }: { slug: string }) {
       });
       const payload = (await response.json()) as ApiResponse;
       if (!response.ok) throw new Error(payload.error?.message ?? "Could not record your registration.");
-      setConfirmationStatus(payload.data?.notifications?.status ?? "not_queued");
+      setConfirmationStatus(payload.data?.notifications?.deliveryStatus ?? payload.data?.notifications?.status ?? "not_queued");
       setSuccess(true);
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Could not record your registration.");
@@ -137,9 +137,17 @@ export function RegistrationForm({ slug }: { slug: string }) {
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
           <p>
-            {confirmationStatus === "queued"
-              ? "A confirmation email has been queued for delivery."
-              : "Your registration is saved, but a confirmation email could not be queued. Contact the organizer if you need the meeting details."}
+            {confirmationStatus === "provider_accepted"
+              ? "Gmail accepted the confirmation email for delivery."
+              : confirmationStatus === "gmail_reconnect_required"
+                ? "Your registration is saved. The organizer needs to reconnect Google and grant Gmail send permission before the confirmation email can be sent."
+              : confirmationStatus === "retry_queued"
+                ? "Your registration is saved. The confirmation email could not be sent immediately and is queued for the organizer to retry."
+                : confirmationStatus === "unknown"
+                  ? "Your registration is saved, but email delivery could not be confirmed. Contact the organizer if you need the meeting details."
+                  : confirmationStatus === "pending" || confirmationStatus === "queued"
+                    ? "Your registration is saved. The confirmation email is queued, but immediate delivery could not be confirmed."
+                    : "Your registration is saved, but confirmation email delivery is not configured. Contact the organizer if you need the meeting details."}
           </p>
           {selectedSessions.map((session) => <p key={session.slug} className="text-foreground">{session.title} · {formatDate(session.scheduled_start, session.timezone)}</p>)}
         </CardContent>

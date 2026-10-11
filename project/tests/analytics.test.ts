@@ -18,7 +18,6 @@ moduleLoader._resolveFilename = function resolveNexusAlias(request: unknown, ...
 const { computeLinearRegression } = await import("../lib/analytics/linear-regression");
 const {
   DataEvidenceTypeSchema,
-  AnalyticsDashboardPayload,
 } = await import("../lib/validations/analytics");
 const { AnalyticsService } = await import("../services/analytics.service");
 

@@ -140,6 +140,7 @@ export function WebinarForm({ initial, mode }: { initial?: WebinarSession; mode:
       </div>
 
       {error && <p role="alert" className="rounded-sm border border-status-danger-fg/30 bg-status-danger-bg px-4 py-3 text-sm text-status-danger-fg">{error}</p>}
+      {saving && <p role="status" aria-live="polite" className="flex items-center gap-2 text-sm text-muted-foreground"><span aria-hidden="true" className="inline-block size-4 animate-spin rounded-full border-2 border-current border-r-transparent" />{intent === "schedule" ? "Creating and scheduling your webinar…" : "Saving your webinar…"}</p>}
       {mode === "edit" && <p className="rounded-sm bg-muted/30 px-4 py-3 text-xs text-muted-foreground">Lifecycle status: <span className="font-semibold text-foreground">{statusLabel(values.lifecycleStatus)}</span>. Editing preserves this status.</p>}
 
       <Card>
@@ -171,8 +172,8 @@ export function WebinarForm({ initial, mode }: { initial?: WebinarSession; mode:
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <Button type="button" variant="outline" asChild><Link href={mode === "create" ? "/dashboard/webinars" : `/dashboard/webinars/${initial?.id}`}>Cancel</Link></Button>
-        {!readOnlyLifecycle && <Button type="submit" value="draft" variant="secondary" disabled={saving}>{saving && intent === "draft" ? "Saving..." : "Save draft"}</Button>}
-        {!readOnlyLifecycle && <Button type="submit" value="schedule" variant="brand" disabled={saving || values.lifecycleStatus !== "draft"}>{saving && intent === "schedule" ? "Scheduling..." : "Save & schedule"}</Button>}
+        {!readOnlyLifecycle && <Button type="submit" value="draft" variant="secondary" disabled={saving} aria-busy={saving && intent === "draft"}>{saving && intent === "draft" && <span aria-hidden="true" className="mr-2 inline-block size-4 animate-spin rounded-full border-2 border-current border-r-transparent align-[-3px]" />}{saving && intent === "draft" ? "Saving…" : "Save draft"}</Button>}
+        {!readOnlyLifecycle && <Button type="submit" value="schedule" variant="brand" disabled={saving || values.lifecycleStatus !== "draft"} aria-busy={saving && intent === "schedule"}>{saving && intent === "schedule" && <span aria-hidden="true" className="mr-2 inline-block size-4 animate-spin rounded-full border-2 border-current border-r-transparent align-[-3px]" />}{saving && intent === "schedule" ? "Scheduling…" : "Save & schedule"}</Button>}
       </div>
     </form>
   );

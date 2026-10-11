@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Chart2, DirectSend, Edit2, People, Refresh2, TickCircle, Trash, VideoPlay } from "iconsax-react";
+import { ArrowLeft, Chart2, Copy, DirectSend, Edit2, Facebook, People, Refresh2, Share, Sms, TickCircle, Trash, VideoPlay, Whatsapp } from "iconsax-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDate, statusClass, statusLabel, WebinarDetail } from "./webinar-api";
@@ -77,7 +77,7 @@ export function WebinarDetailView({ sessionId }: { sessionId: string }) {
   if (!session) return null;
 
   return <main className="mx-auto w-full max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
-    <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between"><div><Link href="/dashboard/webinars" className="mb-4 inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground hover:text-foreground"><ArrowLeft size="14" /> All webinars</Link><div className="flex flex-wrap items-center gap-3"><h1 className="font-display text-3xl font-bold tracking-tight">{session.title}</h1><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${statusClass(session.status)}`}>{statusLabel(session.status)}</span></div><p className="mt-2 text-sm text-muted-foreground">{session.seriesTitle ? `Part of ${session.seriesTitle}` : "Standalone session"} · Version {session.version ?? "—"}</p></div><div className="flex flex-wrap gap-2">{session.status !== "cancelled" && session.status !== "completed" && session.status !== "live" && <Button variant="outline" size="sm" asChild><Link href={`/dashboard/webinars/${session.id}/edit`}><Edit2 size="14" /> Edit</Link></Button>}{session.status === "draft" && <Button variant="brand" size="sm" onClick={() => void run("schedule")} disabled={Boolean(busy)}>{busy === "schedule" ? "Scheduling..." : "Schedule"}</Button>}{session.status === "scheduled" || session.status === "live" ? <Button variant="outline" size="sm" onClick={() => void run("cancel")} disabled={Boolean(busy)}>{busy === "cancel" ? "Cancelling..." : "Cancel"}</Button> : null}<Button variant="destructive" size="sm" onClick={() => void run("delete")} disabled={Boolean(busy)}><Trash size="14" /> Delete</Button></div></div>
+    <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between"><div><Link href="/dashboard/webinars" className="mb-4 inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground hover:text-foreground"><ArrowLeft size="14" /> All webinars</Link><div className="flex flex-wrap items-center gap-3"><h1 className="font-display text-3xl font-bold tracking-tight">{session.title}</h1><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${statusClass(session.status)}`}>{statusLabel(session.status)}</span></div><p className="mt-2 text-sm text-muted-foreground">{session.seriesTitle ? `Part of ${session.seriesTitle}` : "Standalone session"} · Version {session.version ?? "—"}</p></div><div className="flex flex-wrap gap-2">{session.status !== "cancelled" && session.status !== "completed" && session.status !== "live" && <Button variant="outline" size="sm" asChild><Link href={`/dashboard/webinars/${session.id}/edit`}><Edit2 size="14" /> Edit</Link></Button>}{session.status === "draft" && <Button variant="brand" size="sm" onClick={() => void run("schedule")} disabled={Boolean(busy)}>{busy === "schedule" ? <><span aria-hidden="true" className="mr-2 inline-block size-4 animate-spin rounded-full border-2 border-current border-r-transparent align-[-3px]" />Scheduling…</> : "Schedule"}</Button>}{session.status === "scheduled" || session.status === "live" ? <Button variant="outline" size="sm" onClick={() => void run("cancel")} disabled={Boolean(busy)}>{busy === "cancel" ? <><span aria-hidden="true" className="mr-2 inline-block size-4 animate-spin rounded-full border-2 border-current border-r-transparent align-[-3px]" />Cancelling…</> : "Cancel"}</Button> : null}<Button variant="destructive" size="sm" aria-busy={busy === "delete"} onClick={() => void run("delete")} disabled={Boolean(busy)}>{busy === "delete" ? <><span aria-hidden="true" className="mr-2 inline-block size-4 animate-spin rounded-full border-2 border-current border-r-transparent align-[-3px]" />Deleting…</> : <><Trash size="14" /> Delete</>}</Button></div></div>
     {error && <p role="alert" className="rounded-sm border border-status-danger-fg/30 bg-status-danger-bg px-4 py-3 text-sm text-status-danger-fg">{error}</p>}
     {actionNotice && <p role="status" className="rounded-sm border border-status-warning-border bg-status-warning-bg px-4 py-3 text-sm text-status-warning-fg">{actionNotice}</p>}
     <nav aria-label="Webinar sections" className="flex gap-1 overflow-x-auto border-b border-border">{(["overview", "registration", "attendance", "followup", "analytics"] as Tab[]).map((item) => <button key={item} type="button" onClick={() => setTab(item)} className={`whitespace-nowrap border-b-2 px-3 py-3 text-xs font-semibold capitalize transition-colors ${tab === item ? "border-brand text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`} aria-current={tab === item ? "page" : undefined}>{item === "followup" ? "Follow-up" : item}</button>)}</nav>
@@ -89,9 +89,85 @@ export function WebinarDetailView({ sessionId }: { sessionId: string }) {
   </main>;
 }
 
-function Overview({ session }: { session: WebinarDetail }) { return <div className="grid gap-6 lg:grid-cols-[1.4fr_0.8fr]"><Card><CardHeader><CardTitle className="text-xl">Overview</CardTitle><CardDescription>{session.description || "No description has been added yet."}</CardDescription></CardHeader><CardContent className="grid gap-5 sm:grid-cols-2"><Info label="Presenter" value={session.presenter || "Not set"} /><Info label="Starts" value={`${formatDate(session.scheduledStart, session.timezone)}${session.timezone ? ` (${session.timezone})` : ""}`} /><Info label="Duration" value={session.durationMinutes ? `${session.durationMinutes} minutes` : "Not set"} /><Info label="Capacity" value={session.capacity ? String(session.capacity) : "No limit"} /><Info label="Registration" value={session.status === "draft" || session.status === "cancelled" ? "Closed" : session.publicSlug ? "Public page ready" : "Pending public page"} /><Info label="Meet link" value={session.meetingUrl ? <a className="break-all text-brand-text underline" href={session.meetingUrl} target="_blank" rel="noreferrer">Open meeting</a> : "Provisioning required"} /></CardContent></Card><div className="space-y-4"><Card><CardHeader><CardTitle className="text-lg">At a glance</CardTitle></CardHeader><CardContent className="space-y-4"><Stat icon={<People size="17" />} label="Registered" value={session.registrationCount == null ? "—" : session.registrationCount} /><Stat icon={<TickCircle size="17" />} label="Attendance import" value={session.attendance?.importStatus || "Not started"} /><Stat icon={<DirectSend size="17" />} label="Follow-up" value={session.followup?.status || (session.followupEnabled ? "Enabled" : "Disabled")} /></CardContent></Card><div className="rounded-sm bg-muted/30 p-4 text-xs leading-relaxed text-muted-foreground">Cancelled sessions retain registrations, attendance, feedback, and delivery history until you explicitly delete the webinar.</div></div></div>; }
+function Overview({ session }: { session: WebinarDetail }) { return <div className="grid gap-6 lg:grid-cols-[1.4fr_0.8fr]"><Card><CardHeader><CardTitle className="text-xl">Overview</CardTitle><CardDescription>{session.description || "No description has been added yet."}</CardDescription></CardHeader><CardContent className="grid gap-5 sm:grid-cols-2"><Info label="Presenter" value={session.presenter || "Not set"} /><Info label="Starts" value={`${formatDate(session.scheduledStart, session.timezone)}${session.timezone ? ` (${session.timezone})` : ""}`} /><Info label="Duration" value={session.durationMinutes ? `${session.durationMinutes} minutes` : "Not set"} /><Info label="Capacity" value={session.capacity ? String(session.capacity) : "No limit"} /><Info label="Registration" value={session.status === "draft" || session.status === "cancelled" ? "Closed" : session.publicSlug ? <RegistrationLinkActions slug={session.publicSlug} title={session.title} /> : "Pending public page"} /><Info label="Meet link" value={session.meetingUrl ? <a className="break-all text-brand-text underline" href={session.meetingUrl} target="_blank" rel="noreferrer">Open meeting</a> : "Provisioning required"} /></CardContent></Card><div className="space-y-4"><Card><CardHeader><CardTitle className="text-lg">At a glance</CardTitle></CardHeader><CardContent className="space-y-4"><Stat icon={<People size="17" />} label="Registered" value={session.registrationCount == null ? "—" : session.registrationCount} /><Stat icon={<TickCircle size="17" />} label="Attendance import" value={session.attendance?.importStatus || "Not started"} /><Stat icon={<DirectSend size="17" />} label="Follow-up" value={session.followup?.status || (session.followupEnabled ? "Enabled" : "Disabled")} /></CardContent></Card><div className="rounded-sm bg-muted/30 p-4 text-xs leading-relaxed text-muted-foreground">Cancelled sessions retain registrations, attendance, feedback, and delivery history until you explicitly delete the webinar.</div></div></div>; }
 
-function Registration({ session }: { session: WebinarDetail }) { const registrations = session.registrations ?? []; return <Card><CardHeader><CardTitle className="text-xl">Registration</CardTitle><CardDescription>{session.seriesId ? "This series can use one registration entry point with session selection." : "This session has its own registration entry point."} {session.capacity ? `Capacity: ${session.capacity}.` : "No capacity limit is configured."}</CardDescription></CardHeader><CardContent>{!session.registrations && <Pending message="Registration records were not included by the API." />}{session.registrations && registrations.length === 0 && <Empty message="No registrations yet." />}{registrations.length > 0 && <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><thead><tr className="border-b border-border text-xs text-muted-foreground"><th className="px-2 py-3 font-semibold">Attendee</th><th className="px-2 py-3 font-semibold">Registered</th><th className="px-2 py-3 font-semibold">Status</th></tr></thead><tbody>{registrations.map((registration) => <tr key={registration.id} className="border-b border-border last:border-0"><td className="px-2 py-3"><p className="font-semibold">{registration.name}</p><p className="text-xs text-muted-foreground">{registration.email}</p></td><td className="px-2 py-3 text-xs text-muted-foreground">{formatDate(registration.registeredAt)}</td><td className="px-2 py-3 text-xs">{registration.status || "registered"}</td></tr>)}</tbody></table></div>}</CardContent></Card>; }
+function Registration({ session }: { session: WebinarDetail }) { const registrations = session.registrations ?? []; return <Card><CardHeader><CardTitle className="text-xl">Registration</CardTitle><CardDescription>{session.seriesId ? "This series can use one registration entry point with session selection." : "This session has its own registration entry point."} {session.capacity ? `Capacity: ${session.capacity}.` : "No capacity limit is configured."}</CardDescription>{session.publicSlug && session.status !== "draft" && session.status !== "cancelled" && <RegistrationLinkActions slug={session.publicSlug} title={session.title} />}</CardHeader><CardContent>{!session.registrations && <Pending message="Registration records were not included by the API." />}{session.registrations && registrations.length === 0 && <Empty message="No registrations yet." />}{registrations.length > 0 && <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><thead><tr className="border-b border-border text-xs text-muted-foreground"><th className="px-2 py-3 font-semibold">Attendee</th><th className="px-2 py-3 font-semibold">Registered</th><th className="px-2 py-3 font-semibold">Status</th></tr></thead><tbody>{registrations.map((registration) => <tr key={registration.id} className="border-b border-border last:border-0"><td className="px-2 py-3"><p className="font-semibold">{registration.name}</p><p className="text-xs text-muted-foreground">{registration.email}</p></td><td className="px-2 py-3 text-xs text-muted-foreground">{formatDate(registration.registeredAt)}</td><td className="px-2 py-3 text-xs">{registration.status || "registered"}</td></tr>)}</tbody></table></div>}</CardContent></Card>; }
+
+function RegistrationLinkActions({ slug, title }: { slug: string; title: string }) {
+  const [open, setOpen] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
+  React.useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [open]);
+  const getUrl = () => new URL(`/webinars/${encodeURIComponent(slug)}`, window.location.origin).toString();
+  const shareText = `Register for ${title}`;
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(getUrl());
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+  async function shareNative() {
+    if (!navigator.share) {
+      await copyLink();
+      return;
+    }
+    try { await navigator.share({ title, text: shareText, url: getUrl() }); } catch { /* User cancelled the share sheet. */ }
+  }
+  function shareTo(platform: "whatsapp" | "linkedin" | "facebook" | "x" | "email") {
+    const url = getUrl();
+    const encodedUrl = encodeURIComponent(url);
+    const encodedText = encodeURIComponent(shareText);
+    const targets = {
+      whatsapp: `https://wa.me/?text=${encodedText}%20${encodedUrl}`,
+      linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`,
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
+      x: `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`,
+      email: `mailto:?subject=${encodedText}&body=${encodedUrl}`,
+    };
+    if (platform === "email") window.location.href = targets[platform];
+    else window.open(targets[platform], "_blank", "noopener,noreferrer");
+  }
+  const shareOptionClass = "group flex min-h-24 flex-col items-center justify-center gap-2 rounded-md border border-border bg-card p-3 text-center transition-colors hover:bg-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+  const brandIconClass = "flex size-11 items-center justify-center rounded-sm bg-muted text-foreground group-hover:bg-background";
+
+  return <>
+    <span className="inline-flex items-center gap-3">
+      <a className="text-sm font-semibold text-brand-text underline underline-offset-2 hover:text-foreground" href={`/webinars/${encodeURIComponent(slug)}`} target="_blank" rel="noreferrer">Open registration link ↗</a>
+      <button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+        <Share size="16" variant="Linear" /> Share
+      </button>
+    </span>
+    {open && <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/35 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="registration-share-title" className="w-full max-w-md rounded-xl border border-border bg-popover p-5 text-popover-foreground shadow-lg sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div><h2 id="registration-share-title" className="font-display text-lg font-semibold">Share registration link</h2><p className="mt-1 text-sm text-muted-foreground">Invite people to register for {title}.</p></div>
+          <button type="button" aria-label="Close share dialog" onClick={() => setOpen(false)} className="inline-flex size-8 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><span aria-hidden="true" className="text-xl leading-none">×</span></button>
+        </div>
+        <div className="mt-5 grid grid-cols-3 gap-3">
+          <button type="button" onClick={() => void shareTo("whatsapp")} className={shareOptionClass}><span className={`${brandIconClass} text-status-success-fg`}><Whatsapp size="24" variant="Linear" /></span><span className="text-xs font-medium">WhatsApp</span></button>
+          <button type="button" onClick={() => void shareTo("linkedin")} className={shareOptionClass}><span className={brandIconClass}><span aria-hidden="true" className="font-bold text-lg">in</span></span><span className="text-xs font-medium">LinkedIn</span></button>
+          <button type="button" onClick={() => void shareTo("facebook")} className={shareOptionClass}><span className={`${brandIconClass} text-brand-text`}><Facebook size="24" variant="Linear" /></span><span className="text-xs font-medium">Facebook</span></button>
+          <button type="button" onClick={() => void shareTo("x")} className={shareOptionClass}><span className={brandIconClass}><span aria-hidden="true" className="text-xl font-semibold">𝕏</span></span><span className="text-xs font-medium">X</span></button>
+          <button type="button" onClick={() => void shareTo("email")} className={shareOptionClass}><span className={brandIconClass}><Sms size="23" variant="Linear" /></span><span className="text-xs font-medium">Email</span></button>
+          <button type="button" onClick={() => void shareNative()} className={shareOptionClass}><span className={brandIconClass}><Share size="23" variant="Linear" /></span><span className="text-xs font-medium">More options</span></button>
+        </div>
+        <div className="mt-5 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row">
+          <button type="button" onClick={() => void copyLink()} className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-sm bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><Copy size="17" variant="Linear" />{copied ? "Link copied" : "Copy registration link"}</button>
+          <a href={`/webinars/${encodeURIComponent(slug)}`} target="_blank" rel="noreferrer" onClick={() => setOpen(false)} className="inline-flex h-10 items-center justify-center rounded-sm border border-border px-4 text-sm font-semibold transition-colors hover:bg-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">Open form ↗</a>
+        </div>
+      </section>
+    </div>}
+  </>;
+}
 
 function Attendance({ session }: { session: WebinarDetail }) {
   const query = useWebinarAttendance(session.id);

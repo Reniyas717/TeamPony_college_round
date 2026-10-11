@@ -4,7 +4,8 @@ import { randomUUID } from "node:crypto";
 
 import { createAdminClient } from "@/lib/supabase/server";
 
-import { EmailProviderError, sendResendEmail } from "./email-provider";
+import { EmailProviderError } from "./email-provider";
+import { sendGmailEmail } from "./gmail-email-provider";
 import { recordWebinarAudit } from "./audit";
 
 type EmailOutboxJob = {
@@ -24,7 +25,9 @@ type EmailOutboxJob = {
 export type EmailWorkerSummary = {
   claimed: number;
   provider_accepted: number;
+  retry_queued: number;
   failed: number;
+  reconnect_required: number;
   unknown: number;
   finalization_failed: number;
   blocked: number;
@@ -64,15 +67,18 @@ async function markUnknown(
   if (databaseError || data !== true) throw new EmailWorkerError("Could not persist unknown email state.");
 }
 
-export async function processWebinarEmailOutbox(batchSize: number, businessId?: string): Promise<EmailWorkerSummary> {
+export async function processWebinarEmailOutbox(batchSize: number, businessId?: string, effectKey?: string): Promise<EmailWorkerSummary> {
   const boundedBatchSize = Math.min(Math.max(Math.trunc(batchSize), 1), MAX_BATCH_SIZE);
   const workerId = randomUUID();
+  const actorId = "webinar.manual-worker";
   const admin = createAdminClient();
-  const claimRpc = businessId ? "claim_webinar_email_jobs_for_business" : "claim_webinar_email_jobs";
+  const claimRpc = effectKey
+    ? "claim_webinar_email_job_by_effect_key"
+    : businessId ? "claim_webinar_email_jobs_for_business" : "claim_webinar_email_jobs";
   const { data, error } = await admin.rpc(claimRpc, {
-    ...(businessId ? { p_business_id: businessId } : {}),
+    ...(effectKey ? { p_effect_key: effectKey } : businessId ? { p_business_id: businessId } : {}),
     p_worker_id: workerId,
-    p_limit: boundedBatchSize,
+    ...(!effectKey ? { p_limit: boundedBatchSize } : {}),
     p_lease_seconds: LEASE_SECONDS,
   });
 
@@ -82,7 +88,9 @@ export async function processWebinarEmailOutbox(batchSize: number, businessId?: 
   const summary: EmailWorkerSummary = {
     claimed: jobs.length,
     provider_accepted: 0,
+    retry_queued: 0,
     failed: 0,
+    reconnect_required: 0,
     unknown: 0,
     finalization_failed: 0,
     blocked: 0,
@@ -97,7 +105,7 @@ export async function processWebinarEmailOutbox(batchSize: number, businessId?: 
     const first = groupedJobs[0];
     await recordWebinarAudit({ businessId: first.business_id }, {
       action: "webinar.email.processing_started", resourceType: "webinar", resourceId: first.webinar_id,
-      actorId: "webinar.manual-worker", actorType: "system",
+      actorId, actorType: "system",
       client: admin,
       metadata: { webinar_id: first.webinar_id, operation_id: workerId, job_count: groupedJobs.length },
     });
@@ -115,7 +123,7 @@ export async function processWebinarEmailOutbox(batchSize: number, businessId?: 
           continue;
         }
       }
-      const result = await sendResendEmail({
+      const result = await sendGmailEmail(job.business_id, {
         to: job.to_email,
         from: job.from_email,
         replyTo: job.reply_to_email,
@@ -137,9 +145,9 @@ export async function processWebinarEmailOutbox(batchSize: number, businessId?: 
         summary.finalization_failed += 1;
         await recordWebinarAudit({ businessId: job.business_id }, {
           action: "webinar.email.needs_review", resourceType: "webinar_email", resourceId: job.id,
-          actorId: "webinar.manual-worker", actorType: "system", outcome: "failure",
+          actorId, actorType: "system", outcome: "failure",
           client: admin,
-          metadata: { webinar_id: job.webinar_id, operation_id: workerId, job_id: job.id, provider: "resend", reason_code: "LOCAL_FINALIZATION_FAILED" },
+          metadata: { webinar_id: job.webinar_id, operation_id: workerId, job_id: job.id, provider: "gmail", reason_code: "LOCAL_FINALIZATION_FAILED" },
           error: { code: "LOCAL_FINALIZATION_FAILED", message: "Provider accepted the email but local finalization failed." },
         });
         continue;
@@ -147,9 +155,9 @@ export async function processWebinarEmailOutbox(batchSize: number, businessId?: 
       summary.provider_accepted += 1;
       await recordWebinarAudit({ businessId: job.business_id }, {
         action: "webinar.email.provider_accepted", resourceType: "webinar_email", resourceId: job.id,
-        actorId: "webinar.manual-worker", actorType: "system",
+        actorId, actorType: "system",
         client: admin,
-        metadata: { webinar_id: job.webinar_id, operation_id: workerId, job_id: job.id, provider: "resend" },
+        metadata: { webinar_id: job.webinar_id, operation_id: workerId, job_id: job.id, provider: "gmail" },
       });
     } catch (error) {
       const providerError = error instanceof EmailProviderError
@@ -162,19 +170,21 @@ export async function processWebinarEmailOutbox(batchSize: number, businessId?: 
           summary.unknown += 1;
           await recordWebinarAudit({ businessId: job.business_id }, {
             action: "webinar.email.needs_review", resourceType: "webinar_email", resourceId: job.id,
-            actorId: "webinar.manual-worker", actorType: "system", outcome: "failure",
+            actorId, actorType: "system", outcome: "failure",
             client: admin,
-            metadata: { webinar_id: job.webinar_id, operation_id: workerId, job_id: job.id, provider: "resend", reason_code: "PROVIDER_OUTCOME_UNKNOWN" },
+            metadata: { webinar_id: job.webinar_id, operation_id: workerId, job_id: job.id, provider: "gmail", reason_code: "PROVIDER_OUTCOME_UNKNOWN" },
             error: { code: "PROVIDER_OUTCOME_UNKNOWN", message: providerError.message },
           });
         } else {
           await markFailed(admin, job, workerId, providerError);
-          summary.failed += 1;
+          if (providerError.outcome === "retryable") summary.retry_queued += 1;
+          else summary.failed += 1;
+          if (providerError.outcome === "reconnect") summary.reconnect_required += 1;
           await recordWebinarAudit({ businessId: job.business_id }, {
             action: "webinar.email.failed", resourceType: "webinar_email", resourceId: job.id,
-            actorId: "webinar.manual-worker", actorType: "system", outcome: "failure",
+            actorId, actorType: "system", outcome: "failure",
             client: admin,
-            metadata: { webinar_id: job.webinar_id, operation_id: workerId, job_id: job.id, provider: "resend", reason_code: providerError.outcome },
+            metadata: { webinar_id: job.webinar_id, operation_id: workerId, job_id: job.id, provider: "gmail", reason_code: providerError.outcome },
             error: { code: "PROVIDER_SEND_FAILED", message: providerError.message },
           });
         }

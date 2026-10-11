@@ -1,26 +1,25 @@
 "use client";
 
 import * as React from "react";
+import { Moon, Sun1 } from "iconsax-react";
 import { Button } from "@/components/ui/button";
-import { Sun1, Moon } from "iconsax-react";
 
-export function ThemeToggle() {
+export function ThemeToggle({ className }: { className?: string }) {
   const [theme, setTheme] = React.useState<"light" | "dark">("dark");
+  const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
-    // Check if user has explicitly stored a preference; default to dark
     const savedTheme = localStorage.getItem("nexus-theme");
     if (savedTheme === "light") {
       document.documentElement.classList.remove("dark");
-      requestAnimationFrame(() => {
-        setTheme("light");
-      });
+      setTheme("light");
     } else {
       document.documentElement.classList.add("dark");
-      requestAnimationFrame(() => {
-        setTheme("dark");
-      });
+      setTheme("dark");
     }
+    requestAnimationFrame(() => {
+      setMounted(true);
+    });
   }, []);
 
   const toggleTheme = () => {
@@ -35,26 +34,41 @@ export function ThemeToggle() {
     }
   };
 
+  if (!mounted) {
+    return <Button variant="ghost" size="icon" className={`w-10 h-10 ${className}`} aria-hidden="true" />;
+  }
+
   return (
-    <Button 
-      variant="ghost" 
-      size="icon" 
+    <Button
+      type="button"
       onClick={toggleTheme}
-      className="relative overflow-hidden w-10 h-10 rounded-full"
       aria-label="Toggle theme"
+      variant="ghost"
+      size="icon"
+      className={`w-10 h-10 relative overflow-hidden ${className || ""}`}
     >
-      <Sun1 
-        size="22" 
-        className={`absolute transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-          theme === "dark" ? "translate-y-8 opacity-0 rotate-90 scale-50" : "translate-y-0 opacity-100 rotate-0 scale-100"
-        }`} 
-      />
-      <Moon 
-        size="22" 
-        className={`absolute transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-          theme === "light" ? "-translate-y-8 opacity-0 -rotate-90 scale-50" : "translate-y-0 opacity-100 rotate-0 scale-100"
-        }`} 
-      />
+      <span className="relative flex items-center justify-center w-5 h-5">
+        <Moon
+          size="20"
+          variant="Bold"
+          className={`absolute inset-0 will-change-[opacity,transform,filter] transition-[opacity,transform,filter] duration-300 [transition-timing-function:cubic-bezier(0.2,0,0,1)] ${
+            theme === "light"
+              ? "opacity-100 scale-100 blur-0"
+              : "opacity-0 scale-[0.25] blur-[4px]"
+          }`}
+          aria-hidden={theme !== "light"}
+        />
+        <Sun1
+          size="20"
+          variant="Bold"
+          className={`absolute inset-0 will-change-[opacity,transform,filter] transition-[opacity,transform,filter] duration-300 [transition-timing-function:cubic-bezier(0.2,0,0,1)] ${
+            theme === "dark"
+              ? "opacity-100 scale-100 blur-0"
+              : "opacity-0 scale-[0.25] blur-[4px]"
+          }`}
+          aria-hidden={theme !== "dark"}
+        />
+      </span>
     </Button>
   );
 }

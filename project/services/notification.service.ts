@@ -10,18 +10,21 @@ export interface SendEmailOptions {
   html?: string;
   text?: string;
   contactId?: string;
+  context?: any;
 }
 
 export interface SendSmsOptions {
   to: string;
   message: string;
   contactId?: string;
+  context?: any;
 }
 
 export interface SendWhatsAppOptions {
   to: string;
   message: string;
   contactId?: string;
+  context?: any;
 }
 
 export interface NotificationResult {
@@ -87,14 +90,19 @@ export class NotificationService {
         const data = await response.json();
         if (response.ok) {
           if (options.contactId) {
-            await CrmService.logActivity(
-              options.contactId,
-              "email_sent",
-              `Sent Email: ${options.subject}`,
-              options.text || `Email dispatched to ${options.to}`,
-              "ai_agent",
-              { resend_id: data.id, live: true }
-            );
+            try {
+              await CrmService.logActivity(
+                options.contactId,
+                "email_sent",
+                `Sent Email: ${options.subject}`,
+                options.text || `Email dispatched to ${options.to}`,
+                "ai_agent",
+                { resend_id: data.id, live: true },
+                options.context
+              );
+            } catch {
+              // Activity log failed silently
+            }
           }
           return { success: true, simulated: false, channel: "email", to: options.to, details: data };
         }
@@ -121,14 +129,19 @@ export class NotificationService {
 
     // Dev Sandbox fallback (Zero Cost, Zero Failure) - only when RESEND_API_KEY is missing
     if (options.contactId) {
-      await CrmService.logActivity(
-        options.contactId,
-        "email_sent",
-        `[SIMULATED] Sent Email: ${options.subject}`,
-        options.text || `Email dispatched to ${options.to} (Dev Sandbox Mode)`,
-        "ai_agent",
-        { simulated: true, channel: "email" }
-      );
+      try {
+        await CrmService.logActivity(
+          options.contactId,
+          "email_sent",
+          `[SIMULATED] Sent Email: ${options.subject}`,
+          options.text || `Email dispatched to ${options.to} (Dev Sandbox Mode)`,
+          "ai_agent",
+          { simulated: true, channel: "email" },
+          options.context
+        );
+      } catch {
+        // Activity log failed silently
+      }
     }
 
     return {
@@ -175,14 +188,19 @@ export class NotificationService {
         const data = await response.json();
         if (response.ok) {
           if (options.contactId) {
-            await CrmService.logActivity(
-              options.contactId,
-              "ai_agent_action",
-              `Sent SMS: ${formattedTo}`,
-              options.message,
-              "ai_agent",
-              { sid: data.sid, live: true }
-            );
+            try {
+              await CrmService.logActivity(
+                options.contactId,
+                "ai_agent_action",
+                `Sent SMS: ${options.to}`,
+                options.message,
+                "ai_agent",
+                { sid: data.sid, live: true },
+                options.context
+              );
+            } catch {
+              // Activity log failed silently
+            }
           }
           return { success: true, simulated: false, channel: "sms", to: formattedTo, details: data };
         }
@@ -212,14 +230,19 @@ export class NotificationService {
 
     // Dev Sandbox fallback - only when TWILIO credentials are not configured
     if (options.contactId) {
-      await CrmService.logActivity(
-        options.contactId,
-        "ai_agent_action",
-        `[SIMULATED] Sent SMS to ${options.to}`,
-        options.message,
-        "ai_agent",
-        { simulated: true, channel: "sms" }
-      );
+      try {
+        await CrmService.logActivity(
+          options.contactId,
+          "ai_agent_action",
+          `[SIMULATED] Sent SMS to ${options.to}`,
+          options.message,
+          "ai_agent",
+          { simulated: true, channel: "sms" },
+          options.context
+        );
+      } catch {
+        // Activity log failed silently
+      }
     }
 
     return {
@@ -273,14 +296,19 @@ export class NotificationService {
         const data = await response.json();
         if (response.ok) {
           if (options.contactId) {
-            await CrmService.logActivity(
-              options.contactId,
-              "ai_agent_action",
-              `Sent WhatsApp to ${formattedTo}`,
-              options.message,
-              "ai_agent",
-              { sid: data.sid, live: true }
-            );
+            try {
+              await CrmService.logActivity(
+                options.contactId,
+                "ai_agent_action",
+                `Sent WhatsApp to ${options.to}`,
+                options.message,
+                "ai_agent",
+                { sid: data.sid, live: true },
+                options.context
+              );
+            } catch {
+              // Activity log failed silently
+            }
           }
           return { success: true, simulated: false, channel: "whatsapp", to: formattedTo, details: data };
         }
@@ -313,14 +341,19 @@ export class NotificationService {
 
     // Dev Sandbox fallback - only when TWILIO credentials are not configured
     if (options.contactId) {
-      await CrmService.logActivity(
-        options.contactId,
-        "ai_agent_action",
-        `[SIMULATED] Sent WhatsApp to ${options.to}`,
-        options.message,
-        "ai_agent",
-        { simulated: true, channel: "whatsapp" }
-      );
+      try {
+        await CrmService.logActivity(
+          options.contactId,
+          "ai_agent_action",
+          `[SIMULATED] Sent WhatsApp to ${options.to}`,
+          options.message,
+          "ai_agent",
+          { simulated: true, channel: "whatsapp" },
+          options.context
+        );
+      } catch {
+        // Activity log failed silently
+      }
     }
 
     return {

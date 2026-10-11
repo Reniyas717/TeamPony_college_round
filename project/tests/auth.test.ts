@@ -38,7 +38,8 @@ test("Google audit metadata contains provider and scope only", async () => {
   const googleAuditBlock = callback.slice(callback.indexOf("action: googleEvent"));
 
   assert.match(googleAuditBlock, /provider: "google"/);
-  assert.match(googleAuditBlock, /scopes: \[GOOGLE_MEET_SCOPE\]/);
+  assert.match(callback, /googleScopes = storedGoogleGrant\?\.scopes/);
+  assert.match(googleAuditBlock, /scopes: googleScopes/);
   assert.doesNotMatch(googleAuditBlock, /provider_token|provider_refresh_token|access_token|refresh_token|email/);
 });
 

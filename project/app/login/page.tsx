@@ -9,6 +9,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Lock, User, InfoCircle, ArrowRight } from "iconsax-react";
 import { createClient } from "@/lib/supabase/client";
+import { GOOGLE_OAUTH_SCOPES } from "@/lib/google-oauth";
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -57,7 +58,7 @@ function LoginForm() {
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          scopes: "https://www.googleapis.com/auth/meetings.space.created",
+          scopes: GOOGLE_OAUTH_SCOPES,
           queryParams: {
             access_type: "offline",
             include_granted_scopes: "true",

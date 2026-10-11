@@ -3,7 +3,7 @@ import { requireOwnerContext } from "@/lib/supabase/owner-context";
 import { SignUpInput, LoginInput } from "@/lib/validations/auth";
 import { AuditService } from "./audit.service";
 
-const GOOGLE_MEET_SCOPE = "https://www.googleapis.com/auth/meetings.space.created";
+import { GOOGLE_MEET_SCOPE } from "@/lib/google-oauth";
 type PlatformAuthAction = "auth.signup" | "auth.failed_login";
 
 async function recordPlatformAuthEvent(
@@ -213,6 +213,7 @@ export class AuthService {
     let targetEmail = input.identifier.trim().toLowerCase();
     const identifierType: "email" | "username" = targetEmail.includes("@") ? "email" : "username";
 
+    // Only lookup profile if the user entered a username instead of an email
     if (identifierType === "username") {
       const admin = createAdminClient();
       const { data: profile, error: profileError } = await admin

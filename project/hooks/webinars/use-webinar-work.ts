@@ -6,7 +6,9 @@ import { webinarKeys } from "./use-webinars";
 export type WebinarWorkSummary = {
   claimed: number;
   provider_accepted: number;
+  retry_queued: number;
   failed: number;
+  reconnect_required: number;
   unknown: number;
   finalization_failed: number;
   blocked: number;

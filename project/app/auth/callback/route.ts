@@ -7,7 +7,6 @@ import {
   storeGoogleTokensFromLogin,
 } from "@/services/webinar/google-token-vault.service";
 
-const GOOGLE_MEET_SCOPE = "https://www.googleapis.com/auth/meetings.space.created";
 
 async function recordOAuthFailure(reasonCode: string) {
   try {
@@ -104,6 +103,7 @@ export async function GET(request: Request) {
         user.identities?.some((identity) => identity.provider === "google");
       let googleEvent: "google.connected" | "google.reconnected" | "google.credentials_replaced" | null = null;
       let wasConnected = false;
+      let googleScopes: string[] = [];
       if (isGoogle && data.session?.provider_token && businessId) {
         try {
           const previous = await getGoogleConnectionStatus(businessId);
@@ -113,7 +113,8 @@ export async function GET(request: Request) {
         }
 
         try {
-          await storeGoogleTokensFromLogin(user.id, data.session);
+          const storedGoogleGrant = await storeGoogleTokensFromLogin(user.id, data.session);
+          googleScopes = storedGoogleGrant?.scopes ?? [];
           googleEvent = wasConnected
             ? data.session.provider_refresh_token
               ? "google.credentials_replaced"
@@ -157,7 +158,7 @@ export async function GET(request: Request) {
           action: googleEvent,
           resource: { type: "google_connection", id: context.businessId },
           outcome: "success",
-          metadata: { provider: "google", scopes: [GOOGLE_MEET_SCOPE] },
+          metadata: { provider: "google", scopes: googleScopes },
         });
       }
 

@@ -284,13 +284,13 @@ DECLARE
   contact_last_name TEXT;
   trimmed_name TEXT;
   session_row RECORD;
-  normalized_email TEXT;
+  v_normalized_email TEXT;
 BEGIN
   trimmed_name := trim(p_full_name);
-  normalized_email := lower(trim(p_email));
+  v_normalized_email := lower(trim(p_email));
   IF length(trimmed_name) < 1 OR length(trimmed_name) > 180
-     OR length(normalized_email) < 3 OR length(normalized_email) > 320
-     OR normalized_email !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' THEN
+     OR length(v_normalized_email) < 3 OR length(v_normalized_email) > 320
+     OR v_normalized_email !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' THEN
     RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'INVALID_REQUEST';
   END IF;
 
@@ -374,7 +374,7 @@ BEGIN
       SELECT 1 FROM public.webinar_registration_sessions rs
       WHERE rs.business_id = target_business_id
         AND rs.webinar_id = session_row.id
-        AND rs.normalized_email = normalized_email
+        AND rs.normalized_email = v_normalized_email
     ) THEN
       RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'DUPLICATE_REGISTRATION';
     END IF;
@@ -384,7 +384,7 @@ BEGIN
   INTO matched_contact_id
   FROM public.crm_contacts c
   WHERE c.business_id = target_business_id
-    AND lower(trim(c.email)) = normalized_email
+    AND lower(trim(c.email)) = v_normalized_email
   LIMIT 1;
 
   IF matched_contact_id IS NULL THEN
@@ -400,17 +400,17 @@ BEGIN
       INTO matched_contact_id
       FROM public.crm_contacts c
       WHERE c.business_id = target_business_id
-        AND lower(trim(c.email)) = normalized_email
+        AND lower(trim(c.email)) = v_normalized_email
       LIMIT 1;
     END IF;
   END IF;
 
   INSERT INTO public.webinar_registrations (business_id, webinar_series_id, full_name, email, normalized_email, contact_id)
-  VALUES (target_business_id, target_series_id, trimmed_name, trim(p_email), normalized_email, matched_contact_id)
+  VALUES (target_business_id, target_series_id, trimmed_name, trim(p_email), v_normalized_email, matched_contact_id)
   RETURNING id INTO registration_id;
 
   INSERT INTO public.webinar_registration_sessions (business_id, registration_id, webinar_id, normalized_email)
-  SELECT target_business_id, registration_id, session_id, normalized_email
+  SELECT target_business_id, registration_id, session_id, v_normalized_email
   FROM unnest(selected_ids) AS session_ids(session_id);
 
   INSERT INTO public.webinar_registration_marketing_preferences (business_id, registration_id, marketing_opt_in)
@@ -418,7 +418,7 @@ BEGIN
 
   IF COALESCE(p_marketing_opt_in, false) THEN
     INSERT INTO public.business_marketing_consents (business_id, email, normalized_email)
-    VALUES (target_business_id, trim(p_email), normalized_email)
+    VALUES (target_business_id, trim(p_email), v_normalized_email)
     ON CONFLICT (business_id, normalized_email)
     DO UPDATE SET updated_at = timezone('utc'::text, now());
   END IF;
