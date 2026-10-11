@@ -111,7 +111,7 @@ const STRATEGY_PRESETS: StrategyPreset[] = [
     ],
     ctaText: "Access Session Blueprints",
     ctaUrl: "https://nexus.local/webinar/resources",
-    signoff: "Best regards,\nAlex Vance | Head of Product Architecture",
+    signoff: "Best regards,\nThe Product Architecture Team",
     smsText: "Plot twist, {{first_name}}: the workshop slides didn't get lost in your downloads folder. Grab the replay for {{company}}: https://nexus.local/webinar/resources. Reply STOP to opt out.",
     whatsappText: "*Hello {{first_name}}*,\n\nThank you for attending our technical session! Here are the reference materials prepared for *{{company}}*:\n\n• Full indexed session recording\n• Production workflow JSON blueprints\n• Architecture notes and benchmark reports\n\n*Access resources:* https://nexus.local/webinar/resources\n\n_Feel free to reply with any technical questions._",
     recommendedStages: ["lead", "contacted", "qualified"],
@@ -390,8 +390,20 @@ export default function MarketingClient({
 
         if (res.ok) {
           const json = await res.json();
-          setPreviewContacts(json.data.eligibleContacts || []);
+          const contacts: Contact[] = json.data.eligibleContacts || [];
+          setPreviewContacts(contacts);
           setPreviewSuppressedCount(json.data.suppressedCount || 0);
+
+          if (contacts.length > 0) {
+            const first = contacts[0];
+            const name = [first.first_name, first.last_name].filter(Boolean).join(" ");
+            if (name && (sampleName === "Alex Vance" || !sampleName)) {
+              setSampleName(name);
+            }
+            if (first.company && (sampleCompany === "Acme Global" || !sampleCompany)) {
+              setSampleCompany(first.company);
+            }
+          }
         }
       } catch {
         // Ignored
@@ -399,7 +411,7 @@ export default function MarketingClient({
         setPreviewLoading(false);
       }
     },
-    [formChannel, selectedStages, selectedTags, minValue]
+    [formChannel, selectedStages, selectedTags, minValue, sampleName, sampleCompany]
   );
 
   // Load preview data immediately on mount and when modal opens
@@ -438,43 +450,10 @@ export default function MarketingClient({
     });
   };
 
-  // Direct Personalization Replacements across all content fields
-  const applyDirectPersonalization = () => {
-    const firstName = sampleName.trim().split(" ")[0] || "Customer";
-    const lastName = sampleName.trim().split(" ").slice(1).join(" ") || "";
-    const comp = sampleCompany.trim() || "Your Business";
-
-    const replaceTokens = (str: string) => {
-      if (!str) return str;
-      return str
-        .replace(/\{\{first_name\}\}/g, firstName)
-        .replace(/\{firstname\}/gi, firstName)
-        .replace(/\{\{firstName\}\}/g, firstName)
-        .replace(/\{\{last_name\}\}/g, lastName)
-        .replace(/\{lastname\}/gi, lastName)
-        .replace(/\{\{company\}\}/g, comp)
-        .replace(/\{company\}/gi, comp);
-    };
-
-    setFormGreeting((prev) => replaceTokens(prev));
-    setFormBody((prev) => replaceTokens(prev));
-    setFormSubject((prev) => replaceTokens(prev));
-    setFormPreviewText((prev) => replaceTokens(prev));
-    setFormHighlights((prev) => prev.map((h) => replaceTokens(h)));
-    setFormCtaText((prev) => replaceTokens(prev));
-    setFormSignoff((prev) => replaceTokens(prev));
-    setFormSmsText((prev) => replaceTokens(prev));
-    setFormWhatsappText((prev) => replaceTokens(prev));
-
-    setFeedbackMessage({
-      type: "success",
-      text: `Personalized all campaign fields for "${firstName}" and "${comp}".`,
-    });
-  };
-
   const applySmartDynamicTags = () => {
-    const firstName = sampleName.trim().split(" ")[0] || "Customer";
-    const comp = sampleCompany.trim() || "Your Business";
+    const firstName = sampleName.trim().split(" ")[0];
+    const lastName = sampleName.trim().split(" ").slice(1).join(" ");
+    const comp = sampleCompany.trim();
 
     const restoreTags = (str: string) => {
       if (!str) return str;
@@ -483,10 +462,28 @@ export default function MarketingClient({
         const escapedComp = comp.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         res = res.replace(new RegExp(escapedComp, "gi"), "{{company}}");
       }
+      res = res
+        .replace(/\bAcme Global\b/gi, "{{company}}")
+        .replace(/\bAcme\b/gi, "{{company}}");
+
       if (firstName) {
         const escapedFirst = firstName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        res = res.replace(new RegExp(escapedFirst, "gi"), "{{first_name}}");
+        res = res.replace(new RegExp(`\\bDear ${escapedFirst}\\b`, "gi"), "Dear {{first_name}}");
+        res = res.replace(new RegExp(`\\bHello ${escapedFirst}\\b`, "gi"), "Hello {{first_name}}");
+        res = res.replace(new RegExp(`\\*Hello ${escapedFirst}\\*`, "gi"), "*Hello {{first_name}}*");
+        res = res.replace(new RegExp(`\\b${escapedFirst}\\b`, "gi"), "{{first_name}}");
       }
+      if (lastName) {
+        const escapedLast = lastName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        res = res.replace(new RegExp(`\\b${escapedLast}\\b`, "gi"), "{{last_name}}");
+      }
+      res = res
+        .replace(/\bDear Alex Vance\b/gi, "Dear {{first_name}}")
+        .replace(/\bDear Alex\b/gi, "Dear {{first_name}}")
+        .replace(/\bHello Alex Vance\b/gi, "Hello {{first_name}}")
+        .replace(/\bHello Alex\b/gi, "Hello {{first_name}}")
+        .replace(/\*Hello Alex\*\b/gi, "*Hello {{first_name}}*");
+
       return res;
     };
 
@@ -502,7 +499,7 @@ export default function MarketingClient({
 
     setFeedbackMessage({
       type: "success",
-      text: `Restored dynamic CRM tags ({{first_name}}, {{company}}) across all fields.`,
+      text: `Ensured dynamic CRM tags ({{first_name}}, {{last_name}}, {{company}}) across all fields.`,
     });
   };
 
@@ -620,15 +617,55 @@ export default function MarketingClient({
 
     startTransition(async () => {
       try {
-        const compiledHtml = generateCompiledHtml();
+        const restoreDynamicTags = (str: string) => {
+          if (!str) return str;
+          let s = str;
+          if (sampleCompany && sampleCompany.trim()) {
+            const esc = sampleCompany.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            s = s.replace(new RegExp(esc, "gi"), "{{company}}");
+          }
+          s = s.replace(/\bAcme Global\b/gi, "{{company}}").replace(/\bAcme\b/gi, "{{company}}");
+
+          if (sampleName && sampleName.trim()) {
+            const parts = sampleName.trim().split(" ");
+            const first = parts[0];
+            const last = parts.slice(1).join(" ");
+            if (first) {
+              const escFirst = first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              s = s.replace(new RegExp(`\\bDear ${escFirst}\\b`, "gi"), "Dear {{first_name}}");
+              s = s.replace(new RegExp(`\\bHello ${escFirst}\\b`, "gi"), "Hello {{first_name}}");
+              s = s.replace(new RegExp(`\\*Hello ${escFirst}\\*`, "gi"), "*Hello {{first_name}}*");
+              s = s.replace(new RegExp(`\\b${escFirst}\\b`, "gi"), "{{first_name}}");
+            }
+            if (last) {
+              const escLast = last.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              s = s.replace(new RegExp(`\\b${escLast}\\b`, "gi"), "{{last_name}}");
+            }
+          }
+          s = s
+            .replace(/\bDear Alex Vance\b/gi, "Dear {{first_name}}")
+            .replace(/\bDear Alex\b/gi, "Dear {{first_name}}")
+            .replace(/\bHello Alex Vance\b/gi, "Hello {{first_name}}")
+            .replace(/\bHello Alex\b/gi, "Hello {{first_name}}")
+            .replace(/\*Hello Alex\*\b/gi, "*Hello {{first_name}}*");
+
+          return s;
+        };
+
+        const compiledHtml = restoreDynamicTags(generateCompiledHtml());
+        const cleanSubject = formSubject ? restoreDynamicTags(formSubject.trim()) : undefined;
+        const cleanPreviewText = formPreviewText ? restoreDynamicTags(formPreviewText.trim()) : undefined;
+        const cleanSms = restoreDynamicTags(formSmsText);
+        const cleanWhatsapp = restoreDynamicTags(formWhatsappText);
+        const cleanBody = restoreDynamicTags(formBody);
 
         const payload = {
           title: formTitle.trim(),
           channel: formChannel,
-          subject: formChannel === "email" ? formSubject.trim() : undefined,
-          preview_text: formChannel === "email" ? formPreviewText.trim() : undefined,
+          subject: formChannel === "email" ? cleanSubject : undefined,
+          preview_text: formChannel === "email" ? cleanPreviewText : undefined,
           content_html: compiledHtml,
-          content_text: formChannel === "sms" ? formSmsText : formChannel === "whatsapp" ? formWhatsappText : formBody,
+          content_text: formChannel === "sms" ? cleanSms : formChannel === "whatsapp" ? cleanWhatsapp : cleanBody,
           segment_filters: {
             stages: selectedStages,
             tags: selectedTags,
@@ -1524,9 +1561,9 @@ export default function MarketingClient({
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1.5 font-semibold text-foreground">
                       <User size="14" className="text-brand-text" />
-                      <span>Recipient Personalization Context</span>
+                      <span>Live Preview Recipient (Testing Only)</span>
                     </div>
-                    <span className="text-[10px] text-muted-foreground">Configure sample contact names</span>
+                    <span className="text-[10px] text-muted-foreground">Used strictly to render the live preview</span>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -1538,38 +1575,34 @@ export default function MarketingClient({
                         type="text"
                         value={sampleName}
                         onChange={(e) => setSampleName(e.target.value)}
-                        placeholder="e.g. Alex Vance"
+                        placeholder="e.g. Rohan Nadar"
                         className="w-full text-xs p-1.5 rounded-sm border border-border/40 bg-background text-foreground focus:outline-none focus:border-brand"
                       />
                     </div>
                     <div>
                       <label className="block text-[11px] font-medium text-muted-foreground mb-1">
-                        Company Name
+                        Sample Company Name
                       </label>
                       <input
                         type="text"
                         value={sampleCompany}
                         onChange={(e) => setSampleCompany(e.target.value)}
-                        placeholder="e.g. Acme Global"
+                        placeholder="e.g. Acme Corp"
                         className="w-full text-xs p-1.5 rounded-sm border border-border/40 bg-background text-foreground focus:outline-none focus:border-brand"
                       />
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-border/20 text-[11px]">
-                    <button
-                      type="button"
-                      onClick={applyDirectPersonalization}
-                      className="px-2.5 py-1 rounded bg-brand/10 hover:bg-brand text-brand hover:text-brand-foreground font-semibold transition-colors cursor-pointer"
-                    >
-                      Direct Personalize: Use &quot;{sampleName.split(" ")[0] || "Alex"}&quot; &amp; &quot;{sampleCompany || "Acme"}&quot;
-                    </button>
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-border/20 text-[11px]">
+                    <span className="text-muted-foreground text-[10px]">
+                      Merge tags (<strong>&#123;&#123;first_name&#125;&#125;</strong>, <strong>&#123;&#123;last_name&#125;&#125;</strong>, <strong>&#123;&#123;company&#125;&#125;</strong>) automatically hydrate for each recipient on send.
+                    </span>
                     <button
                       type="button"
                       onClick={applySmartDynamicTags}
-                      className="px-2.5 py-1 rounded bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground font-medium transition-colors cursor-pointer"
+                      className="px-2.5 py-1 rounded bg-brand/10 hover:bg-brand text-brand hover:text-brand-foreground font-semibold transition-colors cursor-pointer text-[11px]"
                     >
-                      Use Dynamic CRM Tags ({"{{first_name}}"}, {"{{company}}"})
+                      Ensure Dynamic Tags
                     </button>
                   </div>
                 </div>
@@ -2034,38 +2067,57 @@ export default function MarketingClient({
                   </div>
 
                   <div className={`mx-auto ${previewDevice === "mobile" ? "max-w-xs" : "w-full"}`}>
-                    {formChannel === "email" ? (
-                      <div
-                        className="p-4 bg-background rounded border border-border/30 text-xs text-foreground max-h-56 overflow-y-auto"
-                        dangerouslySetInnerHTML={{
-                          __html: generateCompiledHtml()
-                            .replace(/{{first_name}}/g, sampleName.split(" ")[0] || "Alex")
-                            .replace(/{{last_name}}/g, sampleName.split(" ").slice(1).join(" ") || "Vance")
-                            .replace(/{{company}}/g, sampleCompany || "Acme Global")
-                            .replace(/{{deal_value}}/g, "$15,000")
-                            .replace(/{{unsubscribe_url}}/g, "https://nexus.local/unsubscribe/demo"),
-                        }}
-                      />
-                    ) : formChannel === "sms" ? (
-                      <div className="p-3 bg-muted/30 rounded border border-border/40 font-mono text-xs text-foreground">
-                        <div className="text-[10px] text-muted-foreground mb-1">NEXUS &bull; SMS</div>
-                        {formSmsText
-                          .replace(/{{first_name}}/g, sampleName.split(" ")[0] || "Alex")
-                          .replace(/{{company}}/g, sampleCompany || "Acme Global")}
-                      </div>
-                    ) : (
-                      <div className="p-3 bg-muted/20 border border-border/40 rounded text-xs text-foreground font-sans">
-                        <div className="text-[10px] text-muted-foreground font-semibold mb-1 flex items-center gap-1">
-                          <span>Nexus Official WhatsApp</span>
-                          <TickCircle size="11" className="text-status-success-fg" />
-                        </div>
-                        <div className="whitespace-pre-wrap font-sans">
-                          {formWhatsappText
-                            .replace(/{{first_name}}/g, sampleName.split(" ")[0] || "Alex")
-                            .replace(/{{company}}/g, sampleCompany || "Acme Global")}
-                        </div>
-                      </div>
-                    )}
+                    {(() => {
+                      const firstName = sampleName.trim().split(" ")[0] || "Valued";
+                      const lastName = sampleName.trim().split(" ").slice(1).join(" ");
+                      const fullName = sampleName.trim() || "Valued Contact";
+                      const comp = sampleCompany.trim() || "Your Business";
+
+                      const renderPreview = (raw: string) => {
+                        return raw
+                          .replace(/\{\{\s*first_name\s*\}\}/gi, firstName)
+                          .replace(/\{\{\s*firstName\s*\}\}/gi, firstName)
+                          .replace(/\{\{\s*last_name\s*\}\}/gi, lastName)
+                          .replace(/\{\{\s*lastName\s*\}\}/gi, lastName)
+                          .replace(/\{\{\s*full_name\s*\}\}/gi, fullName)
+                          .replace(/\{\{\s*fullName\s*\}\}/gi, fullName)
+                          .replace(/\{\{\s*name\s*\}\}/gi, firstName)
+                          .replace(/\{\{\s*company\s*\}\}/gi, comp)
+                          .replace(/\{\{\s*deal_value\s*\}\}/gi, "$15,000")
+                          .replace(/\{\{\s*value\s*\}\}/gi, "$15,000")
+                          .replace(/\{\{\s*unsubscribe_url\s*\}\}/gi, "https://nexus.local/unsubscribe/demo");
+                      };
+
+                      if (formChannel === "email") {
+                        return (
+                          <div
+                            className="p-4 bg-background rounded border border-border/30 text-xs text-foreground max-h-56 overflow-y-auto"
+                            dangerouslySetInnerHTML={{
+                              __html: renderPreview(generateCompiledHtml()),
+                            }}
+                          />
+                        );
+                      } else if (formChannel === "sms") {
+                        return (
+                          <div className="p-3 bg-muted/30 rounded border border-border/40 font-mono text-xs text-foreground">
+                            <div className="text-[10px] text-muted-foreground mb-1">NEXUS &bull; SMS</div>
+                            {renderPreview(formSmsText)}
+                          </div>
+                        );
+                      } else {
+                        return (
+                          <div className="p-3 bg-muted/20 border border-border/40 rounded text-xs text-foreground font-sans">
+                            <div className="text-[10px] text-muted-foreground font-semibold mb-1 flex items-center gap-1">
+                              <span>Nexus Official WhatsApp</span>
+                              <TickCircle size="11" className="text-status-success-fg" />
+                            </div>
+                            <div className="whitespace-pre-wrap font-sans">
+                              {renderPreview(formWhatsappText)}
+                            </div>
+                          </div>
+                        );
+                      }
+                    })()}
                   </div>
                 </div>
 

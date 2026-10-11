@@ -59,8 +59,30 @@ export async function POST(request: Request, { params }: RouteParams) {
 
     let result;
 
+    const hydrateStr = (raw?: string) => {
+      if (!raw) return "";
+      const firstName = (contact.first_name || "").trim();
+      const lastName = (contact.last_name || "").trim();
+      const fullName = [firstName, lastName].filter(Boolean).join(" ") || firstName || "there";
+      const company = (contact.company || "").trim() || "your team";
+
+      return raw
+        .replace(/\{\{\s*first_name\s*\}\}/gi, firstName)
+        .replace(/\{\{\s*firstName\s*\}\}/gi, firstName)
+        .replace(/\{\{\s*last_name\s*\}\}/gi, lastName)
+        .replace(/\{\{\s*lastName\s*\}\}/gi, lastName)
+        .replace(/\{\{\s*full_name\s*\}\}/gi, fullName)
+        .replace(/\{\{\s*company\s*\}\}/gi, company)
+        .replace(/\{\s*first_name\s*\}/gi, firstName)
+        .replace(/\{\s*last_name\s*\}/gi, lastName)
+        .replace(/\{\s*company\s*\}/gi, company);
+    };
+
+    const hydratedMessage = message ? hydrateStr(message) : undefined;
+    const hydratedSubject = subject ? hydrateStr(subject) : undefined;
+
     if (channel === "email") {
-      const emailSubject = subject || `Regarding your inquiry with ${contact.company || "Nexus"}`;
+      const emailSubject = hydratedSubject || `Regarding your inquiry with ${contact.company || "Nexus"}`;
       const yesUrl = `http://localhost:3000/response?id=${contact.id}&decision=yes`;
       const noUrl = `http://localhost:3000/response?id=${contact.id}&decision=no`;
 
@@ -71,7 +93,7 @@ export async function POST(request: Request, { params }: RouteParams) {
   <div style="max-width: 540px; margin: 0 auto; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
     <h2 style="margin-top: 0; color: #111827; font-size: 20px;">Hi ${contact.first_name},</h2>
     <p style="font-size: 15px; line-height: 1.5; color: #374151;">
-      ${message || "Thank you for reaching out via our website inquiry form! We received your submission and would love to connect."}
+      ${hydratedMessage || "Thank you for reaching out via our website inquiry form! We received your submission and would love to connect."}
     </p>
     <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; margin: 24px 0;">
       <p style="font-size: 14px; font-weight: 600; color: #0f172a; margin-top: 0; margin-bottom: 12px;">
@@ -96,7 +118,7 @@ export async function POST(request: Request, { params }: RouteParams) {
 </body>
 </html>`;
 
-      const emailText = `${message || `Hi ${contact.first_name}, thank you for reaching out via our website form!`}\n\nPlease select an option:\n- YES (Interested): ${yesUrl}\n- NO (Not Interested): ${noUrl}\n\nOr reply directly to this email with YES or NO.`;
+      const emailText = `${hydratedMessage || `Hi ${contact.first_name}, thank you for reaching out via our website form!`}\n\nPlease select an option:\n- YES (Interested): ${yesUrl}\n- NO (Not Interested): ${noUrl}\n\nOr reply directly to this email with YES or NO.`;
 
       result = await NotificationService.sendEmail({
         to: contact.email,
@@ -116,7 +138,7 @@ export async function POST(request: Request, { params }: RouteParams) {
 
       const waMessage =
 `Hello ${contact.first_name}! 👋
-${message || "We received your project inquiry from our website and would love to connect."}
+${hydratedMessage || "We received your project inquiry from our website and would love to connect."}
 
 Please select an option below:
 
@@ -139,7 +161,7 @@ Please select an option below:
       if (!recipientPhone) {
         return NextResponse.json({ error: { code: "VALIDATION_ERROR", message: "This contact has no phone number.", details: null } }, { status: 422 });
       }
-      const smsMessage = message || `Hi ${contact.first_name}, thank you for your project inquiry!`;
+      const smsMessage = hydratedMessage || `Hi ${contact.first_name}, thank you for your project inquiry!`;
 
       result = await NotificationService.sendSms({
         to: recipientPhone,

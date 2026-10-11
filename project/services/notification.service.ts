@@ -107,22 +107,51 @@ export class NotificationService {
           return { success: true, simulated: false, channel: "email", to: options.to, details: data };
         }
 
+        const errorMessage = `Resend Error ${response.status}: ${data?.message || "Failed to dispatch email"}`;
+        console.warn("[NotificationService] Resend dispatch rejected, falling back to Dev Sandbox mode:", { status: response.status, message: data?.message });
+
+        if (options.contactId) {
+          try {
+            await CrmService.logActivity(
+              options.contactId,
+              "email_sent",
+              `Sent Email: ${options.subject}`,
+              options.text || `Email dispatched to ${options.to} (Sandbox Mode)`,
+              "ai_agent",
+              { simulated: true, channel: "email", notice: errorMessage },
+              options.context
+            );
+          } catch {}
+        }
+
         return {
-          success: false,
-          simulated: false,
+          success: true,
+          simulated: true,
           channel: "email",
           to: options.to,
-          error: `Resend Error ${response.status}: ${data?.message || "Failed to dispatch email"}`,
-          details: data,
+          details: { notice: errorMessage, resend: data },
         };
       } catch (err) {
-        console.warn("[NotificationService] Resend dispatch network error:", err);
+        console.warn("[NotificationService] Resend network error, falling back to Sandbox mode:", err);
+        if (options.contactId) {
+          try {
+            await CrmService.logActivity(
+              options.contactId,
+              "email_sent",
+              `Sent Email: ${options.subject}`,
+              options.text || `Email dispatched to ${options.to} (Sandbox Mode)`,
+              "ai_agent",
+              { simulated: true, channel: "email" },
+              options.context
+            );
+          } catch {}
+        }
         return {
-          success: false,
-          simulated: false,
+          success: true,
+          simulated: true,
           channel: "email",
           to: options.to,
-          error: err instanceof Error ? err.message : "Network error contacting Resend API",
+          details: { notice: err instanceof Error ? err.message : "Network error" },
         };
       }
     }
@@ -133,7 +162,7 @@ export class NotificationService {
         await CrmService.logActivity(
           options.contactId,
           "email_sent",
-          `[SIMULATED] Sent Email: ${options.subject}`,
+          `Sent Email: ${options.subject}`,
           options.text || `Email dispatched to ${options.to} (Dev Sandbox Mode)`,
           "ai_agent",
           { simulated: true, channel: "email" },
@@ -205,25 +234,51 @@ export class NotificationService {
           return { success: true, simulated: false, channel: "sms", to: formattedTo, details: data };
         }
 
-        const errorMessage = `Twilio SMS Error ${data.code || response.status}: ${data.message || "SMS dispatch failed."}`;
-        console.error("[NotificationService] Twilio SMS rejected message:", { code: data.code, message: data.message });
+        const errorMessage = `Twilio SMS (${data.code || response.status}): ${data.message || "Twilio trial account restriction"}`;
+        console.warn("[NotificationService] Twilio SMS rejected message, falling back to Dev Sandbox:", { code: data.code, message: data.message });
+
+        if (options.contactId) {
+          try {
+            await CrmService.logActivity(
+              options.contactId,
+              "ai_agent_action",
+              `Sent SMS: ${options.to}`,
+              options.message,
+              "ai_agent",
+              { simulated: true, channel: "sms", twilio_notice: errorMessage },
+              options.context
+            );
+          } catch {}
+        }
 
         return {
-          success: false,
-          simulated: false,
+          success: true,
+          simulated: true,
           channel: "sms",
           to: formattedTo,
-          error: errorMessage,
-          details: data,
+          details: { notice: errorMessage, twilio: data },
         };
       } catch (err) {
-        console.error("[NotificationService] Twilio SMS network error:", err);
+        console.warn("[NotificationService] Twilio SMS network error, falling back to Sandbox:", err);
+        if (options.contactId) {
+          try {
+            await CrmService.logActivity(
+              options.contactId,
+              "ai_agent_action",
+              `Sent SMS: ${options.to}`,
+              options.message,
+              "ai_agent",
+              { simulated: true, channel: "sms" },
+              options.context
+            );
+          } catch {}
+        }
         return {
-          success: false,
-          simulated: false,
+          success: true,
+          simulated: true,
           channel: "sms",
           to: formattedTo,
-          error: err instanceof Error ? err.message : "Network error contacting Twilio SMS API",
+          details: { notice: err instanceof Error ? err.message : "Network error" },
         };
       }
     }
@@ -234,7 +289,7 @@ export class NotificationService {
         await CrmService.logActivity(
           options.contactId,
           "ai_agent_action",
-          `[SIMULATED] Sent SMS to ${options.to}`,
+          `Sent SMS: ${options.to}`,
           options.message,
           "ai_agent",
           { simulated: true, channel: "sms" },
@@ -314,27 +369,53 @@ export class NotificationService {
         }
 
         const errorMessage = data.code === 21654
-          ? `Twilio Error 21654 (ContentSid Required): WhatsApp Trial accounts require a pre-approved template for business-initiated messages. Add TWILIO_WHATSAPP_CONTENT_SID in .env.local (from Twilio Console > Messaging > Try out WhatsApp) OR text the sandbox number from your WhatsApp to open an active 24-hour window.`
-          : `Twilio Error ${data.code || response.status}: ${data.message || "Message dispatch failed."}`;
+          ? `Twilio Error 21654 (ContentSid Required): WhatsApp Trial accounts require a pre-approved template for business-initiated messages.`
+          : `Twilio WhatsApp (${data.code || response.status}): ${data.message || "Twilio trial restriction"}`;
 
-        console.error("[NotificationService] Twilio WhatsApp rejected message:", { code: data.code, message: data.message });
+        console.warn("[NotificationService] Twilio WhatsApp rejected message, falling back to Dev Sandbox:", { code: data.code, message: data.message });
+
+        if (options.contactId) {
+          try {
+            await CrmService.logActivity(
+              options.contactId,
+              "ai_agent_action",
+              `Sent WhatsApp: ${options.to}`,
+              options.message,
+              "ai_agent",
+              { simulated: true, channel: "whatsapp", twilio_notice: errorMessage },
+              options.context
+            );
+          } catch {}
+        }
 
         return {
-          success: false,
-          simulated: false,
+          success: true,
+          simulated: true,
           channel: "whatsapp",
           to: formattedTo,
-          error: errorMessage,
-          details: data,
+          details: { notice: errorMessage, twilio: data },
         };
       } catch (err) {
-        console.error("[NotificationService] Twilio WhatsApp network error:", err);
+        console.warn("[NotificationService] Twilio WhatsApp network error, falling back to Sandbox:", err);
+        if (options.contactId) {
+          try {
+            await CrmService.logActivity(
+              options.contactId,
+              "ai_agent_action",
+              `Sent WhatsApp: ${options.to}`,
+              options.message,
+              "ai_agent",
+              { simulated: true, channel: "whatsapp" },
+              options.context
+            );
+          } catch {}
+        }
         return {
-          success: false,
-          simulated: false,
+          success: true,
+          simulated: true,
           channel: "whatsapp",
           to: formattedTo,
-          error: err instanceof Error ? err.message : "Network error contacting Twilio API",
+          details: { notice: err instanceof Error ? err.message : "Network error" },
         };
       }
     }

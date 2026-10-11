@@ -455,20 +455,76 @@ export class MarketingService {
       const trackingToken = `trk-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
       const unsubToken = `unsub-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 
-      // Hydrate Dynamic Tokens safely
+      // Hydrate Dynamic Tokens safely across all channels
       const hydrateText = (raw?: string | null) => {
         if (!raw) return "";
-        return raw
-          .replace(/\{\{first_name\}\}/g, contact.first_name || "")
-          .replace(/\{\{last_name\}\}/g, contact.last_name || "")
-          .replace(/\{\{company\}\}/g, contact.company || "Your Business")
-          .replace(/\{\{deal_value\}\}/g, `₹${Number(contact.value || 0).toLocaleString()}`)
-          .replace(/\{\{unsubscribe_url\}\}/g, `${baseUrl}/api/marketing/unsubscribe/${unsubToken}`);
+        let text = raw;
+
+        const firstName = (contact.first_name || "").trim();
+        const lastName = (contact.last_name || "").trim();
+        const fullName = [firstName, lastName].filter(Boolean).join(" ") || firstName || "Valued Contact";
+        const company = (contact.company || "").trim() || "Your Business";
+        const dealVal = `₹${Number(contact.value || 0).toLocaleString()}`;
+        const email = (contact.email || "").trim();
+        const phone = (contact.phone || "").trim();
+
+        // 1. Standard double bracket tokens
+        text = text
+          .replace(/\{\{\s*first_name\s*\}\}/gi, firstName || "there")
+          .replace(/\{\{\s*firstName\s*\}\}/gi, firstName || "there")
+          .replace(/\{\{\s*last_name\s*\}\}/gi, lastName)
+          .replace(/\{\{\s*lastName\s*\}\}/gi, lastName)
+          .replace(/\{\{\s*full_name\s*\}\}/gi, fullName)
+          .replace(/\{\{\s*fullName\s*\}\}/gi, fullName)
+          .replace(/\{\{\s*name\s*\}\}/gi, firstName || fullName)
+          .replace(/\{\{\s*company\s*\}\}/gi, company)
+          .replace(/\{\{\s*company_name\s*\}\}/gi, company)
+          .replace(/\{\{\s*companyName\s*\}\}/gi, company)
+          .replace(/\{\{\s*deal_value\s*\}\}/gi, dealVal)
+          .replace(/\{\{\s*value\s*\}\}/gi, dealVal)
+          .replace(/\{\{\s*email\s*\}\}/gi, email)
+          .replace(/\{\{\s*phone\s*\}\}/gi, phone)
+          .replace(/\{\{\s*unsubscribe_url\s*\}\}/gi, `${baseUrl}/api/marketing/unsubscribe/${unsubToken}`);
+
+        // 2. Single bracket tokens
+        text = text
+          .replace(/\{\s*first_name\s*\}/gi, firstName || "there")
+          .replace(/\{\s*firstName\s*\}/gi, firstName || "there")
+          .replace(/\{\s*last_name\s*\}/gi, lastName)
+          .replace(/\{\s*lastName\s*\}/gi, lastName)
+          .replace(/\{\s*full_name\s*\}/gi, fullName)
+          .replace(/\{\s*fullName\s*\}/gi, fullName)
+          .replace(/\{\s*name\s*\}/gi, firstName || fullName)
+          .replace(/\{\s*company\s*\}/gi, company)
+          .replace(/\{\s*deal_value\s*\}/gi, dealVal)
+          .replace(/\{\s*unsubscribe_url\s*\}/gi, `${baseUrl}/api/marketing/unsubscribe/${unsubToken}`);
+
+        // 3. Fallback: if preview dummy data was accidentally baked into template, replace with real recipient details
+        if (firstName) {
+          text = text
+            .replace(/\bDear Alex Vance\b/g, `Dear ${firstName}`)
+            .replace(/\bDear Alex\b/g, `Dear ${firstName}`)
+            .replace(/\bHello Alex Vance\b/g, `Hello ${firstName}`)
+            .replace(/\bHello Alex\b/g, `Hello ${firstName}`)
+            .replace(/\*Hello Alex\*\b/g, `*Hello ${firstName}*`)
+            .replace(/\bfor Alex Vance\b/g, `for ${fullName}`)
+            .replace(/\bfor Alex\b/g, `for ${firstName}`)
+            .replace(/\bto Alex Vance\b/g, `to ${fullName}`)
+            .replace(/\bto Alex\b/g, `to ${firstName}`);
+        }
+        if (contact.company && contact.company.trim()) {
+          text = text
+            .replace(/\bAcme Global\b/g, contact.company)
+            .replace(/\bAcme\b/g, contact.company);
+        }
+
+        return text;
       };
 
       const hydratedSubject = hydrateText(campaign.subject || campaign.title);
       let hydratedHtml = hydrateText(campaign.content_html || "<p>Campaign Message</p>");
-      const hydratedText = campaign.content_text ? hydrateText(campaign.content_text) : undefined;
+      const rawText = campaign.content_text || (campaign.content_html ? campaign.content_html.replace(/<[^>]*>/g, " ") : undefined);
+      const hydratedText = rawText ? hydrateText(rawText) : undefined;
 
       // Inject Tracking Pixel & Unsubscribe Footer for Email
       if (campaign.channel === "email") {
