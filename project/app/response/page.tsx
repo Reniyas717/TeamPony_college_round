@@ -9,22 +9,34 @@ function CustomerResponseContent() {
   const contactId = searchParams.get("id");
   const decisionParam = searchParams.get("decision"); // "yes" | "no"
 
+  // Determine initial outcome immediately if decision parameter is present in URL
+  const initialOutcome =
+    decisionParam?.toLowerCase() === "yes"
+      ? "yes"
+      : decisionParam?.toLowerCase() === "no"
+      ? "no"
+      : null;
+
   const [contactName, setContactName] = useState<string>("there");
-  const [loading, setLoading] = useState<boolean>(true);
-  const [submitting, setSubmitting] = useState<boolean>(false);
-  const [outcome, setOutcome] = useState<"yes" | "no" | null>(null);
+  const [outcome, setOutcome] = useState<"yes" | "no" | null>(initialOutcome);
   const [aiReasoning, setAiReasoning] = useState<string | null>(null);
   const [aiEngine, setAiEngine] = useState<string | null>(null);
   const [customResponse, setCustomResponse] = useState<string>("");
+  const [isEvaluatingAi, setIsEvaluatingAi] = useState<boolean>(false);
   const [isCustomAi, setIsCustomAi] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const hasRecordedRef = React.useRef<boolean>(false);
+
   // 1. Fetch contact info if ID is present
   useEffect(() => {
-    if (!contactId) {
-      setLoading(false);
+    const nameFromUrl = searchParams.get("name");
+    if (nameFromUrl) {
+      setContactName(nameFromUrl);
       return;
     }
+
+    if (!contactId) return;
 
     fetch(`/api/crm/contacts/${contactId}`)
       .then((res) => (res.ok ? res.json() : null))
@@ -33,23 +45,19 @@ function CustomerResponseContent() {
           setContactName(data.data.first_name);
         }
       })
-      .catch(() => {})
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [contactId]);
+      .catch(() => {});
+  }, [contactId, searchParams]);
 
-  // 2. Auto-process if decision parameter is in URL (from email button click)
+  // 2. Silently record decision in background if opened directly from email link (zero UI loading screen)
   useEffect(() => {
-    if (!contactId || !decisionParam || outcome) return;
+    if (!contactId || !decisionParam || hasRecordedRef.current) return;
+    hasRecordedRef.current = true;
 
     const isYes = decisionParam.toLowerCase() === "yes";
     const text = isYes
       ? "Yes, I am interested and want to connect!"
       : "No, not interested. Please unsubscribe me.";
 
-    setIsCustomAi(false);
-    setSubmitting(true);
     fetch(`/api/crm/contacts/${contactId}/response`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -59,69 +67,42 @@ function CustomerResponseContent() {
       }),
     })
       .then(async (res) => {
-        if (!res.ok) {
-          throw new Error("Failed to record response");
-        }
+        if (!res.ok) return;
         const data = await res.json();
-        setOutcome(isYes ? "yes" : "no");
         if (data?.data?.reasoning) setAiReasoning(data.data.reasoning);
         if (data?.data?.engine) setAiEngine(data.data.engine);
       })
-      .catch((err) => {
-        setErrorMsg(err instanceof Error ? err.message : "Failed to record response");
-      })
-      .finally(() => {
-        setSubmitting(false);
-      });
-  }, [contactId, decisionParam, outcome]);
+      .catch(() => {});
+  }, [contactId, decisionParam]);
 
-  // 3. Handle manual button click on the page
-  const handleSelectChoice = async (choice: "yes" | "no") => {
-    if (!contactId) {
-      setOutcome(choice);
-      return;
-    }
-
+  // 3. Handle manual button click on the page (Instant outcome, zero intermediate screen)
+  const handleSelectChoice = (choice: "yes" | "no") => {
+    setOutcome(choice);
     setIsCustomAi(false);
-    setSubmitting(true);
-    setErrorMsg(null);
+    if (!contactId) return;
+
     const text =
       choice === "yes"
         ? "Yes, I am interested and want to connect!"
         : "No, not interested. Please unsubscribe me.";
 
-    try {
-      const res = await fetch(`/api/crm/contacts/${contactId}/response`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          channel: "email",
-          responseText: text,
-        }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to record response");
-      }
-
-      const data = await res.json();
-      setOutcome(choice);
-      if (data?.data?.reasoning) setAiReasoning(data.data.reasoning);
-      if (data?.data?.engine) setAiEngine(data.data.engine);
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "Failed to record response");
-    } finally {
-      setSubmitting(false);
-    }
+    fetch(`/api/crm/contacts/${contactId}/response`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: "email",
+        responseText: text,
+      }),
+    }).catch(() => {});
   };
 
   // 4. Handle custom message typed by customer (Evaluated by Groq / Gemini AI)
   const handleCustomSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customResponse.trim() || !contactId) return;
+    if (!customResponse.trim() || !contactId || isEvaluatingAi) return;
 
+    setIsEvaluatingAi(true);
     setIsCustomAi(true);
-    setSubmitting(true);
     setErrorMsg(null);
 
     try {
@@ -146,44 +127,16 @@ function CustomerResponseContent() {
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Failed to process message");
     } finally {
-      setSubmitting(false);
+      setIsEvaluatingAi(false);
     }
   };
 
-  if (loading || submitting) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="bg-card border border-border p-8 rounded-xl shadow-lg max-w-md w-full text-center flex flex-col items-center gap-4 animate-pulse">
-          <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-primary">
-            <svg className="w-6 h-6 animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-            </svg>
-          </div>
-          <h2 className="text-xl font-display font-semibold text-foreground">
-            {submitting
-              ? isCustomAi
-                ? "Analyzing Your Message with AI..."
-                : "Recording Your Response..."
-              : "Loading..."}
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {submitting
-              ? isCustomAi
-                ? "Evaluating intent and updating preferences in real time..."
-                : "Saving your confirmation directly to CRM..."
-              : "Fetching inquiry details..."}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // Outcome confirmation view
+  // Outcome confirmation view (Instantly shown on direct decision)
   if (outcome) {
     const isYes = outcome === "yes";
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="bg-card border border-border p-8 md:p-10 rounded-2xl shadow-xl max-w-lg w-full text-center flex flex-col items-center gap-5 animate-in fade-in zoom-in-95 duration-300">
+        <div className="bg-card border border-border p-8 md:p-10 rounded-2xl shadow-xl max-w-lg w-full text-center flex flex-col items-center gap-5 animate-in fade-in duration-200">
           <div
             className={`w-16 h-16 rounded-full flex items-center justify-center shadow-sm ${
               isYes
@@ -223,20 +176,6 @@ function CustomerResponseContent() {
           >
             <span>{isYes ? "STATUS: QUALIFIED (INTERESTED)" : "STATUS: CHURNED (UNSUBSCRIBED)"}</span>
           </div>
-
-          {isCustomAi && aiReasoning && (
-            <div className="w-full p-3 bg-muted/40 rounded-lg border border-border/80 text-left text-xs space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-foreground">AI Sentiment Assessment:</span>
-                {aiEngine && (
-                  <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold">
-                    {aiEngine}
-                  </span>
-                )}
-              </div>
-              <p className="text-muted-foreground italic">&ldquo;{aiReasoning}&rdquo;</p>
-            </div>
-          )}
 
           <p className="text-xs text-muted-foreground pt-4 border-t border-border w-full">
             Nexus Autonomous Business Platform • Powered by Real-Time Telemetry

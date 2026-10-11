@@ -70,8 +70,9 @@ export async function POST(request: Request, { params }: RouteParams) {
 
     const { channel, subject, message } = parsed.data;
     const baseUrl = resolveBaseUrl(request);
-    const yesUrl = `${baseUrl}/response?id=${contact.id}&decision=yes`;
-    const noUrl = `${baseUrl}/response?id=${contact.id}&decision=no`;
+    const firstNameParam = contact.first_name ? `&name=${encodeURIComponent(contact.first_name)}` : "";
+    const yesUrl = `${baseUrl}/response?id=${contact.id}&decision=yes${firstNameParam}`;
+    const noUrl = `${baseUrl}/response?id=${contact.id}&decision=no${firstNameParam}`;
 
     let result;
 
