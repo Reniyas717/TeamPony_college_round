@@ -16,6 +16,7 @@ function CustomerResponseContent() {
   const [aiReasoning, setAiReasoning] = useState<string | null>(null);
   const [aiEngine, setAiEngine] = useState<string | null>(null);
   const [customResponse, setCustomResponse] = useState<string>("");
+  const [isCustomAi, setIsCustomAi] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // 1. Fetch contact info if ID is present
@@ -47,6 +48,7 @@ function CustomerResponseContent() {
       ? "Yes, I am interested and want to connect!"
       : "No, not interested. Please unsubscribe me.";
 
+    setIsCustomAi(false);
     setSubmitting(true);
     fetch(`/api/crm/contacts/${contactId}/response`, {
       method: "POST",
@@ -80,6 +82,7 @@ function CustomerResponseContent() {
       return;
     }
 
+    setIsCustomAi(false);
     setSubmitting(true);
     setErrorMsg(null);
     const text =
@@ -117,6 +120,7 @@ function CustomerResponseContent() {
     e.preventDefault();
     if (!customResponse.trim() || !contactId) return;
 
+    setIsCustomAi(true);
     setSubmitting(true);
     setErrorMsg(null);
 
@@ -156,10 +160,18 @@ function CustomerResponseContent() {
             </svg>
           </div>
           <h2 className="text-xl font-display font-semibold text-foreground">
-            {submitting ? "Analyzing Your Response with AI..." : "Loading..."}
+            {submitting
+              ? isCustomAi
+                ? "Analyzing Your Message with AI..."
+                : "Recording Your Response..."
+              : "Loading..."}
           </h2>
           <p className="text-sm text-muted-foreground">
-            Evaluating intent and updating preferences in real time...
+            {submitting
+              ? isCustomAi
+                ? "Evaluating intent and updating preferences in real time..."
+                : "Saving your confirmation directly to CRM..."
+              : "Fetching inquiry details..."}
           </p>
         </div>
       </div>
@@ -212,7 +224,7 @@ function CustomerResponseContent() {
             <span>{isYes ? "STATUS: QUALIFIED (INTERESTED)" : "STATUS: CHURNED (UNSUBSCRIBED)"}</span>
           </div>
 
-          {aiReasoning && (
+          {isCustomAi && aiReasoning && (
             <div className="w-full p-3 bg-muted/40 rounded-lg border border-border/80 text-left text-xs space-y-1">
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-foreground">AI Sentiment Assessment:</span>
