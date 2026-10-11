@@ -222,45 +222,54 @@ export class WorkflowEngineService {
 
     switch (node.capability) {
       case "marketing.email.send": {
-        const recipient = await this.resolveRecipient(context, contactId, config.to, runContext.email);
+        const recipient = await this.resolveRecipient(context, contactId, config.to, runContext.email, "email");
         const result = await NotificationService.sendEmail({
           to: recipient,
           subject: typeof config.subject === "string" ? config.subject : "Nexus workflow update",
           text: typeof config.template === "string" ? config.template : "This message was sent by a Nexus workflow.",
+          contactId,
         });
         return {
-          result_status: result.simulated ? "SIMULATED" : "SUCCESS",
+          result_status: result.simulated ? "SIMULATED" : (result.success ? "SUCCESS" : "FAILED"),
           simulated: result.simulated,
           channel: "email",
           provider_status: result.success ? (result.simulated ? "simulated" : "accepted") : "failed",
+          error: result.error,
+          details: result.details,
         };
       }
 
       case "marketing.sms.send": {
-        const recipient = await this.resolveRecipient(context, contactId, config.phone, runContext.phone);
+        const recipient = await this.resolveRecipient(context, contactId, config.phone, runContext.phone, "phone");
         const result = await NotificationService.sendSms({
           to: recipient,
           message: typeof config.message === "string" ? config.message : "This message was sent by a Nexus workflow.",
+          contactId,
         });
         return {
-          result_status: result.simulated ? "SIMULATED" : "SUCCESS",
+          result_status: result.simulated ? "SIMULATED" : (result.success ? "SUCCESS" : "FAILED"),
           simulated: result.simulated,
           channel: "sms",
           provider_status: result.success ? (result.simulated ? "simulated" : "accepted") : "failed",
+          error: result.error,
+          details: result.details,
         };
       }
 
       case "marketing.whatsapp.send": {
-        const recipient = await this.resolveRecipient(context, contactId, config.phone, runContext.phone);
+        const recipient = await this.resolveRecipient(context, contactId, config.phone, runContext.phone, "phone");
         const result = await NotificationService.sendWhatsApp({
           to: recipient,
           message: typeof config.message === "string" ? config.message : "This message was sent by a Nexus workflow.",
+          contactId,
         });
         return {
-          result_status: result.simulated ? "SIMULATED" : "SUCCESS",
+          result_status: result.simulated ? "SIMULATED" : (result.success ? "SUCCESS" : "FAILED"),
           simulated: result.simulated,
           channel: "whatsapp",
           provider_status: result.success ? (result.simulated ? "simulated" : "accepted") : "failed",
+          error: result.error,
+          details: result.details,
         };
       }
 
@@ -660,7 +669,8 @@ export class WorkflowEngineService {
     context: OwnerContext,
     contactId: string | undefined,
     configuredValue: unknown,
-    payloadValue: unknown
+    payloadValue: unknown,
+    preferredType: "email" | "phone" = "email"
   ): Promise<string> {
     if (contactId) {
       const { data, error } = await context.client
@@ -670,7 +680,9 @@ export class WorkflowEngineService {
         .eq("id", contactId)
         .maybeSingle();
       if (error) throw new Error("The owned CRM contact could not be read.");
-      const contactValue = data?.email || data?.phone;
+      const contactValue = preferredType === "phone"
+        ? (data?.phone || data?.email)
+        : (data?.email || data?.phone);
       if (typeof contactValue === "string" && contactValue.length > 0) return contactValue;
       throw new Error("The owned CRM contact has no destination address.");
     }
