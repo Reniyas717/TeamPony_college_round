@@ -8,6 +8,7 @@ import {
   CreateContactInput,
   UpdateContactInput,
   ContactFilters,
+  CrmAnalyticsData,
 } from "@/lib/validations/crm";
 
 /**
@@ -316,3 +317,23 @@ export function useProcessLeadResponse() {
     },
   });
 }
+
+/**
+ * Fetch dedicated CRM analytics and Gemini AI insights
+ */
+export function useCrmAnalytics() {
+  return useQuery<CrmAnalyticsData>({
+    queryKey: ["crm", "analytics"],
+    queryFn: async (): Promise<CrmAnalyticsData> => {
+      const res = await fetch("/api/crm/analytics");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error?.message || "Failed to load CRM analytics");
+      }
+      const json = await res.json();
+      return json.data;
+    },
+    staleTime: 30 * 1000,
+  });
+}
+

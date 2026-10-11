@@ -114,3 +114,60 @@ export interface CrmStats {
     customersOfTotal: { count: number; total: number; percentage: number };
   };
 }
+
+export interface CrmStageMetrics {
+  lead: number;
+  contacted: number;
+  qualified: number;
+  proposal: number;
+  customer: number;
+  churned: number;
+}
+
+export interface CrmSourceMetric {
+  source: string;
+  count: number;
+  percentage: number;
+}
+
+export interface CrmLeadHighlight {
+  id: string;
+  name: string;
+  email: string;
+  company: string | null;
+  stage: string;
+  value: number;
+  tags: string[];
+  lastActivityAt: string;
+}
+
+export interface GeminiStrategicInsights {
+  summary: string;
+  healthScore: number;
+  sentiment: "bullish" | "neutral" | "cautious";
+  keyObservations: string[];
+  churnRisks: string[];
+  strategicRecommendations: Array<{
+    title: string;
+    impact: "HIGH" | "MEDIUM" | "LOW";
+    action: string;
+  }>;
+  engine: string;
+  generatedAt: string;
+}
+
+export interface CrmAnalyticsData {
+  metrics: {
+    totalContacts: number;
+    totalPipelineValue: number;
+    averageDealValue: number;
+    conversionRate: number;
+    churnRate: number;
+    stageCounts: CrmStageMetrics;
+    sourceBreakdown: CrmSourceMetric[];
+    activeTouchpointCount: number;
+  };
+  leads: CrmLeadHighlight[];
+  insights: GeminiStrategicInsights;
+}
+
