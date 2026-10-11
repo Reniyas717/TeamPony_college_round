@@ -1,6 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Manrope, Bricolage_Grotesque } from "next/font/google";
 import { QueryProvider } from "@/components/providers/query-provider";
+import { PwaRegister } from "@/components/pwa/pwa-register";
+import { PwaInstallPrompt } from "@/components/pwa/pwa-install-prompt";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -16,9 +18,32 @@ const bricolage = Bricolage_Grotesque({
   axes: ["opsz"],
 });
 
+export const viewport: Viewport = {
+  themeColor: "#E0533C",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+};
+
 export const metadata: Metadata = {
   title: "Nexus — AI-Powered Business Operating Platform",
   description: "An all-in-one business operating platform with an intelligent AI Business Agent, CRM, SaaS billing, and more.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Nexus",
+  },
+  icons: {
+    icon: [
+      { url: "/icons/icon-192x192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512x512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icons/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: [
+      { url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -45,7 +70,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-full flex flex-col font-sans">
-        <QueryProvider>{children}</QueryProvider>
+        <QueryProvider>
+          {children}
+          <PwaRegister />
+          <PwaInstallPrompt />
+        </QueryProvider>
       </body>
     </html>
   );
