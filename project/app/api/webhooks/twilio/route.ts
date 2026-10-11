@@ -79,23 +79,29 @@ export async function POST(request: Request) {
         }
       );
 
-      // Audit Log
-      await AuditService.recordEvent(
-        {
-          business_id: c.business_id || DEFAULT_BUSINESS_ID,
-          action: "crm.contact.stage_changed",
-          actor: { id: "customer", type: "user" },
-          resource: { type: "crm_contact", id: c.id },
-          outcome: "success",
-          metadata: {
-            channel: "whatsapp",
-            decision,
-            body,
-            targetStage,
+      // Audit Log per AGENTS.md §9
+      try {
+        await AuditService.recordEvent(
+          {
+            business_id: c.business_id || DEFAULT_BUSINESS_ID,
+            action: "crm.contact.stage_changed",
+            actor: { id: "ai_agent", type: "ai_agent" },
+            initiator: { id: c.id, type: "user" },
+            resource: { type: "crm_contact", id: c.id },
+            outcome: "success",
+            metadata: {
+              contact_id: c.id,
+              previous_stage: c.stage,
+              stage: targetStage,
+              result: isChurned ? "churned" : "qualified",
+              reason_code: decision,
+            },
           },
-        },
-        { critical: false }
-      );
+          { critical: false }
+        );
+      } catch (auditErr) {
+        console.warn("[TWILIO-AUDIT-FAILED]", auditErr);
+      }
     }
 
     // Return TwiML

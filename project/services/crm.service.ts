@@ -2,6 +2,7 @@ import type { OwnerContext } from "../lib/supabase/owner-context";
 import { getSupabaseAdminClient } from "../lib/supabase/admin";
 import { getSupabaseServerClient } from "../lib/supabase/server";
 import { sanitizeAuditMetadata } from "../lib/validations/audit";
+import { AuditService } from "./audit.service";
 import {
   Activity,
   ActivityActor,
@@ -295,11 +296,34 @@ export class CrmService {
       if (!error && data) {
         const result = data as { contact: Record<string, unknown> };
         const webinarIds = await this.webinarContactIds(ownerContext).catch(() => new Set<string>());
-        return mapContact(
+        const mapped = mapContact(
           result.contact,
           ownerContext.businessId,
           webinarIds.has(String(result.contact.id)) ? "webinar" : undefined
         );
+        try {
+          await AuditService.recordEvent(
+            {
+              business_id: ownerContext.businessId,
+              action: "crm.contact.created",
+              actor: {
+                id: ownerContext.user?.id || "system",
+                type: ownerContext.user?.id === "system" ? "system" : "user",
+              },
+              resource: { type: "crm_contact", id: mapped.id },
+              outcome: "success",
+              metadata: {
+                contact_id: mapped.id,
+                source: mapped.source,
+                stage: mapped.stage,
+              },
+            },
+            { client: ownerContext.client, critical: false }
+          );
+        } catch (auditErr) {
+          console.warn("[CRM-AUDIT-WARN] Failed to record contact.created event:", auditErr);
+        }
+        return mapped;
       }
     } catch {
       // RPC fallback to direct insert
@@ -335,11 +359,36 @@ export class CrmService {
     }
 
     const webinarIds = await this.webinarContactIds(ownerContext).catch(() => new Set<string>());
-    return mapContact(
+    const createdContact = mapContact(
       insertedRows[0] as Record<string, unknown>,
       ownerContext.businessId,
       webinarIds.has(String(insertedRows[0].id)) ? "webinar" : undefined
     );
+
+    try {
+      await AuditService.recordEvent(
+        {
+          business_id: ownerContext.businessId,
+          action: "crm.contact.created",
+          actor: {
+            id: ownerContext.user?.id || "system",
+            type: ownerContext.user?.id === "system" ? "system" : "user",
+          },
+          resource: { type: "crm_contact", id: createdContact.id },
+          outcome: "success",
+          metadata: {
+            contact_id: createdContact.id,
+            source: createdContact.source,
+            stage: createdContact.stage,
+          },
+        },
+        { client: ownerContext.client, critical: false }
+      );
+    } catch (auditErr) {
+      console.warn("[CRM-AUDIT-WARN] Failed to record contact.created event:", auditErr);
+    }
+
+    return createdContact;
   }
 
   static async updateContact(id: string, input: UpdateContactInput, context?: CrmOwnerContext): Promise<Contact | null> {
@@ -351,6 +400,8 @@ export class CrmService {
     if ("next_action_text" in patch && patch.next_action_text === "") patch.next_action_text = null;
     if ("next_action_due_at" in patch && patch.next_action_due_at === "") patch.next_action_due_at = null;
 
+    let updatedContact: Contact | null = null;
+
     try {
       const { data, error } = await ownerContext.client.rpc("update_crm_contact_transaction", {
         p_contact_id: id,
@@ -359,7 +410,7 @@ export class CrmService {
       if (!error && data) {
         const result = data as { contact: Record<string, unknown> };
         const webinarIds = await this.webinarContactIds(ownerContext).catch(() => new Set<string>());
-        return mapContact(
+        updatedContact = mapContact(
           result.contact,
           ownerContext.businessId,
           webinarIds.has(String(result.contact.id)) ? "webinar" : undefined
@@ -369,39 +420,116 @@ export class CrmService {
       // RPC fallback to direct update
     }
 
-    const CONTACTS_TABLE = "crm" + "_" + "contacts";
-    const dbClient = getSupabaseAdminClient() || ownerContext.client;
-    const { data: updatedRows, error: updateErr } = await dbClient
-      .from(CONTACTS_TABLE)
-      .update(patch)
-      .eq("id", id)
-      .select();
-    if (updateErr) throw persistenceError("contact update", updateErr);
-    if (!updatedRows || updatedRows.length === 0) return null;
-    return mapContact(updatedRows[0] as Record<string, unknown>, ownerContext.businessId);
+    if (!updatedContact) {
+      const CONTACTS_TABLE = "crm" + "_" + "contacts";
+      const dbClient = getSupabaseAdminClient() || ownerContext.client;
+      const { data: updatedRows, error: updateErr } = await dbClient
+        .from(CONTACTS_TABLE)
+        .update(patch)
+        .eq("id", id)
+        .select();
+      if (updateErr) throw persistenceError("contact update", updateErr);
+      if (!updatedRows || updatedRows.length === 0) return null;
+      updatedContact = mapContact(updatedRows[0] as Record<string, unknown>, ownerContext.businessId);
+    }
+
+    if (updatedContact) {
+      try {
+        const changedFields = Object.keys(input);
+        await AuditService.recordEvent(
+          {
+            business_id: ownerContext.businessId,
+            action: "crm.contact.updated",
+            actor: {
+              id: ownerContext.user?.id || "system",
+              type: ownerContext.user?.id === "system" ? "system" : "user",
+            },
+            resource: { type: "crm_contact", id },
+            outcome: "success",
+            metadata: {
+              contact_id: id,
+              changed_fields: changedFields,
+            },
+          },
+          { client: ownerContext.client, critical: false }
+        );
+
+        if (input.stage) {
+          await AuditService.recordEvent(
+            {
+              business_id: ownerContext.businessId,
+              action: "crm.contact.stage_changed",
+              actor: {
+                id: ownerContext.user?.id || "system",
+                type: ownerContext.user?.id === "system" ? "system" : "user",
+              },
+              resource: { type: "crm_contact", id },
+              outcome: "success",
+              metadata: {
+                contact_id: id,
+                stage: input.stage,
+              },
+            },
+            { client: ownerContext.client, critical: false }
+          );
+        }
+      } catch (auditErr) {
+        console.warn("[CRM-AUDIT-WARN] Failed to record contact.updated audit event:", auditErr);
+      }
+    }
+
+    return updatedContact;
   }
 
   static async deleteContact(id: string, context?: CrmOwnerContext): Promise<boolean> {
     const ownerContext = requireCrmContext(context);
+    let deleted = false;
     try {
       const { data, error } = await ownerContext.client.rpc("delete_crm_contact_transaction", {
         p_contact_id: id,
       });
       if (!error && data) {
-        return Boolean((data as { deleted?: boolean } | null)?.deleted);
+        deleted = Boolean((data as { deleted?: boolean } | null)?.deleted);
       }
     } catch {
       // RPC fallback
     }
 
-    const CONTACTS_TABLE = "crm" + "_" + "contacts";
-    const dbClient = getSupabaseAdminClient() || ownerContext.client;
-    const { error: deleteErr } = await dbClient
-      .from(CONTACTS_TABLE)
-      .delete()
-      .eq("id", id);
-    if (deleteErr) throw persistenceError("contact deletion", deleteErr);
-    return true;
+    if (!deleted) {
+      const CONTACTS_TABLE = "crm" + "_" + "contacts";
+      const dbClient = getSupabaseAdminClient() || ownerContext.client;
+      const { error: deleteErr } = await dbClient
+        .from(CONTACTS_TABLE)
+        .delete()
+        .eq("id", id);
+      if (deleteErr) throw persistenceError("contact deletion", deleteErr);
+      deleted = true;
+    }
+
+    if (deleted) {
+      try {
+        await AuditService.recordEvent(
+          {
+            business_id: ownerContext.businessId,
+            action: "crm.contact.deleted",
+            actor: {
+              id: ownerContext.user?.id || "system",
+              type: ownerContext.user?.id === "system" ? "system" : "user",
+            },
+            resource: { type: "crm_contact", id },
+            outcome: "success",
+            metadata: {
+              contact_id: id,
+            },
+          },
+          { client: ownerContext.client, critical: false }
+        );
+      } catch (auditErr) {
+        console.warn("[CRM-AUDIT-WARN] Failed to record contact.deleted audit event:", auditErr);
+      }
+    }
+
+    return deleted;
   }
 
   static async getContactActivities(contactId: string, context?: CrmOwnerContext): Promise<Activity[]> {
@@ -448,6 +576,7 @@ export class CrmService {
 
     const safeMetadata = sanitizeAuditMetadata(metadata ?? {}) as Record<string, unknown>;
 
+    let createdActivity: Activity;
     if (ownerContext.user?.id === "system") {
       const ACTIVITIES_TABLE = "crm" + "_" + "activities";
       const { data: insertedRows, error: insertErr } = await ownerContext.client
@@ -466,47 +595,76 @@ export class CrmService {
       if (!insertedRows || insertedRows.length === 0) {
         throw persistenceError("activity creation", {});
       }
-      return mapActivity(insertedRows[0] as Record<string, unknown>, contact.business_id, contactId);
+      createdActivity = mapActivity(insertedRows[0] as Record<string, unknown>, contact.business_id, contactId);
+    } else {
+      let rpcActivity: Activity | null = null;
+      try {
+        const { data, error } = await ownerContext.client.rpc("create_crm_activity_transaction", {
+          p_contact_id: contactId,
+          p_type: type,
+          p_title: title.trim(),
+          p_description: description?.trim() || null,
+          p_actor: actor,
+          p_metadata: safeMetadata,
+        });
+        if (!error && data) {
+          rpcActivity = mapActivity(data as Record<string, unknown>, ownerContext.businessId, contactId);
+        }
+      } catch {
+        // RPC fallback
+      }
+
+      if (rpcActivity) {
+        createdActivity = rpcActivity;
+      } else {
+        const ACTIVITIES_TABLE = "crm" + "_" + "activities";
+        const dbClient = getSupabaseAdminClient() || ownerContext.client;
+        const { data: insertedRows, error: insertErr } = await dbClient
+          .from(ACTIVITIES_TABLE)
+          .insert({
+            business_id: contact.business_id,
+            contact_id: contactId,
+            type,
+            title: title.trim(),
+            description: description?.trim() || null,
+            actor,
+            metadata: safeMetadata,
+          })
+          .select();
+        if (insertErr) {
+          console.error("[CrmService.logActivity] Insert error:", insertErr);
+          throw persistenceError("activity creation", insertErr);
+        }
+        if (!insertedRows || insertedRows.length === 0) {
+          throw persistenceError("activity creation", {});
+        }
+        createdActivity = mapActivity(insertedRows[0] as Record<string, unknown>, contact.business_id, contactId);
+      }
     }
 
     try {
-      const { data, error } = await ownerContext.client.rpc("create_crm_activity_transaction", {
-        p_contact_id: contactId,
-        p_type: type,
-        p_title: title.trim(),
-        p_description: description?.trim() || null,
-        p_actor: actor,
-        p_metadata: safeMetadata,
-      });
-      if (!error && data) {
-        return mapActivity(data as Record<string, unknown>, ownerContext.businessId, contactId);
-      }
-    } catch {
-      // RPC fallback
+      await AuditService.recordEvent(
+        {
+          business_id: contact.business_id,
+          action: "crm.activity.created",
+          actor: {
+            id: actor === "ai_agent" ? "ai_agent" : (actor === "system" ? "system" : (ownerContext.user?.id || "user")),
+            type: actor === "ai_agent" ? "ai_agent" : (actor === "system" || ownerContext.user?.id === "system" ? "system" : "user"),
+          },
+          resource: { type: "crm_activity", id: createdActivity.id },
+          outcome: "success",
+          metadata: {
+            contact_id: contactId,
+            activity_type: type,
+          },
+        },
+        { client: ownerContext.client, critical: false }
+      );
+    } catch (auditErr) {
+      console.warn("[CRM-AUDIT-WARN] Failed to record activity.created audit event:", auditErr);
     }
 
-    const ACTIVITIES_TABLE = "crm" + "_" + "activities";
-    const dbClient = getSupabaseAdminClient() || ownerContext.client;
-    const { data: insertedRows, error: insertErr } = await dbClient
-      .from(ACTIVITIES_TABLE)
-      .insert({
-        business_id: contact.business_id,
-        contact_id: contactId,
-        type,
-        title: title.trim(),
-        description: description?.trim() || null,
-        actor,
-        metadata: safeMetadata,
-      })
-      .select();
-    if (insertErr) {
-      console.error("[CrmService.logActivity] Insert error:", insertErr);
-      throw persistenceError("activity creation", insertErr);
-    }
-    if (!insertedRows || insertedRows.length === 0) {
-      throw persistenceError("activity creation", {});
-    }
-    return mapActivity(insertedRows[0] as Record<string, unknown>, contact.business_id, contactId);
+    return createdActivity;
   }
 
   static async getStats(context?: CrmOwnerContext): Promise<CrmStats> {
