@@ -50,8 +50,8 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
   const handleTestFire = async () => {
     try {
       const primaryLead = contacts && contacts.length > 0 ? contacts[0] : null;
-      const targetEmail = primaryLead?.email || "gitgud1211@gmail.com";
-      const targetPhone = primaryLead?.phone || "9082565845";
+      const targetEmail = primaryLead?.email || "customer@example.com";
+      const targetPhone = primaryLead?.phone || "+15550001234";
       const targetContactId = primaryLead?.id;
 
       const result = await triggerMutation.mutateAsync({
