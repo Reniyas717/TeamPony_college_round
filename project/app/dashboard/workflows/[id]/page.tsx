@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useWorkflow, useTriggerWorkflow } from "@/hooks/use-workflows";
@@ -21,8 +21,22 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
 
   const [activeRun, setActiveRun] = useState<WorkflowRun | null>(null);
   const [stepLogs, setStepLogs] = useState<WorkflowStepLog[]>([]);
+  const [selectedContactId, setSelectedContactId] = useState<string>("");
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+
+  // Prioritize Resend-verified contact (gitgud1211@gmail.com) or qualified lead Rohan Benegal
+  const targetLead = useMemo(() => {
+    if (!contacts || contacts.length === 0) return null;
+    if (selectedContactId) {
+      return contacts.find((c) => c.id === selectedContactId) || contacts[0];
+    }
+    const verified = contacts.find((c) => c.email?.toLowerCase().includes("gitgud1211@gmail.com"));
+    if (verified) return verified;
+    const qualified = contacts.find((c) => c.stage === "qualified");
+    if (qualified) return qualified;
+    return contacts[0];
+  }, [contacts, selectedContactId]);
 
   if (isLoading) {
     return (
@@ -49,10 +63,9 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
 
   const handleTestFire = async () => {
     try {
-      const primaryLead = contacts && contacts.length > 0 ? contacts[0] : null;
-      const targetEmail = primaryLead?.email || "customer@example.com";
-      const targetPhone = primaryLead?.phone || "+15550001234";
-      const targetContactId = primaryLead?.id;
+      const targetEmail = targetLead?.email || "gitgud1211@gmail.com";
+      const targetPhone = targetLead?.phone || "+919082565845";
+      const targetContactId = targetLead?.id;
 
       const result = await triggerMutation.mutateAsync({
         id,
@@ -101,9 +114,20 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
         </div>
 
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2.5">
-          {contacts && contacts[0] && (
-            <div className="text-xs text-muted-foreground bg-muted/30 px-3 py-1.5 rounded border border-border/50">
-              Target Lead: <span className="font-semibold text-foreground">{contacts[0].first_name} {contacts[0].last_name}</span>
+          {contacts && contacts.length > 0 && targetLead && (
+            <div className="flex items-center gap-1.5 bg-muted/40 px-2.5 py-1.5 rounded border border-border/60 text-xs text-muted-foreground shadow-2xs">
+              <span className="font-medium">Target Lead:</span>
+              <select
+                value={targetLead.id}
+                onChange={(e) => setSelectedContactId(e.target.value)}
+                className="bg-card text-foreground font-semibold text-xs border border-input rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+              >
+                {contacts.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.first_name} {c.last_name} ({c.email}) {c.stage === "qualified" ? "★ Qualified" : ""}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
           <button
