@@ -118,8 +118,9 @@ export class WorkflowEngineService {
       action: "ai.workflow.created",
       actor: { id: context.user.id, type: "user" },
       resource: { type: "workflow", id: created.id },
+      workflow_id: created.id,
       outcome: "success",
-      metadata: { title: created.title, is_high_impact: created.is_high_impact },
+      metadata: { workflow_id: created.id, node_count: created.dag_definition.nodes.length },
     });
     return created;
   }
@@ -143,8 +144,9 @@ export class WorkflowEngineService {
         action: "ai.workflow.deleted",
         actor: { id: context.user.id, type: "user" },
         resource: { type: "workflow", id },
+        workflow_id: id,
         outcome: "success",
-        metadata: {},
+        metadata: { workflow_id: id },
       });
     }
     return deleted;
@@ -367,6 +369,23 @@ export class WorkflowEngineService {
       }
       decidedRun = asRun(fallbackRun as JsonObject);
     }
+
+    await this.recordAudit(context, {
+      business_id: context.businessId,
+      action: approved ? "ai.workflow.approved" : "ai.workflow.rejected",
+      actor: { id: context.user.id, type: "user" },
+      approver: { id: context.user.id, type: "user", approved_at: decidedAt },
+      resource: { type: "workflow_run", id: runId },
+      workflow_id: workflowId,
+      outcome: "success",
+      metadata: {
+        workflow_id: workflowId,
+        run_id: runId,
+        node_id: run.current_node_id || undefined,
+        reason_code: !approved ? (reason || "REJECTED_BY_USER") : undefined,
+      },
+    });
+
     if (!approved) return decidedRun;
 
     const gateIndex = workflow.dag_definition.nodes.findIndex((node) => node.id === decidedRun.current_node_id);
@@ -500,6 +519,45 @@ export class WorkflowEngineService {
       });
       stepLogs.push(step);
 
+      let stepAction:
+        | "ai.workflow.step_succeeded"
+        | "ai.workflow.step_failed"
+        | "ai.workflow.step_simulated"
+        | "ai.workflow.step_unsupported";
+      let stepOutcome: "success" | "failure" = "success";
+      let stepReason: string | undefined = undefined;
+
+      if (result.result_status === "FAILED") {
+        stepAction = "ai.workflow.step_failed";
+        stepOutcome = "failure";
+        stepReason = (result.error as string | undefined) || "STEP_EXECUTION_FAILED";
+      } else if (result.result_status === "SIMULATED") {
+        stepAction = "ai.workflow.step_simulated";
+      } else if (result.result_status === "UNSUPPORTED") {
+        stepAction = "ai.workflow.step_unsupported";
+        stepOutcome = "failure";
+        stepReason = "UNSUPPORTED_CAPABILITY";
+      } else {
+        stepAction = "ai.workflow.step_succeeded";
+      }
+
+      await this.recordAudit(context, {
+        business_id: context.businessId,
+        action: stepAction,
+        actor: { id: "ai_agent", type: "ai_agent" },
+        initiator: this.initiatorFromRun(run, context.user.id),
+        resource: { type: "workflow_step", id: step.id },
+        workflow_id: workflow.id,
+        outcome: stepOutcome,
+        metadata: {
+          workflow_id: workflow.id,
+          run_id: run.id,
+          node_id: node.id,
+          capability: node.capability,
+          reason_code: stepReason,
+        },
+      });
+
       if (result.result_status === "UNSUPPORTED") {
         warnings.push(`${node.capability}: unsupported in the manual workflow demo`);
       }
@@ -522,6 +580,22 @@ export class WorkflowEngineService {
           },
           completed_at: new Date().toISOString(),
         });
+
+        await this.recordAudit(context, {
+          business_id: context.businessId,
+          action: "ai.workflow.failed",
+          actor: { id: "ai_agent", type: "ai_agent" },
+          initiator: this.initiatorFromRun(run, context.user.id),
+          resource: { type: "workflow_run", id: run.id },
+          workflow_id: workflow.id,
+          outcome: "failure",
+          metadata: {
+            workflow_id: workflow.id,
+            run_id: run.id,
+            node_id: node.id,
+            reason_code: (result.error as string | undefined) || "WORKFLOW_STEP_FAILED",
+          },
+        });
         break;
       }
     }
@@ -531,6 +605,21 @@ export class WorkflowEngineService {
         status: "COMPLETED",
         error_details: warnings.length > 0 ? { warnings } : run.error_details,
         completed_at: new Date().toISOString(),
+      });
+
+      await this.recordAudit(context, {
+        business_id: context.businessId,
+        action: "ai.workflow.executed",
+        actor: { id: "ai_agent", type: "ai_agent" },
+        initiator: this.initiatorFromRun(run, context.user.id),
+        resource: { type: "workflow_run", id: run.id },
+        workflow_id: workflow.id,
+        outcome: "success",
+        metadata: {
+          workflow_id: workflow.id,
+          run_id: run.id,
+          node_count: nodes.length,
+        },
       });
     }
     return { run, stepLogs, paused };
@@ -705,10 +794,15 @@ export class WorkflowEngineService {
     context: OwnerContext,
     input: Parameters<typeof AuditService.recordEvent>[0]
   ): Promise<boolean> {
-    const event = await AuditService.recordEvent(input, {
-      client: context.client as SupabaseClient,
-      critical: false,
-    });
-    return Boolean(event);
+    try {
+      const event = await AuditService.recordEvent(input, {
+        client: context.client as SupabaseClient,
+        critical: false,
+      });
+      return Boolean(event);
+    } catch (err) {
+      console.warn("[WORKFLOW-AUDIT-WARN] Audit event logging failed:", err);
+      return false;
+    }
   }
 }

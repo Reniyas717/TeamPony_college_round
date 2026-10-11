@@ -4,6 +4,7 @@ import { CrmService } from "@/services/crm.service";
 import { requireOwnerContext } from "@/lib/supabase/owner-context";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { LeadSentimentService } from "@/services/lead-sentiment.service";
+import { AuditService } from "@/services/audit.service";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -104,6 +105,30 @@ export async function POST(request: Request, { params }: RouteParams) {
       },
       context || undefined
     );
+
+    // Record Audit Event per AGENTS.md §9
+    try {
+      await AuditService.recordEvent(
+        {
+          business_id: contact.business_id,
+          action: "crm.contact.stage_changed",
+          actor: { id: "ai_agent", type: "ai_agent" },
+          initiator: { id: contact.id, type: "user" },
+          resource: { type: "crm_contact", id: contact.id },
+          outcome: "success",
+          metadata: {
+            contact_id: contact.id,
+            previous_stage: contact.stage,
+            stage: targetStage,
+            result: isChurned ? "churned" : "qualified",
+            reason_code: decision,
+          },
+        },
+        { critical: false }
+      );
+    } catch (auditErr) {
+      console.warn("[CRM-RESPONSE-AUDIT-FAILED]", auditErr);
+    }
 
     return NextResponse.json(
       {

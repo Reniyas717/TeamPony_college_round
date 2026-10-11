@@ -3,8 +3,21 @@ import assert from "node:assert/strict";
 import { CreateCampaignSchema } from "../lib/validations/marketing";
 import { MarketingService } from "../services/marketing.service";
 import { EngagementTrackingService } from "../services/engagement.service";
+import { CrmService } from "../services/crm.service";
 
 test("Marketing Campaigns Engine Test Suite", async (t) => {
+  // Pre-seed a test contact for predictable segmentation filtering
+  await CrmService.createContact({
+    first_name: "Alex",
+    last_name: "Morgan",
+    email: `alex.morgan-${Date.now()}@enterprise.corp`,
+    company: "Enterprise Corp",
+    stage: "qualified",
+    tags: ["enterprise"],
+    value: 75000,
+    source: "website_form",
+  });
+
   await t.test("1. Zod Validation: Validates and sanitizes campaign payloads", () => {
     const valid = {
       title: "Enterprise Q4 Product Demo",

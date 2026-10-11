@@ -56,12 +56,15 @@ function Navbar() {
             <Link href="#ai-agent" className="hover:text-foreground transition-colors">AI Agent</Link>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <ThemeToggle />
-          <Button variant="ghost" asChild className="hidden sm:inline-flex">
-            <Link href="/login">Sign in</Link>
-          </Button>
-          <Button variant="primary" asChild>
+          <Link
+            href="/login"
+            className="text-xs sm:text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors px-2.5 py-1.5 rounded-sm hover:bg-muted/40"
+          >
+            Sign in
+          </Link>
+          <Button variant="primary" size="sm" asChild className="h-9 px-4 text-xs font-semibold shadow-xs">
             <Link href="/signup">Get started</Link>
           </Button>
         </div>
@@ -91,17 +94,37 @@ function Hero() {
             <p className="text-lg text-muted-foreground leading-relaxed mb-8 max-w-xl">
               Connect your customer records, billing, marketing campaigns, and autonomous AI workflows into a single workspace. No silos. No manual sync.
             </p>
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto mb-8">
-              <Button size="lg" variant="primary" asChild className="px-8 h-12 text-base font-semibold shadow-md hover:-translate-y-0.5 transition-transform">
-                <Link href="/signup">Get started free</Link>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto mb-4">
+              <Button
+                size="lg"
+                variant="brand"
+                asChild
+                className="px-7 h-12 text-sm sm:text-base font-semibold shadow-xs hover:shadow-sm hover:-translate-y-0.5 transition-all group"
+              >
+                <Link href="/signup">
+                  <span>Get started free</span>
+                  <ArrowRight size="16" className="ml-2 group-hover:translate-x-1 transition-transform" />
+                </Link>
               </Button>
-              <Button size="lg" variant="outline" asChild className="px-6 h-12 text-base font-semibold group bg-background hover:bg-muted transition-colors">
-                <Link href="/login">
-                  Sign in <ArrowRight size="18" className="ml-2 group-hover:translate-x-1 transition-transform" />
+              <Button
+                size="lg"
+                variant="outline"
+                asChild
+                className="px-6 h-12 text-sm sm:text-base font-semibold border-border-strong hover:bg-muted/60 transition-colors group"
+              >
+                <Link href="#product">
+                  <span>Explore platform</span>
+                  <ArrowRight size="15" className="ml-2 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
                 </Link>
               </Button>
             </div>
-            <div className="flex items-center gap-6 text-xs text-muted-foreground font-medium pt-2 border-t border-border/50 w-full">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-6 font-medium">
+              <span>Already have an account?</span>
+              <Link href="/login" className="font-semibold text-foreground underline underline-offset-4 hover:text-brand-text transition-colors">
+                Sign in &rarr;
+              </Link>
+            </div>
+            <div className="flex items-center gap-6 text-xs text-muted-foreground font-medium pt-3 border-t border-border/50 w-full">
               <span className="flex items-center gap-1.5">
                 <TickCircle size="14" className="text-brand-text" /> Single-tenant security
               </span>
@@ -557,11 +580,16 @@ function CTA() {
             Consolidate your stack. Automate your operations. Empower your team with an intelligent operating system built for the modern web.
           </p>
           <div className="flex flex-col sm:flex-row justify-center items-center gap-4 w-full sm:w-auto">
-             <Button variant="primary" size="lg" className="w-full sm:w-auto px-10 rounded-sm hover:scale-105 transition-transform shadow-[0_0_20px_var(--brand-subtle)]">
-               Get started
+             <Button variant="brand" size="lg" asChild className="w-full sm:w-auto px-8 h-12 text-sm sm:text-base font-semibold shadow-xs hover:shadow-sm hover:-translate-y-0.5 transition-all group">
+               <Link href="/signup">
+                 <span>Get started free</span>
+                 <ArrowRight size="16" className="ml-2 group-hover:translate-x-1 transition-transform" />
+               </Link>
              </Button>
-             <Button variant="outline" size="lg" className="w-full sm:w-auto px-10 rounded-sm bg-background hover:bg-muted transition-colors">
-               Explore platform
+             <Button variant="outline" size="lg" asChild className="w-full sm:w-auto px-8 h-12 text-sm sm:text-base font-semibold border-border-strong hover:bg-muted/60 transition-colors">
+               <Link href="#product">
+                 <span>Explore platform</span>
+               </Link>
              </Button>
           </div>
         </motion.div>

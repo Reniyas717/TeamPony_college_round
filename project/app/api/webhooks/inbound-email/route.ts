@@ -60,21 +60,29 @@ export async function POST(request: Request) {
       }
     );
 
-    await AuditService.recordEvent(
-      {
-        business_id: DEFAULT_BUSINESS_ID,
-        action: "crm.contact.stage_changed",
-        actor: { id: "customer", type: "user" },
-        resource: { type: "crm_contact", id: contact.id },
-        outcome: "success",
-        metadata: {
-          channel: "email",
-          decision,
-          targetStage,
+    // Audit Log per AGENTS.md §9
+    try {
+      await AuditService.recordEvent(
+        {
+          business_id: contact.business_id || DEFAULT_BUSINESS_ID,
+          action: "crm.contact.stage_changed",
+          actor: { id: "ai_agent", type: "ai_agent" },
+          initiator: { id: contact.id, type: "user" },
+          resource: { type: "crm_contact", id: contact.id },
+          outcome: "success",
+          metadata: {
+            contact_id: contact.id,
+            previous_stage: contact.stage,
+            stage: targetStage,
+            result: isChurned ? "churned" : "qualified",
+            reason_code: decision,
+          },
         },
-      },
-      { critical: false }
-    );
+        { critical: false }
+      );
+    } catch (auditErr) {
+      console.warn("[INBOUND-EMAIL-AUDIT-FAILED]", auditErr);
+    }
 
     return NextResponse.json({
       received: true,

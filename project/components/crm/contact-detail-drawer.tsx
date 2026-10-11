@@ -204,7 +204,7 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
               <div className="bg-card p-5 rounded-lg border border-border flex flex-col gap-4 shadow-xs">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="font-semibold text-base text-foreground">1. Send Outreach (Message or Email)</h3>
+                    <h3 className="font-semibold text-base text-foreground">Direct Outreach (Email &amp; WhatsApp)</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Send initial message via Email (Resend) or WhatsApp (Twilio) to {contact.first_name}.
                     </p>
@@ -249,55 +249,6 @@ export function ContactDetailDrawer({ contactId, onClose }: { contactId: string 
                   >
                     View Timeline &rarr;
                   </button>
-                </div>
-              </div>
-
-              {/* Customer Response & Status Tracking */}
-              <div className="bg-card p-5 rounded-lg border border-border flex flex-col gap-4 shadow-xs">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-semibold text-base text-foreground">2. Customer Response & Status</h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      The customer receives the email or WhatsApp on their device. When they reply or click Yes/No, the decision engine updates their status here automatically.
-                    </p>
-                  </div>
-                  <Badge variant={contact.stage === 'churned' ? 'danger' : ['qualified', 'proposal', 'customer'].includes(contact.stage) ? 'success' : 'neutral'} className="text-xs">
-                    {contact.stage === 'churned' ? 'Declined / Churned' : ['qualified', 'proposal', 'customer'].includes(contact.stage) ? 'Interested / Qualified' : 'Awaiting Reply'}
-                  </Badge>
-                </div>
-
-                {/* Customer View Link Card */}
-                <div className="p-4 rounded-lg bg-muted/30 border border-border flex flex-col gap-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                        <span>📱</span> Customer-Facing Response Portal
-                      </span>
-                      <p className="text-[12px] text-muted-foreground leading-relaxed">
-                        This is the exact link sent to the customer in their Email and WhatsApp message. Open it to test from the customer&apos;s phone or browser:
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 bg-background p-2 rounded border border-border/80">
-                    <code className="text-[11px] text-foreground font-mono truncate flex-1 select-all">
-                      {typeof window !== 'undefined' ? `${window.location.origin}/response?id=${contact.id}` : `/response?id=${contact.id}`}
-                    </code>
-                    <a
-                      href={`/response?id=${contact.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors shadow-2xs whitespace-nowrap cursor-pointer"
-                    >
-                      <span>Open Customer View</span>
-                      <span>&rarr;</span>
-                    </a>
-                  </div>
-
-                  <div className="text-[11px] text-muted-foreground flex items-center gap-2 pt-1 border-t border-border/40">
-                    <span className="text-primary font-bold">ℹ️ Note:</span>
-                    <span>When the customer taps <strong>&ldquo;Yes&rdquo;</strong> or <strong>&ldquo;No&rdquo;</strong> on that page or email, this CRM row instantly updates to Qualified or Churned.</span>
-                  </div>
                 </div>
 
                 {outreachStatus && (
