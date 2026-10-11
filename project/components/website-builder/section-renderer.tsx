@@ -52,6 +52,7 @@ export interface SectionRendererProps {
   deviceMode?: DeviceMode;
   isEditorMode?: boolean;
   isSelected?: boolean;
+  businessId?: string;
   onSelect?: () => void;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
@@ -72,6 +73,7 @@ interface ContactFormSectionProps {
   mutedTextColor: string;
   surfaceBg?: string;
   borderColor: string;
+  businessId?: string;
   getFontFamily: () => string;
 }
 
@@ -85,6 +87,7 @@ function ContactFormSection({
   mutedTextColor,
   surfaceBg = theme.surfaceBg || "#F4EFE6",
   borderColor,
+  businessId,
   getFontFamily,
 }: ContactFormSectionProps) {
   const [firstName, setFirstName] = React.useState("");
@@ -110,6 +113,7 @@ function ContactFormSection({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          business_id: businessId,
           first_name: firstName.trim(),
           last_name: lastName.trim(),
           email: email.trim(),
@@ -364,6 +368,7 @@ export function SectionRenderer({
   deviceMode,
   isEditorMode = false,
   isSelected = false,
+  businessId,
   onSelect,
   onMoveUp,
   onMoveDown,
@@ -1477,6 +1482,7 @@ export function SectionRenderer({
             mutedTextColor={mutedTextColor}
             surfaceBg={surfaceBg}
             borderColor={borderColor}
+            businessId={businessId}
             getFontFamily={getFontFamily}
           />
         )}

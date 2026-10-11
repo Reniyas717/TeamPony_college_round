@@ -15,6 +15,19 @@ const SendMessageSchema = z.object({
   message: z.string().trim().optional(),
 });
 
+function resolveBaseUrl(request: Request): string {
+  if (process.env.NEXT_PUBLIC_APP_URL && !process.env.NEXT_PUBLIC_APP_URL.includes("localhost")) {
+    return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
+  }
+  const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
+  const proto = request.headers.get("x-forwarded-proto") || (host?.includes("localhost") ? "http" : "https");
+  if (host && !host.includes("localhost")) {
+    return `${proto}://${host}`;
+  }
+  // Production Vercel domain fallback so mobile WhatsApp / Email links are globally reachable
+  return "https://nexus-team-pony.vercel.app";
+}
+
 /**
  * POST /api/crm/contacts/[id]/messages
  * Dispatches a direct message (Email via Resend, WhatsApp via Twilio)
@@ -48,7 +61,7 @@ export async function POST(request: Request, { params }: RouteParams) {
           error: {
             code: "NOT_FOUND",
             message: `Contact with ID '${id}' not found`,
-          details: null,
+            details: null,
           },
         },
         { status: 404 }
@@ -56,6 +69,9 @@ export async function POST(request: Request, { params }: RouteParams) {
     }
 
     const { channel, subject, message } = parsed.data;
+    const baseUrl = resolveBaseUrl(request);
+    const yesUrl = `${baseUrl}/response?id=${contact.id}&decision=yes`;
+    const noUrl = `${baseUrl}/response?id=${contact.id}&decision=no`;
 
     let result;
 
@@ -83,8 +99,6 @@ export async function POST(request: Request, { params }: RouteParams) {
 
     if (channel === "email") {
       const emailSubject = hydratedSubject || `Regarding your inquiry with ${contact.company || "Nexus"}`;
-      const yesUrl = `http://localhost:3000/response?id=${contact.id}&decision=yes`;
-      const noUrl = `http://localhost:3000/response?id=${contact.id}&decision=no`;
 
       const emailHtml = `
 <!DOCTYPE html>
@@ -126,6 +140,7 @@ export async function POST(request: Request, { params }: RouteParams) {
         html: emailHtml,
         text: emailText,
         contactId: contact.id,
+        context,
       });
 
     } else if (channel === "whatsapp") {
@@ -133,8 +148,6 @@ export async function POST(request: Request, { params }: RouteParams) {
       if (!recipientPhone) {
         return NextResponse.json({ error: { code: "VALIDATION_ERROR", message: "This contact has no phone number.", details: null } }, { status: 422 });
       }
-      const yesUrl = `http://localhost:3000/response?id=${contact.id}&decision=yes`;
-      const noUrl = `http://localhost:3000/response?id=${contact.id}&decision=no`;
 
       const waMessage =
 `Hello ${contact.first_name}! 👋
@@ -154,6 +167,7 @@ Please select an option below:
         to: recipientPhone,
         message: waMessage,
         contactId: contact.id,
+        context,
       });
 
     } else {
@@ -161,35 +175,59 @@ Please select an option below:
       if (!recipientPhone) {
         return NextResponse.json({ error: { code: "VALIDATION_ERROR", message: "This contact has no phone number.", details: null } }, { status: 422 });
       }
-      const smsMessage = hydratedMessage || `Hi ${contact.first_name}, thank you for your project inquiry!`;
+      const smsMessage = hydratedMessage || `Hi ${contact.first_name}, thank you for your project inquiry!\nInterested: ${yesUrl}\nNot interested: ${noUrl}`;
 
       result = await NotificationService.sendSms({
         to: recipientPhone,
         message: smsMessage,
         contactId: contact.id,
+        context,
       });
     }
 
-    await CrmService.logActivity(
-      contact.id,
-      "email_sent",
-      `${channel.toUpperCase()} sent`,
-      `A ${channel} message was sent to this contact.`,
-      "owner",
-      { channel },
-      context
-    );
-    await AuditService.recordEvent(
-      {
-        business_id: context.businessId,
-        action: "marketing.campaign.dispatched",
-        actor: { id: context.user.id, type: "user" },
-        resource: { type: "crm_contact", id: contact.id },
-        outcome: "success",
-        metadata: { channel, contact_id: contact.id },
-      },
-      { client: context.client, critical: true }
-    );
+    if (result && !result.success && !result.simulated) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "PROVIDER_DISPATCH_FAILED",
+            message: result.error || "Failed to dispatch message via provider",
+            details: result.details || null,
+          },
+        },
+        { status: 422 }
+      );
+    }
+
+    try {
+      await CrmService.logActivity(
+        contact.id,
+        "email_sent",
+        `${channel.toUpperCase()} sent`,
+        `A ${channel} message was sent to this contact.`,
+        "owner",
+        { channel },
+        context
+      );
+    } catch (logErr) {
+      console.warn("[Messages Route] Activity logging failed:", logErr);
+    }
+
+    try {
+      await AuditService.recordEvent(
+        {
+          business_id: context.businessId,
+          action: "marketing.campaign.dispatched",
+          actor: { id: context.user.id, type: "user" },
+          resource: { type: "crm_contact", id: contact.id },
+          outcome: "success",
+          metadata: { channel, contact_id: contact.id },
+        },
+        { client: context.client, critical: false }
+      );
+    } catch (auditErr) {
+      console.warn("[Messages Route] Audit logging failed:", auditErr);
+    }
+
     return NextResponse.json({ data: result }, { status: 200 });
   } catch (err: unknown) {
     return NextResponse.json(
