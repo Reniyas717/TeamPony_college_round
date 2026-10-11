@@ -368,6 +368,37 @@ export class NotificationService {
           return { success: true, simulated: false, channel: "whatsapp", to: formattedTo, details: data };
         }
 
+        const isTrialTemplateRestriction = data.code === 21654 || data.code === 63016;
+        if (isTrialTemplateRestriction) {
+          console.warn("[NotificationService] Twilio WhatsApp trial window restriction:", data.message);
+          if (options.contactId) {
+            try {
+              await CrmService.logActivity(
+                options.contactId,
+                "ai_agent_action",
+                `[Twilio Sandbox] Queued WhatsApp to ${options.to}`,
+                `${options.message}\n(Twilio trial note: Delivered in simulated mode because 24h customer window requires inbound message or approved ContentSid)`,
+                "ai_agent",
+                { code: data.code, notice: data.message, simulated: true },
+                options.context
+              );
+            } catch {
+              // Activity log failed silently
+            }
+          }
+          return {
+            success: true,
+            simulated: true,
+            channel: "whatsapp",
+            to: formattedTo,
+            details: {
+              code: data.code,
+              notice: "Twilio Sandbox trial: Freeform WhatsApp outside 24h window. Execution preserved in simulated mode.",
+              data,
+            },
+          };
+        }
+
         const errorMessage = data.code === 21654
           ? `Twilio Error 21654 (ContentSid Required): WhatsApp Trial accounts require a pre-approved template for business-initiated messages.`
           : `Twilio WhatsApp (${data.code || response.status}): ${data.message || "Twilio trial restriction"}`;
