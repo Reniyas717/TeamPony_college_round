@@ -75,9 +75,9 @@ export async function queueRegistrationConfirmations(registrationId: string) {
     const greeting = escapeHtml(registration.full_name);
     const businessName = escapeHtml(business.name);
     const title = escapeHtml(webinar.title);
-    const meetLink = webinar.meeting_uri
-      ? `<p><a href="${escapeHtml(webinar.meeting_uri)}">Join the Google Meet</a></p>`
-      : "<p>Your organizer will share the meeting link before the session.</p>";
+    const meetingAction = webinar.meeting_uri
+      ? `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:28px 0 8px"><tr><td align="center" bgcolor="#f97316" style="border-radius:6px"><a href="${escapeHtml(webinar.meeting_uri)}" style="display:inline-block;padding:14px 24px;color:#171717;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;line-height:20px;text-decoration:none">Join the Google Meet</a></td></tr></table>`
+      : `<p style="margin:24px 0 0;color:#c7c7c7;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px">Your organizer will share the meeting link before the session.</p>`;
     const { error } = await admin.rpc("enqueue_webinar_email", {
       p_business_id: registration.business_id,
       p_webinar_id: webinar.id,
@@ -87,7 +87,7 @@ export async function queueRegistrationConfirmations(registrationId: string) {
       p_from_email: from,
       p_reply_to_email: from,
       p_subject: `Registration confirmed: ${webinar.title}`,
-      p_html_body: `<p>Hi ${greeting},</p><p>Your registration for <strong>${title}</strong> with ${businessName} is confirmed.</p><p>${escapeHtml(time)} (${escapeHtml(webinar.timezone)})</p>${meetLink}`,
+      p_html_body: `<!doctype html><html lang="en"><body style="margin:0;padding:0;background-color:#e7e8eb"><div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">Your registration for ${title} is confirmed.</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#e7e8eb" style="background-color:#e7e8eb"><tr><td align="center" style="padding:36px 16px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;background-color:#171717;border-radius:12px"><tr><td style="padding:36px 36px 32px"><p style="margin:0 0 18px;color:#fb923c;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase">Webinar registration</p><h1 style="margin:0 0 14px;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:28px;line-height:34px;font-weight:700">You're on the list.</h1><p style="margin:0;color:#d4d4d4;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px">Hi ${greeting}, your registration for <strong style="color:#ffffff">${title}</strong> with ${businessName} is confirmed.</p><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:26px;background-color:#252525;border:1px solid #363636;border-radius:8px"><tr><td style="padding:18px 20px"><p style="margin:0 0 7px;color:#a3a3a3;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase">When</p><p style="margin:0;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px">${escapeHtml(time)}</p><p style="margin:3px 0 0;color:#b3b3b3;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px">${escapeHtml(webinar.timezone)}</p></td></tr></table>${meetingAction}<p style="margin:24px 0 0;color:#8f8f8f;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px">We look forward to seeing you there.<br />${businessName}</p></td></tr></table><p style="margin:16px 0 0;color:#686868;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px">You received this email because you registered for this webinar.</p></td></tr></table></body></html>`,
       p_text_body: `Hi ${registration.full_name},\n\nYour registration for ${webinar.title} with ${business.name} is confirmed.\n${time} (${webinar.timezone})\n${webinar.meeting_uri ? `Join the Google Meet: ${webinar.meeting_uri}` : "Your organizer will share the meeting link before the session."}`,
       p_payload: { registration_id: registration.id },
       p_scheduled_for: new Date().toISOString(),
