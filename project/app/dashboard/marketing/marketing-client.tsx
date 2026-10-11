@@ -50,6 +50,13 @@ const DEFAULT_OVERVIEW: MarketingAnalyticsOverview = {
   deliverySuccessRate: 100,
 };
 
+function formatDate(dateStr: string | number | Date | null | undefined): string {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "—";
+  return d.toISOString().slice(0, 10);
+}
+
 // Preset Strategy Templates
 interface StrategyPreset {
   id: string;
@@ -1159,8 +1166,8 @@ export default function MarketingClient({
                       <td className="py-2.5 px-3 text-right font-mono text-amber-600 dark:text-amber-400">
                         {c.clicked_count}
                       </td>
-                      <td className="py-2.5 px-3 font-mono text-muted-foreground text-[11px]">
-                        {new Date(c.created_at).toLocaleDateString()}
+                      <td className="py-2.5 px-3 font-mono text-muted-foreground text-[11px]" suppressHydrationWarning>
+                        {formatDate(c.created_at)}
                       </td>
                       <td className="py-2.5 px-3 text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -1470,8 +1477,8 @@ export default function MarketingClient({
                         <td className="py-2 px-3 text-muted-foreground capitalize">
                           {s.reason.replace(/_/g, " ")}
                         </td>
-                        <td className="py-2 px-3 font-mono text-[11px] text-muted-foreground">
-                          {new Date(s.suppressed_at).toLocaleDateString()}
+                        <td className="py-2 px-3 font-mono text-[11px] text-muted-foreground" suppressHydrationWarning>
+                          {formatDate(s.suppressed_at)}
                         </td>
                       </tr>
                     ))}
