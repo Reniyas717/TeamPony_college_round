@@ -10,9 +10,7 @@ import {
   Card as CardIcon,
   DirectSend,
   VideoPlay,
-  Magicpen,
   LogoutCurve,
-  TickCircle,
   Activity,
   ShieldSecurity,
   Routing,
@@ -77,9 +75,7 @@ export default function DashboardLayoutClient({
       label: "Intelligence",
       items: [
         { href: "/dashboard/analytics", label: "Analytics & ML", icon: Chart21 },
-        { href: "/dashboard/agent", label: "AI Business Agent", icon: Magicpen },
         { href: "/dashboard/workflows", label: "AI Workflows", icon: Routing },
-        { href: "/dashboard/approvals", label: "Approval Queue", icon: TickCircle },
       ]
     },
     {

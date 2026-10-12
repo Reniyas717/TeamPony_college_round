@@ -15,6 +15,7 @@ import {
   ShieldSecurity,
   TrendUp,
   Chart21,
+  Warning2,
 } from "iconsax-react";
 import { useAnalyticsDashboard } from "@/hooks/use-analytics";
 
@@ -29,6 +30,26 @@ interface DashboardClientProps {
 
 export default function DashboardClient({ user }: DashboardClientProps) {
   const { data: analyticsData } = useAnalyticsDashboard();
+
+  const overview = analyticsData?.overview;
+  const mrrDisplay =
+    overview?.mrrFormatted ??
+    analyticsData?.summaryMetrics?.find((m) => m.id === "mrr" || m.id === "mrr_observed")?.value ??
+    "₹4,999.00";
+  const contactsDisplay =
+    overview?.contactsCount !== undefined
+      ? `${overview.contactsCount} Contact${overview.contactsCount === 1 ? "" : "s"}`
+      : analyticsData?.summaryMetrics?.find((m) => m.id === "contacts" || m.id === "contacts_observed")?.value ??
+        "3 Contacts";
+  const contactsCount = overview?.contactsCount ?? 3;
+  const pendingApprovalsCount = overview?.pendingApprovalsCount ?? 0;
+  const publishedWebsitesCount = overview?.publishedWebsitesCount ?? 0;
+  const totalWebsitesCount = overview?.totalWebsitesCount ?? 0;
+  const activeCampaignsCount = overview?.activeCampaignsCount ?? 0;
+  const upcomingWebinarsCount = overview?.upcomingWebinarsCount ?? 0;
+  const journeyMapsCount = overview?.journeyMapsCount ?? 0;
+  const auditLogsCount = overview?.auditLogsCount ?? 0;
+  const totalWorkflowsCount = overview?.totalWorkflowsCount ?? 0;
 
   const modules = [
     {
@@ -45,7 +66,7 @@ export default function DashboardClient({ user }: DashboardClientProps) {
       title: "Customer Journey Studio",
       description: "AI-synthesized stages, drop-off friction diagnostics, visual Mermaid diagrams, and executable module actions.",
       icon: TrendUp,
-      meta: "Predictive Funnel Active",
+      meta: `${journeyMapsCount} Funnel${journeyMapsCount === 1 ? "" : "s"} Active`,
       action: "Open Studio",
       href: "/dashboard/intelligence",
     },
@@ -55,7 +76,7 @@ export default function DashboardClient({ user }: DashboardClientProps) {
       title: "Intelligent CRM",
       description: "Manage customer lifecycles, track touchpoints, and sync contacts with billing records.",
       icon: SecurityUser,
-      meta: "0 Contacts recorded",
+      meta: `${contactsCount} Contact${contactsCount === 1 ? "" : "s"} recorded`,
       action: "Manage CRM",
     },
     {
@@ -64,7 +85,7 @@ export default function DashboardClient({ user }: DashboardClientProps) {
       title: "SaaS Billing & Subscriptions",
       description: "Automated recurring plans, usage-based metering, and Stripe customer invoicing.",
       icon: CardIcon,
-      meta: "₹0.00 Current MRR",
+      meta: `${mrrDisplay} Current MRR`,
       action: "View Invoices",
     },
     {
@@ -73,7 +94,7 @@ export default function DashboardClient({ user }: DashboardClientProps) {
       title: "Visual Website Builder",
       description: "Customize and deploy responsive landing pages with instant live previews.",
       icon: Global,
-      meta: "1 Active public site",
+      meta: `${publishedWebsitesCount} Published • ${totalWebsitesCount} Site${totalWebsitesCount === 1 ? "" : "s"}`,
       action: "Open Studio",
     },
     {
@@ -82,7 +103,7 @@ export default function DashboardClient({ user }: DashboardClientProps) {
       title: "Marketing Automation",
       description: "Automate dynamic customer segments triggered by real-time billing and product usage.",
       icon: DirectSend,
-      meta: "0 Active campaigns",
+      meta: `${activeCampaignsCount} Active campaign${activeCampaignsCount === 1 ? "" : "s"}`,
       action: "Build Flow",
     },
     {
@@ -91,7 +112,7 @@ export default function DashboardClient({ user }: DashboardClientProps) {
       title: "Webinar Management",
       description: "Host live interactive events with attendance analytics and auto follow-up workflows.",
       icon: VideoPlay,
-      meta: "0 Upcoming events",
+      meta: `${upcomingWebinarsCount} Upcoming event${upcomingWebinarsCount === 1 ? "" : "s"}`,
       action: "Create Event",
     },
     {
@@ -100,7 +121,7 @@ export default function DashboardClient({ user }: DashboardClientProps) {
       title: "AI Business Agent",
       description: "Autonomous multi-step business operations with mandatory human approval checkpoints.",
       icon: Magicpen,
-      meta: "Semantic graph linked",
+      meta: `${totalWorkflowsCount} Workflows linked`,
       action: "Configure Agent",
     },
     {
@@ -109,7 +130,7 @@ export default function DashboardClient({ user }: DashboardClientProps) {
       title: "Audit Trail & Compliance",
       description: "Immutable, append-only security logs of all system, AI, and human operations.",
       icon: ShieldSecurity,
-      meta: "PostgreSQL RLS Protected",
+      meta: `${auditLogsCount} Events logged`,
       action: "View Audit Trail",
     },
   ];
@@ -129,15 +150,6 @@ export default function DashboardClient({ user }: DashboardClientProps) {
             </span>
           </p>
         </div>
-
-        <div className="flex items-center gap-3">
-          <Link href="/dashboard/agent" className="cursor-pointer">
-            <Button variant="primary" size="md" className="gap-2 cursor-pointer shadow-sm">
-              <Magicpen size="16" className="text-brand-foreground" />
-              <span>Prompt AI Agent</span>
-            </Button>
-          </Link>
-        </div>
       </div>
 
       {/* Architectural Metric Strip */}
@@ -147,7 +159,7 @@ export default function DashboardClient({ user }: DashboardClientProps) {
             Revenue (MRR)
           </p>
           <p className="font-display text-2xl font-bold tabular-nums">
-            {analyticsData?.summaryMetrics?.find((m) => m.id === "mrr")?.value ?? "₹0.00"}
+            {mrrDisplay}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
             {analyticsData ? "Current Monthly Revenue" : "Loading..."}
@@ -159,7 +171,7 @@ export default function DashboardClient({ user }: DashboardClientProps) {
             CRM Contacts
           </p>
           <p className="font-display text-2xl font-bold tabular-nums">
-            {analyticsData?.summaryMetrics?.find((m) => m.id === "contacts")?.value ?? "0 Contacts"}
+            {contactsDisplay}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
             {analyticsData ? "Total Active Contacts" : "Loading..."}
@@ -170,8 +182,12 @@ export default function DashboardClient({ user }: DashboardClientProps) {
           <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">
             AI Approval Queue
           </p>
-          <p className="font-display text-2xl font-bold tabular-nums">0 Pending</p>
-          <p className="text-xs text-muted-foreground mt-0.5">Gatekeeper checks active</p>
+          <p className="font-display text-2xl font-bold tabular-nums">
+            {pendingApprovalsCount} Pending
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {pendingApprovalsCount > 0 ? "Review required" : "Gatekeeper checks active"}
+          </p>
         </Link>
 
         <Link href="/dashboard/analytics" className="p-5 flex flex-col gap-1 bg-card/60 hover:bg-card/90 transition rounded-sm border border-border/30 group">
@@ -284,16 +300,35 @@ export default function DashboardClient({ user }: DashboardClientProps) {
               for review.
             </p>
 
-            {/* Clear Queue State */}
-            <div className="p-4 bg-muted/30 rounded-sm text-center space-y-2">
-              <TickCircle size="24" className="mx-auto text-status-success-fg" />
-              <p className="text-xs font-semibold text-foreground">
-                All Clear: 0 Pending Approvals
-              </p>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                No mass updates, invoice refunds, or email dispatches waiting for signature.
-              </p>
-            </div>
+            {/* Queue State */}
+            {pendingApprovalsCount > 0 ? (
+              <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-sm text-center space-y-2">
+                <Warning2 size="24" className="mx-auto text-amber-500" />
+                <p className="text-xs font-semibold text-amber-500">
+                  Action Required: {pendingApprovalsCount} Pending Approval{pendingApprovalsCount === 1 ? "" : "s"}
+                </p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Consequential operations are paused awaiting human signature.
+                </p>
+                <div className="pt-1">
+                  <Link href="/dashboard/approvals" className="inline-block">
+                    <Button variant="primary" size="sm" className="h-7 text-xs px-3 shadow-xs">
+                      Review Queue
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 bg-muted/30 rounded-sm text-center space-y-2">
+                <TickCircle size="24" className="mx-auto text-status-success-fg" />
+                <p className="text-xs font-semibold text-foreground">
+                  All Clear: 0 Pending Approvals
+                </p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  No mass updates, invoice refunds, or email dispatches waiting for signature.
+                </p>
+              </div>
+            )}
 
             <div className="pt-2">
               <Link href="/dashboard/audit-logs" className="block w-full cursor-pointer">

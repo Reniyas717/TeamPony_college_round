@@ -67,6 +67,25 @@ export interface VideoSceneData {
 }
 
 /**
+ * Workspace Overview Metric Counts
+ */
+export interface WorkspaceOverviewData {
+  contactsCount: number;
+  activeMrrInr: number;
+  mrrFormatted: string;
+  publishedWebsitesCount: number;
+  totalWebsitesCount: number;
+  activeCampaignsCount: number;
+  totalCampaignsCount: number;
+  upcomingWebinarsCount: number;
+  totalWebinarsCount: number;
+  pendingApprovalsCount: number;
+  totalWorkflowsCount: number;
+  journeyMapsCount: number;
+  auditLogsCount: number;
+}
+
+/**
  * Unified Analytics Dashboard Payload.
  */
 export interface AnalyticsDashboardPayload {
@@ -77,6 +96,7 @@ export interface AnalyticsDashboardPayload {
   revenueForecastModel: LinearRegressionResult;
   funnelStages: FunnelStageData[];
   channelPerformance: ChannelBreakdownData[];
+  overview?: WorkspaceOverviewData;
   executiveVideoBriefing: {
     totalDurationSeconds: number;
     fps: number;
