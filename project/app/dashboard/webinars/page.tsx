@@ -3,6 +3,8 @@ import { requireWebinarOwner } from "./owner-page";
 import { WebinarList } from "./webinar-list";
 import { getGoogleConnectionStatus } from "@/services/webinar/google-token-vault.service";
 
+import { PageHeaderSkeleton, MetricCardsSkeleton, TableSkeleton } from "@/components/ui/skeleton";
+
 export default function WebinarsPage() {
   return <React.Suspense fallback={<WebinarLoading />}><WebinarsContent /></React.Suspense>;
 }
@@ -18,5 +20,11 @@ async function WebinarsContent() {
 }
 
 function WebinarLoading() {
-  return <main className="min-h-screen bg-background px-4 py-16 text-center text-sm text-muted-foreground" role="status">Loading webinar workspace...</main>;
+  return (
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 w-full animate-in fade-in duration-200" role="status" aria-label="Loading webinars">
+      <PageHeaderSkeleton hasAction={true} />
+      <MetricCardsSkeleton count={4} />
+      <TableSkeleton rows={4} columns={6} showHeader={true} />
+    </div>
+  );
 }

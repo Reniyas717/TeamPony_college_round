@@ -15,15 +15,11 @@ async function DashboardContent() {
   return <DashboardClient user={user} />;
 }
 
+import { WorkspaceSkeleton } from "@/components/ui/skeleton";
+
 export default function DashboardPage() {
   return (
-    <React.Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
-          <p className="text-sm font-semibold text-muted-foreground animate-pulse">Loading Nexus Workspace...</p>
-        </div>
-      }
-    >
+    <React.Suspense fallback={<WorkspaceSkeleton />}>
       <DashboardContent />
     </React.Suspense>
   );

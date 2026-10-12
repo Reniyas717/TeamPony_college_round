@@ -314,6 +314,25 @@
   scrollbar-width: none;
 }
 
+/* Skeleton Shimmer & Indeterminate Rail Keyframes (DESIGN.md §13.1, §20.3) */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
 /* ==========================================================================
    PRINT SPECIFICATION & REPORTING STYLES
    Ensures dashboards, invoices, and analytics produce crisp, clean,

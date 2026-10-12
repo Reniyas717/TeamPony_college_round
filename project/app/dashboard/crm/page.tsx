@@ -267,7 +267,34 @@ export default function CrmPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/20 text-foreground">
-              {filteredContacts.length === 0 ? (
+              {isLoading && contacts.length === 0 ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={i} className="animate-pulse">
+                    <td className="py-3 px-4">
+                      <div className="h-4 w-32 bg-muted/60 rounded-xs mb-1" />
+                      <div className="h-3 w-40 bg-muted/30 rounded-xs" />
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="h-3.5 w-24 bg-muted/50 rounded-xs" />
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="h-5 w-20 bg-muted/40 rounded-sm" />
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="h-5 w-28 bg-muted/30 rounded-sm" />
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="h-3.5 w-16 bg-muted/40 rounded-xs" />
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="h-3 w-20 bg-muted/30 rounded-xs font-mono" />
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <div className="h-6 w-16 bg-muted/40 rounded-xs ml-auto" />
+                    </td>
+                  </tr>
+                ))
+              ) : filteredContacts.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-muted-foreground">
                     <p className="text-sm font-semibold text-foreground">No contacts found</p>

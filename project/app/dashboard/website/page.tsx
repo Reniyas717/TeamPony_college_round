@@ -30,14 +30,30 @@ async function WebsiteContent() {
   return <StudioClient initialWebsites={websites} />;
 }
 
+import { PageHeaderSkeleton, Skeleton } from "@/components/ui/skeleton";
+
 export default function WebsitePage() {
   return (
     <React.Suspense
       fallback={
-        <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-background text-foreground">
-          <p className="text-sm font-semibold text-muted-foreground animate-pulse">
-            Loading Nexus Studio...
-          </p>
+        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 w-full animate-in fade-in duration-200">
+          <PageHeaderSkeleton hasAction={true} />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-4">
+              <div className="rounded-sm border border-border/60 bg-card p-6 space-y-4">
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-64 w-full rounded-sm" />
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div className="rounded-sm border border-border/60 bg-card p-5 space-y-3">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-8 w-full rounded-sm" />
+                <Skeleton className="h-8 w-full rounded-sm" />
+                <Skeleton className="h-8 w-full rounded-sm" />
+              </div>
+            </div>
+          </div>
         </div>
       }
     >

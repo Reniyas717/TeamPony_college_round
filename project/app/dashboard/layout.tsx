@@ -23,21 +23,15 @@ async function DashboardLayoutContent({
   );
 }
 
+import { FullShellSkeleton } from "@/components/ui/skeleton";
+
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <React.Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
-          <p className="text-sm font-semibold text-muted-foreground animate-pulse">
-            Loading Nexus Workspace...
-          </p>
-        </div>
-      }
-    >
+    <React.Suspense fallback={<FullShellSkeleton />}>
       <DashboardLayoutContent>{children}</DashboardLayoutContent>
     </React.Suspense>
   );

@@ -273,12 +273,31 @@ export default function AuditLogsClient() {
             </thead>
             <tbody className="divide-y divide-border/20 text-foreground font-sans">
               {loading && logs.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center text-muted-foreground">
-                    <Refresh size="20" className="animate-spin mx-auto mb-2 text-brand-text" />
-                    <span>Loading authoritative audit records...</span>
-                  </td>
-                </tr>
+                Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={i} className="animate-pulse">
+                    <td className="py-3.5 px-4 font-mono">
+                      <div className="h-3.5 w-32 bg-muted/60 rounded-xs" />
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <div className="h-4 w-28 bg-muted/50 rounded-xs font-mono" />
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-4 h-4 rounded bg-muted/40" />
+                        <div className="h-3.5 w-16 bg-muted/40 rounded-xs" />
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <div className="h-3.5 w-24 bg-muted/50 rounded-xs font-mono" />
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <div className="h-5 w-20 bg-muted/40 rounded-full" />
+                    </td>
+                    <td className="py-3.5 px-4 text-right">
+                      <div className="h-6 w-16 bg-muted/40 rounded-xs ml-auto" />
+                    </td>
+                  </tr>
+                ))
               ) : filteredLogs.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-muted-foreground">

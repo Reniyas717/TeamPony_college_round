@@ -410,9 +410,19 @@ export function WebinarList({
 
         {/* Loading State */}
         {loading && (
-          <div className="py-16 text-center text-xs text-muted-foreground" role="status">
-            <div className="inline-block size-5 animate-spin rounded-full border-2 border-primary border-r-transparent mb-2" />
-            <p>Loading webinar sessions...</p>
+          <div className="space-y-3 py-2" role="status" aria-label="Loading webinar sessions">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-sm border border-border/50 bg-muted/10 gap-3 animate-pulse">
+                <div className="space-y-2 flex-1">
+                  <div className="h-4 w-48 bg-muted/60 rounded-xs" />
+                  <div className="h-3 w-72 bg-muted/30 rounded-xs" />
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="h-6 w-20 bg-muted/40 rounded-xs" />
+                  <div className="h-8 w-24 bg-muted/50 rounded-sm" />
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
